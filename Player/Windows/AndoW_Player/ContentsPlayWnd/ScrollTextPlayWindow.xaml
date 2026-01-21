@@ -1,0 +1,14 @@
+﻿<Window
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:HyOnPlayer" 
+        x:Class="HyOnPlayer.ScrollTextPlayWindow"
+        Closing="Window_Closing"
+        SizeChanged="Window_SizeChanged"
+        Title="ScrollTextWindow" WindowStyle="None" ResizeMode="NoResize" Background="Transparent" IsHitTestVisible="False" AllowsTransparency="True">
+    <Grid x:Name="ContentGrid" ClipToBounds="True" >
+        <Canvas x:Name="CanvMain">
+            <TextBlock x:Name="MarqueeTBlock" Text="" FontFamily="Gaeul" FontSize="27" Foreground="White"/>
+        </Canvas>
+    </Grid>
+</Window>

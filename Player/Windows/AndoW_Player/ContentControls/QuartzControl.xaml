@@ -1,0 +1,15 @@
+﻿<UserControl x:Class="HyOnPlayer.QuartzControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:Forms="clr-namespace:System.Windows.Forms;assembly=System.Windows.Forms"  
+             Unloaded="UserControl_Unloaded"
+             SizeChanged="UserControl_SizeChanged"
+             mc:Ignorable="d" >
+    <Grid x:Name="RootGrid" >
+        <WindowsFormsHost x:Name="QuartzHost" Background="Black">
+            <Forms:Panel x:Name="QuartzPanel" BackColor="Black" />
+        </WindowsFormsHost>
+    </Grid>
+</UserControl>

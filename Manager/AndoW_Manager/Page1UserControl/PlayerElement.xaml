@@ -1,0 +1,148 @@
+﻿<UserControl x:Class="HyonManager.SubElement.PlayerElement"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d"  Height="100" Width="129">
+	<UserControl.Resources>
+		<Style x:Key="ButtonFocusVisual">
+			<Setter Property="Control.Template">
+				<Setter.Value>
+					<ControlTemplate>
+						<Rectangle Margin="2" SnapsToDevicePixels="true" Stroke="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" StrokeThickness="1" StrokeDashArray="1 2"/>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
+		<LinearGradientBrush x:Key="ButtonNormalBackground" EndPoint="0,1" StartPoint="0,0">
+			<GradientStop Color="#F3F3F3" Offset="0"/>
+			<GradientStop Color="#EBEBEB" Offset="0.5"/>
+			<GradientStop Color="#DDDDDD" Offset="0.5"/>
+			<GradientStop Color="#CDCDCD" Offset="1"/>
+		</LinearGradientBrush>
+		<SolidColorBrush x:Key="ButtonNormalBorder" Color="#FF707070"/>
+		<Style x:Key="Btn_default3" TargetType="{x:Type Button}">
+			<Setter Property="FocusVisualStyle" Value="{StaticResource ButtonFocusVisual}"/>
+			<Setter Property="Background" Value="{StaticResource ButtonNormalBackground}"/>
+			<Setter Property="BorderBrush" Value="{StaticResource ButtonNormalBorder}"/>
+			<Setter Property="BorderThickness" Value="1"/>
+			<Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+			<Setter Property="HorizontalContentAlignment" Value="Center"/>
+			<Setter Property="VerticalContentAlignment" Value="Center"/>
+			<Setter Property="Padding" Value="1"/>
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="{x:Type Button}">
+						<Grid>
+							<VisualStateManager.VisualStateGroups>
+								<VisualStateGroup x:Name="CommonStates">
+									<VisualStateGroup.Transitions>
+										<VisualTransition GeneratedDuration="0:0:0.1" To="MouseOver">
+											<VisualTransition.GeneratedEasingFunction>
+												<CircleEase EasingMode="EaseOut"/>
+											</VisualTransition.GeneratedEasingFunction>
+											<Storyboard>
+												<ColorAnimation Duration="0:0:0.1" To="sc#0.55, 1, 1, 1" Storyboard.TargetProperty="(Shape.Fill).(SolidColorBrush.Color)" Storyboard.TargetName="rectangle">
+													<ColorAnimation.EasingFunction>
+														<CircleEase EasingMode="EaseOut"/>
+													</ColorAnimation.EasingFunction>
+												</ColorAnimation>
+											</Storyboard>
+										</VisualTransition>
+										<VisualTransition From="MouseOver" GeneratedDuration="0:0:0.3">
+											<Storyboard>
+												<ColorAnimation Duration="0:0:0.3" From="sc#0.55, 1, 1, 1" Storyboard.TargetProperty="(Shape.Fill).(SolidColorBrush.Color)" Storyboard.TargetName="rectangle"/>
+											</Storyboard>
+										</VisualTransition>
+									</VisualStateGroup.Transitions>
+									<VisualState x:Name="Normal"/>
+									<VisualState x:Name="MouseOver">
+										<Storyboard>
+											<ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(SolidColorBrush.Color)" Storyboard.TargetName="rectangle">
+												<EasingColorKeyFrame KeyTime="0" Value="#A7FFFFFF"/>
+											</ColorAnimationUsingKeyFrames>
+										</Storyboard>
+									</VisualState>
+									<VisualState x:Name="Pressed"/>
+									<VisualState x:Name="Disabled"/>
+								</VisualStateGroup>
+								<VisualStateGroup x:Name="FocusStates"/>
+								<VisualStateGroup x:Name="ValidationStates"/>
+							</VisualStateManager.VisualStateGroups>
+							<Rectangle x:Name="rectangle" RadiusY="5" RadiusX="5" Fill="#4CFFFFFF">
+								<Rectangle.Stroke>
+									<LinearGradientBrush EndPoint="0.5,1" StartPoint="0.5,0">
+										<GradientStop Color="#5F000000" Offset="1"/>
+										<GradientStop Color="#41FFFFFF"/>
+									</LinearGradientBrush>
+								</Rectangle.Stroke>
+							</Rectangle>
+							<ContentPresenter HorizontalAlignment="Center" RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" VerticalAlignment="Center" OpacityMask="Black"/>
+						</Grid>
+						<ControlTemplate.Triggers>
+							<Trigger Property="IsKeyboardFocused" Value="true"/>
+							<Trigger Property="ToggleButton.IsChecked" Value="true"/>
+							<Trigger Property="IsEnabled" Value="false">
+								<Setter Property="Foreground" Value="#ADADAD"/>
+							</Trigger>
+						</ControlTemplate.Triggers>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
+	</UserControl.Resources>
+    <Grid x:Name="rootGrid">
+        <Grid x:Name="LayoutGrid">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="85*"/>
+                <RowDefinition Height="27*"/>
+                <RowDefinition Height="8*"/>
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="0.915*"/>
+            </Grid.ColumnDefinitions>
+            <Rectangle x:Name="BGRect" Fill="#B2296EB2" RadiusY="7" RadiusX="7" Grid.RowSpan="4" Stroke="#FF5D93E2"/>
+            <Path Data="M640.00003,0 L640.00003,356.70877 0,356.70877 0,234.48521 12.832886,225.93388 C178.55685,118.10585 385.91855,39.818394 616.78,3.4497108 z" Stretch="Fill" Grid.RowSpan="3" Margin="1,23,1,7">
+            	<Path.Fill>
+            		<LinearGradientBrush EndPoint="0.655,0.927" StartPoint="0.345,0.073">
+            			<GradientStop Color="Black"/>
+            			<GradientStop Color="#66000000" Offset="1"/>
+            		</LinearGradientBrush>
+            	</Path.Fill>
+            </Path>
+            <Grid x:Name="PortraitGrid" HorizontalAlignment="Center" Height="67" VerticalAlignment="Center" Width="45" Margin="39.5,3.089,39.5,18.243" Grid.RowSpan="2">
+            	<Rectangle x:Name="RectanglePortrait" Fill="#FF131313" Stroke="#FF303030" StrokeThickness="2"/>
+            	<Path Data="M640.00003,0 L640.00003,356.70877 0,356.70877 0,234.48521 12.832886,225.93388 C178.55685,118.10585 385.91855,39.818394 616.78,3.4497108 z" Stretch="Fill" Margin="2">
+            		<Path.Fill>
+            			<LinearGradientBrush EndPoint="0.655,0.927" StartPoint="0.345,0.073">
+            				<GradientStop Color="Black"/>
+            				<GradientStop Color="#66000000" Offset="1"/>
+            			</LinearGradientBrush>
+            		</Path.Fill>
+            	</Path>
+            </Grid>
+            <Grid x:Name="LancScapeGrid" HorizontalAlignment="Center" Height="50" VerticalAlignment="Center" Width="80" Margin="24.5,13.422,24.5,7.411">
+            	<Rectangle x:Name="RectangleLand" Fill="#FF131313" Stroke="#FF303030" HorizontalAlignment="Center" Height="50" VerticalAlignment="Center" Width="80" StrokeThickness="2"/>
+            	<Path Data="M640.00003,0 L640.00003,356.70877 0,356.70877 0,234.48521 12.832886,225.93388 C178.55685,118.10585 385.91855,39.818394 616.78,3.4497108 z" Stretch="Fill" Margin="2">
+            		<Path.Fill>
+            			<LinearGradientBrush EndPoint="0.655,0.927" StartPoint="0.345,0.073">
+            				<GradientStop Color="Black"/>
+            				<GradientStop Color="#66000000" Offset="1"/>
+            			</LinearGradientBrush>
+            		</Path.Fill>
+            	</Path>
+            </Grid>
+            <TextBlock x:Name="textBoxPlayerState" TextWrapping="Wrap" Text="ON" Foreground="GreenYellow" HorizontalAlignment="Center" FontFamily="Verdana" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5" FontWeight="Bold" FontSize="13.333" Height="16.204" Width="22.624" Margin="53.188,30.321,53.188,24.308"/>
+            <TextBlock x:Name="ExitText" TextWrapping="Wrap" Text="x" Foreground="#FF9C9C9C" HorizontalAlignment="Right" FontFamily="Verdana" VerticalAlignment="Top" RenderTransformOrigin="0.5,0.5" FontSize="13.333" Margin="0,2.816,8.991,0" Height="16.203" Width="7.89"/>
+            <Rectangle x:Name="ExitRect" Fill="#1A232323" Stroke="#FF292828" HorizontalAlignment="Right" Height="14" VerticalAlignment="Top" Width="14" RadiusX="2" RadiusY="2" Margin="0,5.5,6,0"/>
+            <Grid Grid.Row="1">
+            	<Grid.ColumnDefinitions>
+            		<ColumnDefinition Width="125*"/>
+            		<ColumnDefinition Width="41*"/>
+            	</Grid.ColumnDefinitions>
+            	<TextBlock x:Name="textBoxPlayerName" TextWrapping="Wrap" Text="Player #1" Foreground="#FFD47400" HorizontalAlignment="Center" FontFamily="Tahoma" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"/>
+            	<Button x:Name="BorderBTN_Copy" Content="Edit" FontFamily="Tahoma" Style="{DynamicResource Btn_default3}" Foreground="{DynamicResource text002}" Grid.Column="1" FontSize="10.667" Margin="0,3,4,4"/>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

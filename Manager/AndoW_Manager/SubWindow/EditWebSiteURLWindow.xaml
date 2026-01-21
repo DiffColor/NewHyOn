@@ -1,0 +1,238 @@
+﻿<Window x:Class="AndoW_Manager.EditWebSiteURLWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="알림창" Height="100" Width="523" WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="NoResize">
+    <Window.Resources>
+        <Style x:Key="Btn_default2" TargetType="{x:Type Button}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Grid>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualStateGroup.Transitions>
+                                        <VisualTransition From="Pressed" GeneratedDuration="0:0:0.3"/>
+                                    </VisualStateGroup.Transitions>
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="MouseOver">
+                                        <Storyboard>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[1].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0:0:0.2" Value="#FF08193B"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[0].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0:0:0.2" Value="#FF00071A"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[2].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0:0:0.2" Value="#FF051A45"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <Storyboard>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[2].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0" Value="#FF000E1B"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[0].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0" Value="#FF000914"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[1].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0" Value="#FF000D35"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Stroke).(GradientBrush.GradientStops)[0].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0" Value="#68000000"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Stroke).(GradientBrush.GradientStops)[1].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0" Value="#19000000"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled"/>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <Rectangle x:Name="rectangle" RadiusY="4" RadiusX="4">
+                                <Rectangle.Fill>
+                                    <LinearGradientBrush EndPoint="0.5,1" StartPoint="0.5,0">
+                                        <GradientStop Color="#FF0C0C0C" Offset="0.667"/>
+                                        <GradientStop Color="#FF252525"/>
+                                        <GradientStop Color="#FF121212" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Rectangle.Fill>
+                                <Rectangle.Stroke>
+                                    <LinearGradientBrush EndPoint="0.5,1" StartPoint="0.5,0">
+                                        <GradientStop Color="#59000000" Offset="0"/>
+                                        <GradientStop Color="#19FFFFFF" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Rectangle.Stroke>
+                            </Rectangle>
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True"/>
+                            <Trigger Property="IsDefaulted" Value="True"/>
+                            <Trigger Property="IsMouseOver" Value="True"/>
+                            <Trigger Property="IsPressed" Value="True"/>
+                            <Trigger Property="IsEnabled" Value="False"/>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="BtnWin_1" TargetType="{x:Type Button}">
+        	<Setter Property="Template">
+        		<Setter.Value>
+        			<ControlTemplate TargetType="{x:Type Button}">
+        				<Grid>
+        					<VisualStateManager.VisualStateGroups>
+        						<VisualStateGroup x:Name="CommonStates">
+        							<VisualStateGroup.Transitions>
+        								<VisualTransition GeneratedDuration="0" To="MouseOver">
+        									<VisualTransition.GeneratedEasingFunction>
+        										<BackEase EasingMode="EaseOut"/>
+        									</VisualTransition.GeneratedEasingFunction>
+        								</VisualTransition>
+        							</VisualStateGroup.Transitions>
+        							<VisualState x:Name="Normal"/>
+        							<VisualState x:Name="MouseOver">
+        								<Storyboard>
+        									<DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="(UIElement.Opacity)" Storyboard.TargetName="rectangle">
+        										<EasingDoubleKeyFrame KeyTime="0:0:0.3" Value="1"/>
+        									</DoubleAnimationUsingKeyFrames>
+        								</Storyboard>
+        							</VisualState>
+        							<VisualState x:Name="Pressed"/>
+        							<VisualState x:Name="Disabled"/>
+        						</VisualStateGroup>
+        					</VisualStateManager.VisualStateGroups>
+        					<Rectangle x:Name="rectangle" Fill="#59000000" RadiusY="3" RadiusX="3" Stroke="#660F313F" Opacity="0"/>
+        					<ContentPresenter OpacityMask="Black"/>
+        				</Grid>
+        				<ControlTemplate.Triggers>
+        					<Trigger Property="IsFocused" Value="True"/>
+        					<Trigger Property="IsDefaulted" Value="True"/>
+        					<Trigger Property="IsMouseOver" Value="True"/>
+        					<Trigger Property="IsPressed" Value="True"/>
+        					<Trigger Property="IsEnabled" Value="False"/>
+        				</ControlTemplate.Triggers>
+        			</ControlTemplate>
+        		</Setter.Value>
+        	</Setter>
+        </Style>
+        <Style x:Key="Btn_defaultSW_Local" TargetType="{x:Type Button}">
+        	<Setter Property="Template">
+        		<Setter.Value>
+        			<ControlTemplate TargetType="{x:Type Button}">
+        				<Grid>
+        					<VisualStateManager.VisualStateGroups>
+        						<VisualStateGroup x:Name="CommonStates">
+        							<VisualStateGroup.Transitions>
+        								<VisualTransition From="Pressed" GeneratedDuration="0:0:0.3"/>
+        							</VisualStateGroup.Transitions>
+        							<VisualState x:Name="Normal"/>
+        							<VisualState x:Name="MouseOver">
+        								<Storyboard>
+        									<ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[1].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+        										<EasingColorKeyFrame KeyTime="0:0:0.2" Value="#FF08193B"/>
+        									</ColorAnimationUsingKeyFrames>
+        									<ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[0].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+        										<EasingColorKeyFrame KeyTime="0:0:0.2" Value="#FF00071A"/>
+        									</ColorAnimationUsingKeyFrames>
+        									<ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[2].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+        										<EasingColorKeyFrame KeyTime="0:0:0.2" Value="#FF051A45"/>
+        									</ColorAnimationUsingKeyFrames>
+        								</Storyboard>
+        							</VisualState>
+        							<VisualState x:Name="Pressed">
+        								<Storyboard>
+        									<ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[2].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+        										<EasingColorKeyFrame KeyTime="0" Value="#FF000E1B"/>
+        									</ColorAnimationUsingKeyFrames>
+        									<ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[0].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+        										<EasingColorKeyFrame KeyTime="0" Value="#FF000914"/>
+        									</ColorAnimationUsingKeyFrames>
+        									<ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[1].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+        										<EasingColorKeyFrame KeyTime="0" Value="#FF000D35"/>
+        									</ColorAnimationUsingKeyFrames>
+        									<ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Stroke).(GradientBrush.GradientStops)[0].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+        										<EasingColorKeyFrame KeyTime="0" Value="#68000000"/>
+        									</ColorAnimationUsingKeyFrames>
+        									<ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Stroke).(GradientBrush.GradientStops)[1].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+        										<EasingColorKeyFrame KeyTime="0" Value="#19000000"/>
+        									</ColorAnimationUsingKeyFrames>
+        								</Storyboard>
+        							</VisualState>
+        							<VisualState x:Name="Disabled"/>
+        						</VisualStateGroup>
+        					</VisualStateManager.VisualStateGroups>
+        					<Rectangle x:Name="rectangle" RadiusY="0" RadiusX="0">
+        						<Rectangle.Fill>
+        							<LinearGradientBrush EndPoint="0.5,1" StartPoint="0.5,0">
+        								<GradientStop Color="#FF0C0C0C" Offset="0.667"/>
+        								<GradientStop Color="#FF252525"/>
+        								<GradientStop Color="#FF121212" Offset="1"/>
+        							</LinearGradientBrush>
+        						</Rectangle.Fill>
+        						<Rectangle.Stroke>
+        							<LinearGradientBrush EndPoint="0.5,1" StartPoint="0.5,0">
+        								<GradientStop Color="#59000000" Offset="0"/>
+        								<GradientStop Color="#19FFFFFF" Offset="1"/>
+        							</LinearGradientBrush>
+        						</Rectangle.Stroke>
+        					</Rectangle>
+        					<ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+        				</Grid>
+        				<ControlTemplate.Triggers>
+        					<Trigger Property="IsFocused" Value="True"/>
+        					<Trigger Property="IsDefaulted" Value="True"/>
+        					<Trigger Property="IsMouseOver" Value="True"/>
+        					<Trigger Property="IsPressed" Value="True"/>
+        					<Trigger Property="IsEnabled" Value="False"/>
+        				</ControlTemplate.Triggers>
+        			</ControlTemplate>
+        		</Setter.Value>
+        	</Setter>
+        </Style>
+    </Window.Resources>
+    <Grid Background="Black">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="242*"/>
+        </Grid.RowDefinitions>
+    	<Border BorderThickness="2" BorderBrush="#FFC9C9C9" Background="#FF232323" Grid.RowSpan="2">
+    		<Grid x:Name="LayoutGrid">
+    			<Grid.RowDefinitions>
+    				<RowDefinition Height="26"/>
+    				<RowDefinition/>
+    			</Grid.RowDefinitions>
+    			<Rectangle StrokeThickness="0" PreviewMouseLeftButtonDown="BtnWin_drag_PreviewMouseLeftButtonDown" Margin="0,-1,0,0" Fill="#FF5D5D5D" />
+    			<Grid x:Name="WinTOP" Margin="0,3.5">
+    				<Grid.ColumnDefinitions>
+    					<ColumnDefinition/>
+    					<ColumnDefinition Width="109"/>
+    				</Grid.ColumnDefinitions>
+    			</Grid>
+    			<StackPanel HorizontalAlignment="Left" Orientation="Horizontal" Margin="7,0,0,0">
+    				<TextBlock x:Name="TextBlkMsg_Copy1" HorizontalAlignment="Center" TextWrapping="Wrap" FontFamily="Tahoma" FontSize="13.333" IsEnabled="False" Text="웹사이트 URL 등록창" VerticalAlignment="Center" Padding="0,0,0,3" Foreground="White" Margin="3,0,0,0" FontWeight="Bold"/>
+    			</StackPanel>
+    			<Grid Grid.Row="1" Margin="0,6">
+    				<Grid.RowDefinitions>
+    					<RowDefinition Height="14*"/>
+    					<RowDefinition Height="15*"/>
+    				</Grid.RowDefinitions>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock VerticalAlignment="Center" Text="웹사이트 주소 :" TextWrapping="Wrap" HorizontalAlignment="Left" FontFamily="Tahoma" Foreground="#FFFFFF6D" Margin="8,0,0,0"/>
+                        <TextBox x:Name="TextBoxNewPlayerName_Copy" TextWrapping="NoWrap" FontFamily="Tahoma" Background="White" Foreground="Black" Width="414" VerticalAlignment="Center" Height="22" Margin="5,0,0,0" FontSize="16" Text="http://" BorderThickness="0"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Grid.Row="2" HorizontalAlignment="Right" Margin="0,0,8,0">
+                    	<Button x:Name="BTN0DO_Copy4" Style="{DynamicResource Btn_defaultSW}" Height="24" Width="86" VerticalAlignment="Center" Margin="13,2,0,4">
+                    		<TextBlock x:Name="TextAngleGrade5" TextWrapping="Wrap" Text="저  장" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Tahoma" FontSize="13.333"/>
+                    	</Button>
+                    	<Button x:Name="BTN0DO_Copy" Style="{DynamicResource Btn_defaultSW}" Height="24" Width="86" VerticalAlignment="Center" Margin="0,2,0,4">
+                    		<TextBlock x:Name="TextAngleGrade1" TextWrapping="Wrap" Text="취  소" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Tahoma" FontSize="13.333"/>
+                    	</Button>
+                    </StackPanel>
+                  
+    			</Grid>
+    		</Grid>
+    	</Border>
+
+    </Grid>
+</Window>

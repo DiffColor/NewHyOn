@@ -1,0 +1,1103 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>RethinkDb.Driver.ReGrid</name>
+    </assembly>
+    <members>
+        <member name="T:RethinkDb.Driver.ReGrid.BaseStream">
+            <summary>
+            Base stream
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.BaseStream.#ctor(RethinkDb.Driver.ReGrid.FileInfo)">
+            <summary>
+            Constructor
+            </summary>
+            <param name="fileInfo">File info the stream represents</param>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.BaseStream.FileInfo">
+            <summary>
+            File info the stream represents
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.BaseStream.CloseAsync(System.Threading.CancellationToken)">
+            <summary>
+            Async closure of the stream.
+            </summary>
+        </member>
+        <member name="T:RethinkDb.Driver.ReGrid.Bucket">
+            <summary>
+            A ReGrid bucket
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.Bucket.Mounted">
+            <summary>
+            Flag indicating if the bucket is mounted.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.#ctor(RethinkDb.Driver.Net.IConnection,System.String,System.String,RethinkDb.Driver.ReGrid.BucketConfig)">
+            <summary>
+            Creates a new bucket.
+            </summary>
+            <param name="conn">A <see cref="T:RethinkDb.Driver.Net.Connection"/> or <see cref="T:RethinkDb.Driver.Net.Clustering.ConnectionPool"/></param>
+            <param name="databaseName">The database name to use. The database must exist.</param>
+            <param name="bucketName">The bucket name to use.</param>
+            <param name="config">Low level bucket configuration options.</param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.Mount">
+            <summary>
+            Mounts the bucket. Mount is necessary before using a bucket to ensure the existence of tables and indexes.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.MountAsync(System.Threading.CancellationToken)">
+            <summary>
+            Mounts the bucket. Mount is necessary before using a bucket to ensure the existence of tables and indexes.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.CreateIndex(System.String,System.String,RethinkDb.Driver.Ast.ReqlFunction1,System.Threading.CancellationToken)">
+            <summary>
+            Helper function to create an index
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.EnsureTable(System.String,System.Threading.CancellationToken)">
+            <summary>
+            Helper function to ensure table exists.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.DownloadAsBytesByName(System.String,System.Int32,RethinkDb.Driver.ReGrid.DownloadOptions)">
+            <summary>
+            Download file as byte[].
+            </summary>
+            <param name="filename">The file name</param>
+            <param name="revision">-1: The most recent revision. -2: The second most recent revision. -3: The third most recent revision. 0: The original stored file. 1: The first revision. 2: The second revision. etc...</param>
+            <param name="options"><see cref="T:RethinkDb.Driver.ReGrid.DownloadOptions"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.DownloadAsBytesByNameAsync(System.String,System.Int32,RethinkDb.Driver.ReGrid.DownloadOptions,System.Threading.CancellationToken)">
+            <summary>
+            Download file as byte[].
+            </summary>
+            <param name="filename">The file name</param>
+            <param name="revision">-1: The most recent revision. -2: The second most recent revision. -3: The third most recent revision. 0: The original stored file. 1: The first revision. 2: The second revision. etc...</param>
+            <param name="options"><see cref="T:RethinkDb.Driver.ReGrid.DownloadOptions"/></param>
+            <param name="cancelToken"><see cref="T:System.Threading.CancellationToken"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.DownloadAsBytesByNameAsync(System.String,System.Threading.CancellationToken,System.Int32)">
+            <summary>
+            Download file as byte[].
+            </summary>
+            <param name="filename">The file name</param>
+            <param name="revision">-1: The most recent revision. -2: The second most recent revision. -3: The third most recent revision. 0: The original stored file. 1: The first revision. 2: The second revision. etc...</param>
+            <param name="cancelToken"><see cref="T:System.Threading.CancellationToken"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.DownloadAsBytes(System.Guid,RethinkDb.Driver.ReGrid.DownloadOptions)">
+            <summary>
+            Download file as byte[] by fileId.
+            </summary>
+            <param name="fileId">The fileId</param>
+            <param name="options"><see cref="T:RethinkDb.Driver.ReGrid.DownloadOptions"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.DownloadAsBytesAsync(System.Guid,RethinkDb.Driver.ReGrid.DownloadOptions,System.Threading.CancellationToken)">
+            <summary>
+            Download file as byte[] by fileId.
+            </summary>
+            <param name="fileId">The fileId</param>
+            <param name="options"><see cref="T:RethinkDb.Driver.ReGrid.DownloadOptions"/></param>
+            <param name="cancelToken"><see cref="T:System.Threading.CancellationToken"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.DownloadAsBytesAsync(System.Guid,System.Threading.CancellationToken)">
+            <summary>
+            Download file as byte[] by fileId.
+            </summary>
+            <param name="fileId">The fileId</param>
+            <param name="cancelToken"><see cref="T:System.Threading.CancellationToken"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.DownloadToStream(System.Guid,System.IO.Stream,RethinkDb.Driver.ReGrid.DownloadOptions)">
+            <summary>
+            Download a file to a stream.
+            </summary>
+            <param name="fileId">The fileId</param>
+            <param name="destination"></param>
+            <param name="options"><see cref="T:RethinkDb.Driver.ReGrid.DownloadOptions"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.DownloadToStreamAsync(System.Guid,System.IO.Stream,RethinkDb.Driver.ReGrid.DownloadOptions,System.Threading.CancellationToken)">
+            <summary>
+            Download a file to a stream.
+            </summary>
+            <param name="fileId">The fileId</param>
+            <param name="destination"></param>
+            <param name="options"><see cref="T:RethinkDb.Driver.ReGrid.DownloadOptions"/></param>
+            <param name="cancelToken"><see cref="T:System.Threading.CancellationToken"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.DownloadToStreamAsync(System.Guid,System.IO.Stream,System.Threading.CancellationToken)">
+            <summary>
+            Download a file to a stream.
+            </summary>
+            <param name="fileId">The fileId</param>
+            <param name="destination"></param>
+            <param name="cancelToken"><see cref="T:System.Threading.CancellationToken"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.DownloadToStreamByName(System.String,System.IO.Stream,System.Int32,RethinkDb.Driver.ReGrid.DownloadOptions)">
+            <summary>
+            Download file to a stream.
+            </summary>
+            <param name="filename">The file name</param>
+            <param name="revision">-1: The most recent revision. -2: The second most recent revision. -3: The third most recent revision. 0: The original stored file. 1: The first revision. 2: The second revision. etc...</param>
+            <param name="destination">The destination stream to write to.</param>
+            <param name="options"><see cref="T:RethinkDb.Driver.ReGrid.DownloadOptions"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.DownloadToStreamByNameAsync(System.String,System.IO.Stream,System.Int32,RethinkDb.Driver.ReGrid.DownloadOptions,System.Threading.CancellationToken)">
+            <summary>
+            Download file to a stream.
+            </summary>
+            <param name="filename">The file name</param>
+            <param name="revision">-1: The most recent revision. -2: The second most recent revision. -3: The third most recent revision. 0: The original stored file. 1: The first revision. 2: The second revision. etc...</param>
+            <param name="destination">The destination stream to write to.</param>
+            <param name="options"><see cref="T:RethinkDb.Driver.ReGrid.DownloadOptions"/></param>
+            <param name="cancelToken"><see cref="T:System.Threading.CancellationToken"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.DownloadToStreamByNameAsync(System.String,System.IO.Stream,System.Threading.CancellationToken,System.Int32)">
+            <summary>
+            Download file to a stream.
+            </summary>
+            <param name="filename">The file name</param>
+            <param name="revision">-1: The most recent revision. -2: The second most recent revision. -3: The third most recent revision. 0: The original stored file. 1: The first revision. 2: The second revision. etc...</param>
+            <param name="destination">The destination stream to write to.</param>
+            <param name="cancelToken"><see cref="T:System.Threading.CancellationToken"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.OpenDownloadStream(System.String,System.Int32,RethinkDb.Driver.ReGrid.DownloadOptions)">
+            <summary>
+            Open a download stream to read from.
+            </summary>
+            <param name="filename">The file name</param>
+            <param name="revision">-1: The most recent revision. -2: The second most recent revision. -3: The third most recent revision. 0: The original stored file. 1: The first revision. 2: The second revision. etc...</param>
+            <param name="options"><see cref="T:RethinkDb.Driver.ReGrid.DownloadOptions"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.OpenDownloadStreamAsync(System.String,RethinkDb.Driver.ReGrid.DownloadOptions,System.Int32,System.Threading.CancellationToken)">
+            <summary>
+            Open a download stream to read from.
+            </summary>
+            <param name="filename">The file name</param>
+            <param name="revision">-1: The most recent revision. -2: The second most recent revision. -3: The third most recent revision. 0: The original stored file. 1: The first revision. 2: The second revision. etc...</param>
+            <param name="options"><see cref="T:RethinkDb.Driver.ReGrid.DownloadOptions"/></param>
+            <param name="cancelToken"><see cref="T:System.Threading.CancellationToken"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.OpenDownloadStreamAsync(System.String,System.Threading.CancellationToken,System.Int32)">
+            <summary>
+            Open a download stream to read from.
+            </summary>
+            <param name="filename">The file name</param>
+            <param name="revision">-1: The most recent revision. -2: The second most recent revision. -3: The third most recent revision. 0: The original stored file. 1: The first revision. 2: The second revision. etc...</param>
+            <param name="cancelToken"><see cref="T:System.Threading.CancellationToken"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.Purge">
+            <summary>
+            Erases all files from the system inside the bucket.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.PurgeAsync(System.Threading.CancellationToken)">
+            <summary>
+            Erases all files from the system inside the bucket.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.UploadAsync(System.String,System.Byte[],RethinkDb.Driver.ReGrid.UploadOptions,System.Threading.CancellationToken)">
+            <summary>
+            Upload a file from a byte array.
+            </summary>
+            <param name="filename">The file name</param>
+            <param name="source">Source bytes</param>
+            <param name="options"><see cref="T:RethinkDb.Driver.ReGrid.UploadOptions"/></param>
+            <param name="cancelToken"><see cref="T:System.Threading.CancellationToken"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.UploadAsync(System.String,System.Byte[],System.Threading.CancellationToken)">
+            <summary>
+            Upload a file from a byte array.
+            </summary>
+            <param name="filename">The file name</param>
+            <param name="source">Source bytes</param>
+            <param name="cancelToken"><see cref="T:System.Threading.CancellationToken"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.UploadAsync(System.String,System.IO.Stream,RethinkDb.Driver.ReGrid.UploadOptions,System.Threading.CancellationToken)">
+            <summary>
+            Upload a file from a stream source.
+            </summary>
+            <param name="filename">The file name</param>
+            <param name="source">Source stream</param>
+            <param name="options"><see cref="T:RethinkDb.Driver.ReGrid.UploadOptions"/></param>
+            <param name="cancelToken"><see cref="T:System.Threading.CancellationToken"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.UploadAsync(System.String,System.IO.Stream,System.Threading.CancellationToken)">
+            <summary>
+            Upload a file from a stream source.
+            </summary>
+            <param name="filename">The file name</param>
+            <param name="source">Source stream</param>
+            <param name="cancelToken"><see cref="T:System.Threading.CancellationToken"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.Upload(System.String,System.IO.Stream,RethinkDb.Driver.ReGrid.UploadOptions)">
+            <summary>
+            Upload a file from a stream
+            </summary>
+            <param name="filename">The file name</param>
+            <param name="stream">source stream</param>
+            <param name="options"><see cref="T:RethinkDb.Driver.ReGrid.UploadOptions"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.Upload(System.String,System.Byte[],RethinkDb.Driver.ReGrid.UploadOptions)">
+            <summary>
+            Upload a file from a byte[]
+            </summary>
+            <param name="filename">The file name</param>
+            <param name="bytes">source bytes</param>
+            <param name="options"><see cref="T:RethinkDb.Driver.ReGrid.UploadOptions"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.OpenUploadStream(System.String,RethinkDb.Driver.ReGrid.UploadOptions)">
+            <summary>
+            Open an upload stream to write to.
+            </summary>
+            <param name="fileName">The file name</param>
+            <param name="options"><see cref="T:RethinkDb.Driver.ReGrid.UploadOptions"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.OpenUploadStreamAsync(System.String,RethinkDb.Driver.ReGrid.UploadOptions,System.Threading.CancellationToken)">
+            <summary>
+            Open an upload stream to write to.
+            </summary>
+            <param name="fileName">The file name</param>
+            <param name="options"><see cref="T:RethinkDb.Driver.ReGrid.UploadOptions"/></param>
+            <param name="cancelToken"><see cref="T:System.Threading.CancellationToken"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Bucket.OpenUploadStreamAsync(System.String,System.Threading.CancellationToken)">
+            <summary>
+            Open an upload stream to write to.
+            </summary>
+            <param name="fileName">The file name</param>
+            <param name="cancelToken"><see cref="T:System.Threading.CancellationToken"/></param>
+        </member>
+        <member name="T:RethinkDb.Driver.ReGrid.BucketConfig">
+            <summary>
+            Low level bucket configuration
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.BucketConfig.FileTableName">
+            <summary>
+            The file table name
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.BucketConfig.FileIndex">
+            <summary>
+            The file index
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.BucketConfig.FileIndexPrefix">
+            <summary>
+            The prefix index for "virtual" folder search
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.BucketConfig.ChunkTable">
+            <summary>
+            The chunk table
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.BucketConfig.ChunkIndex">
+            <summary>
+            The chunk index
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.BucketConfig.TableCreateOptions">
+            <summary>
+            Table create options for <see cref="P:RethinkDb.Driver.ReGrid.BucketConfig.FileTableName"/> and <see cref="P:RethinkDb.Driver.ReGrid.BucketConfig.ChunkTable"/> names.
+            </summary>
+        </member>
+        <member name="T:RethinkDb.Driver.ReGrid.Chunk">
+            <summary>
+            A chunk document
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.Chunk.Id">
+            <summary>
+            The chunk ID
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.Chunk.FileId">
+            <summary>
+            The file ID this chunk belongs to.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.Chunk.Num">
+            <summary>
+            The sequence in which the chunk appears in the list of chunks.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.Chunk.Data">
+            <summary>
+            The raw data belonging to a chunk
+            </summary>
+        </member>
+        <member name="T:RethinkDb.Driver.ReGrid.DeleteMode">
+            <summary>
+            Delete modes for a file.
+            </summary>
+        </member>
+        <member name="F:RethinkDb.Driver.ReGrid.DeleteMode.Soft">
+            <summary>
+            Soft-delete operation
+            </summary>
+        </member>
+        <member name="F:RethinkDb.Driver.ReGrid.DeleteMode.Hard">
+            <summary>
+            Hard-delete operation
+            </summary>
+        </member>
+        <member name="T:RethinkDb.Driver.ReGrid.DownloadOptions">
+            <summary>
+            Download options
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.DownloadOptions.CheckSHA256">
+            <summary>
+            Calculates the SHA256 as the file is downloaded.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.DownloadOptions.Seekable">
+            <summary>
+            Creates a seekable download stream
+            </summary>
+        </member>
+        <member name="T:RethinkDb.Driver.ReGrid.DownloadStream">
+            <summary>
+            A ReGrid download stream.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.DownloadStream.Close">
+            <summary>
+            Closes the stream.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.DownloadStream.CloseAsync(System.Threading.CancellationToken)">
+            <summary>
+            Closes the stream asynchronously.
+            </summary>
+            <param name="cancelToken"><see cref="T:System.Threading.CancellationToken"/></param>
+            <returns></returns>
+        </member>
+        <member name="F:RethinkDb.Driver.ReGrid.DownloadStream.bucket">
+            <summary>
+            The underlying bucket container for <see cref="T:RethinkDb.Driver.ReGrid.FileInfo"/>
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.DownloadStream.#ctor(RethinkDb.Driver.ReGrid.Bucket,RethinkDb.Driver.ReGrid.FileInfo)">
+            <summary>
+            Constructs a new download stream
+            </summary>
+            <param name="bucket">The bucket the <paramref name="fileInfo"/> belongs to.</param>
+            <param name="fileInfo"><see cref="T:RethinkDb.Driver.ReGrid.FileInfo"/></param>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.DownloadStream.CanRead">
+            <summary>
+            True, download streams are readable.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.DownloadStream.CanWrite">
+            <summary>
+            False, download streams cannot be written to.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.DownloadStream.Length">
+            <summary>
+            The total length of the stored file.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.DownloadStream.Flush">
+            <summary>
+            Not supported
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.DownloadStream.FlushAsync(System.Threading.CancellationToken)">
+            <summary>
+            Not supported
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.DownloadStream.SetLength(System.Int64)">
+            <summary>
+            Not supported
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.DownloadStream.Write(System.Byte[],System.Int32,System.Int32)">
+            <summary>
+            Not supported
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.DownloadStream.WriteAsync(System.Byte[],System.Int32,System.Int32,System.Threading.CancellationToken)">
+            <summary>
+            Not supported
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.DownloadStream.Dispose(System.Boolean)">
+            <summary>
+            Disposes the stream
+            </summary>
+            <param name="disposing"></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.DownloadStream.ThrowIfDisposed">
+            <summary>
+            Trows if disposed.
+            </summary>
+        </member>
+        <member name="T:RethinkDb.Driver.ReGrid.Ensure">
+            <summary>
+            Represents methods that can be used to ensure that parameter values meet expected conditions.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsBetween``1(``0,``0,``0,System.String)">
+            <summary>
+            Ensures that the value of a parameter is between a minimum and a maximum value.
+            </summary>
+            <typeparam name="T">Type of the value.</typeparam>
+            <param name="value">The value of the parameter.</param>
+            <param name="min">The minimum value.</param>
+            <param name="max">The maximum value.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsEqualTo``1(``0,``0,System.String)">
+            <summary>
+            Ensures that the value of a parameter is equal to a comparand.
+            </summary>
+            <typeparam name="T">Type of the value.</typeparam>
+            <param name="value">The value of the parameter.</param>
+            <param name="comparand">The comparand.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsGreaterThanOrEqualTo``1(``0,``0,System.String)">
+            <summary>
+            Ensures that the value of a parameter is greater than or equal to a comparand.
+            </summary>
+            <typeparam name="T">Type of the value.</typeparam>
+            <param name="value">The value of the parameter.</param>
+            <param name="comparand">The comparand.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsGreaterThanOrEqualToZero(System.Int32,System.String)">
+            <summary>
+            Ensures that the value of a parameter is greater than or equal to zero.
+            </summary>
+            <param name="value">The value of the parameter.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsGreaterThanOrEqualToZero(System.Int64,System.String)">
+            <summary>
+            Ensures that the value of a parameter is greater than or equal to zero.
+            </summary>
+            <param name="value">The value of the parameter.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsGreaterThanOrEqualToZero(System.TimeSpan,System.String)">
+            <summary>
+            Ensures that the value of a parameter is greater than or equal to zero.
+            </summary>
+            <param name="value">The value of the parameter.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsGreaterThanZero(System.Int32,System.String)">
+            <summary>
+            Ensures that the value of a parameter is greater than zero.
+            </summary>
+            <param name="value">The value of the parameter.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsGreaterThanZero(System.Int64,System.String)">
+            <summary>
+            Ensures that the value of a parameter is greater than zero.
+            </summary>
+            <param name="value">The value of the parameter.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsGreaterThanZero(System.TimeSpan,System.String)">
+            <summary>
+            Ensures that the value of a parameter is greater than zero.
+            </summary>
+            <param name="value">The value of the parameter.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsInfiniteOrGreaterThanOrEqualToZero(System.TimeSpan,System.String)">
+            <summary>
+            Ensures that the value of a parameter is infinite or greater than or equal to zero.
+            </summary>
+            <param name="value">The value of the parameter.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsNotNull``1(``0,System.String)">
+            <summary>
+            Ensures that the value of a parameter is not null.
+            </summary>
+            <typeparam name="T">Type of the value.</typeparam>
+            <param name="value">The value of the parameter.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsNotNullOrEmpty(System.String,System.String)">
+            <summary>
+            Ensures that the value of a parameter is not null or empty.
+            </summary>
+            <param name="value">The value of the parameter.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsNull``1(``0,System.String)">
+            <summary>
+            Ensures that the value of a parameter is null.
+            </summary>
+            <typeparam name="T">Type of the value.</typeparam>
+            <param name="value">The value of the parameter.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsNullOrGreaterThanOrEqualToZero(System.Nullable{System.Int32},System.String)">
+            <summary>
+            Ensures that the value of a parameter is null or greater than or equal to zero.
+            </summary>
+            <param name="value">The value of the parameter.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsNullOrGreaterThanOrEqualToZero(System.Nullable{System.Int64},System.String)">
+            <summary>
+            Ensures that the value of a parameter is null or greater than or equal to zero.
+            </summary>
+            <param name="value">The value of the parameter.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsNullOrGreaterThanZero(System.Nullable{System.Int32},System.String)">
+            <summary>
+            Ensures that the value of a parameter is null or greater than zero.
+            </summary>
+            <param name="value">The value of the parameter.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsNullOrGreaterThanZero(System.Nullable{System.Int64},System.String)">
+            <summary>
+            Ensures that the value of a parameter is null or greater than zero.
+            </summary>
+            <param name="value">The value of the parameter.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsNullOrGreaterThanZero(System.Nullable{System.TimeSpan},System.String)">
+            <summary>
+            Ensures that the value of a parameter is null or greater than zero.
+            </summary>
+            <param name="value">The value of the parameter.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsNullOrInfiniteOrGreaterThanOrEqualToZero(System.Nullable{System.TimeSpan},System.String)">
+            <summary>
+            Ensures that the value of a parameter is null, or infinite, or greater than or equal to zero.
+            </summary>
+            <param name="value">The value of the parameter.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsNullOrNotEmpty(System.String,System.String)">
+            <summary>
+            Ensures that the value of a parameter is null or not empty.
+            </summary>
+            <param name="value">The value of the parameter.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsNullOrValidTimeout(System.Nullable{System.TimeSpan},System.String)">
+            <summary>
+            Ensures that the value of a parameter is null or a valid timeout.
+            </summary>
+            <param name="value">The value of the parameter.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.IsValidTimeout(System.TimeSpan,System.String)">
+            <summary>
+            Ensures that the value of a parameter is a valid timeout.
+            </summary>
+            <param name="value">The value of the parameter.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.That(System.Boolean,System.String)">
+            <summary>
+            Ensures that an assertion is true.
+            </summary>
+            <param name="assertion">The assertion.</param>
+            <param name="message">The message to use with the exception that is thrown if the assertion is false.</param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.Ensure.That``1(``0,System.Func{``0,System.Boolean},System.String,System.String)">
+            <summary>
+            Ensures that the value of a parameter meets an assertion.
+            </summary>
+            <typeparam name="T">Type of the value.</typeparam>
+            <param name="value">The value of the parameter.</param>
+            <param name="assertion">The assertion.</param>
+            <param name="paramName">The name of the parameter.</param>
+            <param name="message">The message to use with the exception that is thrown if the assertion is false.</param>
+            <returns>The value of the parameter.</returns>
+        </member>
+        <member name="T:RethinkDb.Driver.ReGrid.FileInfo">
+            <summary>
+            A logical view of a file in ReGrid.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.FileInfo.#ctor">
+            <summary>
+            Construct a new FileInfo. Initial status is incomplete.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.FileInfo.Id">
+            <summary>
+            Unique File ID in the bucket.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.FileInfo.ChunkSizeBytes">
+            <summary>
+            The size of the chunk files.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.FileInfo.FileName">
+            <summary>
+            The full rooted file path name.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.FileInfo.Length">
+            <summary>
+            The full length of the file.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.FileInfo.FinishedAtDate">
+            <summary>
+            The time the upload was finished.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.FileInfo.StartedAtDate">
+            <summary>
+            The time the upload started.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.FileInfo.DeletedAtDate">
+            <summary>
+            The time the file was soft-deleted
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.FileInfo.SHA256">
+            <summary>
+            The signature of the file.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.FileInfo.Status">
+            <summary>
+            Status of the file.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.FileInfo.Metadata">
+            <summary>
+            Raw metadata belonging to the file.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.FileInfo.MetadataAs``1">
+            <summary>
+            Get Metadata as T
+            </summary>
+        </member>
+        <member name="T:RethinkDb.Driver.ReGrid.Status">
+            <summary>
+            Status flag for FileInfo
+            </summary>
+        </member>
+        <member name="F:RethinkDb.Driver.ReGrid.Status.Incomplete">
+            <summary>
+            Incomplete status indicates that the file has not finished uploading.
+            </summary>
+        </member>
+        <member name="F:RethinkDb.Driver.ReGrid.Status.Completed">
+            <summary>
+            Completed status indicates that the file was successfully uploaded.
+            </summary>
+        </member>
+        <member name="F:RethinkDb.Driver.ReGrid.Status.Deleted">
+            <summary>
+            Deleted status indicates that the file was soft-deleted.
+            </summary>
+        </member>
+        <member name="T:RethinkDb.Driver.ReGrid.FileSystemMethods">
+            <summary>
+            File system methods for ReGrid.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.FileSystemMethods.GetAllRevisions(RethinkDb.Driver.ReGrid.Bucket,System.String)">
+            <summary>
+            Gets all 'completed' file revisions for a given file. Deleted and incomplete files are excluded.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.FileSystemMethods.GetAllRevisionsAsync(RethinkDb.Driver.ReGrid.Bucket,System.String,System.Threading.CancellationToken)">
+            <summary>
+            Gets all 'completed' file revisions for a given file. Deleted and incomplete files are excluded.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.FileSystemMethods.GetFileInfo(RethinkDb.Driver.ReGrid.Bucket,System.Guid)">
+            <summary>
+            Gets the FileInfo for a given fileId
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.FileSystemMethods.GetFileInfoAsync(RethinkDb.Driver.ReGrid.Bucket,System.Guid,System.Threading.CancellationToken)">
+            <summary>
+            Gets the FileInfo for a given fileId
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.FileSystemMethods.GetFileInfoByName(RethinkDb.Driver.ReGrid.Bucket,System.String,System.Int32)">
+            <summary>
+            Gets a FileInfo for a given filename and revision. Considers only 'completed' uploads.
+            </summary>
+            <param name="revision">-1: The most recent revision. -2: The second most recent revision. -3: The third most recent revision. 0: The original stored file. 1: The first revision. 2: The second revision. etc...</param>
+            <param name="bucket"><see cref="T:RethinkDb.Driver.ReGrid.Bucket"/></param>
+            <param name="filename">The filename</param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.FileSystemMethods.GetFileInfoByNameAsync(RethinkDb.Driver.ReGrid.Bucket,System.String,System.Int32,System.Threading.CancellationToken)">
+            <summary>
+            Gets a FileInfo for a given filename and revision. Considers only 'completed' uploads.
+            </summary>
+            <param name="revision">-1: The most recent revision. -2: The second most recent revision. -3: The third most recent revision. 0: The original stored file. 1: The first revision. 2: The second revision. etc...</param>
+            <param name="bucket"><see cref="T:RethinkDb.Driver.ReGrid.Bucket"/></param>
+            <param name="cancelToken"><see cref="T:System.Threading.CancellationToken"/></param>
+            <param name="filename">The filename</param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.FileSystemMethods.ListFilesByPrefix(RethinkDb.Driver.ReGrid.Bucket,System.String)">
+            <summary>
+            List files with a given path.
+            </summary>
+            <param name="path">The path starting with /</param>
+            <param name="bucket"><see cref="T:RethinkDb.Driver.ReGrid.Bucket"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.FileSystemMethods.ListFilesByPrefixAsync(RethinkDb.Driver.ReGrid.Bucket,System.String,System.Threading.CancellationToken)">
+            <summary>
+            List files with a given path.
+            </summary>
+            <param name="path">The path starting with /</param>
+            <param name="bucket"><see cref="T:RethinkDb.Driver.ReGrid.Bucket"/></param>
+            <param name="cancelToken"><see cref="T:System.Threading.CancellationToken"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.FileSystemMethods.DeleteRevision(RethinkDb.Driver.ReGrid.Bucket,System.Guid,RethinkDb.Driver.ReGrid.DeleteMode,System.Object)">
+            <summary>
+            Deletes a file in the bucket.
+            </summary>
+            <param name="mode">Soft deletes are atomic. Hard are atomic on the file but not a file's chunks.</param>
+            <param name="deleteOpts">Delete durability options. See ReQL API.</param>
+            <param name="bucket"><see cref="T:RethinkDb.Driver.ReGrid.Bucket"/></param>
+            <param name="fileId"><see cref="P:RethinkDb.Driver.ReGrid.FileInfo.Id"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.FileSystemMethods.DeleteRevisionAsync(RethinkDb.Driver.ReGrid.Bucket,System.Guid,RethinkDb.Driver.ReGrid.DeleteMode,System.Object,System.Threading.CancellationToken)">
+            <summary>
+            Deletes a file in the bucket.
+            </summary>
+            <param name="mode">Soft deletes are atomic. Hard are atomic on the file but not a file's chunks.</param>
+            <param name="deleteOpts">Delete durability options. See ReQL API.</param>
+            <param name="bucket"><see cref="T:RethinkDb.Driver.ReGrid.Bucket"/></param>
+            <param name="cancelToken"><see cref="T:System.Threading.CancellationToken"/></param>
+            <param name="fileId"><see cref="P:RethinkDb.Driver.ReGrid.FileInfo.Id"/></param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.FileSystemMethods.DeleteAllRevisions(RethinkDb.Driver.ReGrid.Bucket,System.String,RethinkDb.Driver.ReGrid.DeleteMode,System.Object)">
+            <summary>
+            Deletes a file and it's associated revisions. Iteratively deletes revisions for a file one by one.
+            </summary>
+            <param name="mode">Soft deletes are atomic. Hard are atomic on the file but not a file's chunks.</param>
+            <param name="deleteOpts">Delete durability options. See ReQL API.</param>
+            <param name="bucket"><see cref="T:RethinkDb.Driver.ReGrid.Bucket"/></param>
+            <param name="filename">The filename</param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.FileSystemMethods.DeleteAllRevisionsAsync(RethinkDb.Driver.ReGrid.Bucket,System.String,RethinkDb.Driver.ReGrid.DeleteMode,System.Object)">
+            <summary>
+            Deletes a file and it's associated revisions. Iteratively deletes revisions for a file one by one.
+            </summary>
+            <param name="mode">Soft deletes are atomic. Hard are atomic on the file but not a file's chunks.</param>
+            <param name="deleteOpts">Delete durability options. See ReQL API.</param>
+            <param name="bucket"><see cref="T:RethinkDb.Driver.ReGrid.Bucket"/></param>
+            <param name="filename">The filename</param>
+        </member>
+        <member name="T:RethinkDb.Driver.ReGrid.FindOptions">
+            <summary>
+            Represents options for a GridFS Find operation.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.FindOptions.BatchSize">
+            <summary>
+            Gets or sets the batch size.
+            </summary>
+            <value>
+            The batch size.
+            </value>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.FindOptions.Limit">
+            <summary>
+            Gets or sets the maximum number of documents to return.
+            </summary>
+            <value>
+            The maximum number of documents to return.
+            </value>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.FindOptions.MaxTime">
+            <summary>
+            Gets or sets the maximum time the server should spend on the Find.
+            </summary>
+            <value>
+            The maximum time the server should spend on the Find.
+            </value>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.FindOptions.NoCursorTimeout">
+            <summary>
+            Gets or sets whether the cursor should not timeout.
+            </summary>
+            <value>
+            Whether the cursor should not timeout.
+            </value>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.FindOptions.Skip">
+            <summary>
+            Gets or sets the number of documents to skip.
+            </summary>
+            <value>
+            The number of documents to skip.
+            </value>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.FindOptions.Sort">
+            <summary>
+            Gets or sets the sort order.
+            </summary>
+            <value>
+            The sort order.
+            </value>
+        </member>
+        <member name="T:RethinkDb.Driver.ReGrid.GridUtility">
+            <summary>
+            Low level functions for chunks and files.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.GridUtility.CleanUp(RethinkDb.Driver.ReGrid.Bucket)">
+            <summary>
+            Reclaims space from incomplete files.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.GridUtility.EnumerateFileEntries(RethinkDb.Driver.ReGrid.Bucket,System.String,RethinkDb.Driver.ReGrid.Status)">
+            <summary>
+            Enumerate the file system entries of a given particular status.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.GridUtility.EnumerateFileEntriesAsync(RethinkDb.Driver.ReGrid.Bucket,System.String,RethinkDb.Driver.ReGrid.Status,System.Threading.CancellationToken)">
+            <summary>
+            Enumerate the file system entries of a given particular status.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.GridUtility.EnumerateFileEntries(RethinkDb.Driver.ReGrid.Bucket,System.String)">
+            <summary>
+            Enumerate all possible file system entries for a given filename.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.GridUtility.EnumerateFileEntriesAsync(RethinkDb.Driver.ReGrid.Bucket,System.String,System.Threading.CancellationToken)">
+            <summary>
+            Enumerate all possible file system entries for a given filename
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.GridUtility.EnumerateChunks(RethinkDb.Driver.ReGrid.Bucket,System.Guid)">
+            <summary>
+            Gets the enumeration of chunks for file id
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.GridUtility.EnumerateChunksAsync(RethinkDb.Driver.ReGrid.Bucket,System.Guid,System.Threading.CancellationToken)">
+            <summary>
+            Gets the enumeration of chunks for file id
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.GridUtility.GetChunk(RethinkDb.Driver.ReGrid.Bucket,System.Guid,System.Int64)">
+            <summary>
+            Get a chunk in a bucket for file id.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.GridUtility.GetChunkAsync(RethinkDb.Driver.ReGrid.Bucket,System.Guid,System.Int64,System.Threading.CancellationToken)">
+            <summary>
+            Get a chunk in a bucket for file id.
+            </summary>
+        </member>
+        <member name="T:RethinkDb.Driver.ReGrid.UploadOptions">
+            <summary>
+            Upload Options
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.UploadOptions.#ctor">
+            <summary>
+            Constructor
+            </summary>
+        </member>
+        <member name="F:RethinkDb.Driver.ReGrid.UploadOptions.DefaultCunkSize">
+            <summary>
+            The default chunk size in bytes
+            </summary>
+        </member>
+        <member name="F:RethinkDb.Driver.ReGrid.UploadOptions.DefaultBatchSize">
+            <summary>
+            The default batch size in bytes
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.UploadOptions.ChunkSizeBytes">
+            <summary>
+            The chunk storage size for the file chunks.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.UploadOptions.BatchSize">
+            <summary>
+            The number of chunks to buffer before writing a batch of chunks to the server.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.UploadOptions.ChunkInsertOptions">
+            <summary>
+            Chunk table insert options. Useful for specifying durability requirements.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.UploadOptions.Metadata">
+            <summary>
+            The metadata to store with the file. Stores RAW JObject (WARN: no pseudo-type conversion).
+            See <see cref="M:RethinkDb.Driver.ReGrid.UploadOptions.SetMetadata(System.Object)"/> pseudo-type conversion is necessary.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.UploadOptions.ForceFileId">
+            <summary>
+            Set a predetermined (client-side generated) identifier
+            that can used to uniquely reference the file in ReGrid.
+            An exception will be thrown if a duplicate identifier
+            is encountered when creating the upload session.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.UploadOptions.SetMetadata(System.Object)">
+            <summary>
+            Sets the metadata JObject with pseudo-type conversion.
+            </summary>
+            <param name="obj"></param>
+        </member>
+        <member name="T:RethinkDb.Driver.ReGrid.UploadStream">
+            <summary>
+            A ReGrid upload stream
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.UploadStream.#ctor(RethinkDb.Driver.Net.IConnection,System.Guid,RethinkDb.Driver.ReGrid.FileInfo,RethinkDb.Driver.Ast.Table,RethinkDb.Driver.Ast.Table,RethinkDb.Driver.ReGrid.UploadOptions)">
+            <summary>
+            Creates an UploadStream to ReGrid.
+            </summary>
+            <param name="conn">RethinkDB Connection or ConnectonPool.</param>
+            <param name="filesInfoId">The ID of the FileInfo in the database.</param>
+            <param name="fileInfo">An incomplete FileInfo that exists in the database waiting to be finalized.</param>
+            <param name="fileTable">An already namespaced Table term for FileInfo.</param>
+            <param name="chunkTable">An already namespaced Table term for Chunk</param>
+            <param name="options">Upload options</param>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.UploadStream.Abort">
+            <summary>
+            Aborts an upload.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.UploadStream.Close">
+            <summary>
+            Closes the stream.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.UploadStream.CloseAsync(System.Threading.CancellationToken)">
+            <summary>
+            Async close the upload stream.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.UploadStream.AbortAsync(System.Threading.CancellationToken)">
+            <summary>
+            Aborts an upload in progress
+            </summary>
+            <param name="cancelToken"></param>
+            <returns></returns>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.UploadStream.Write(System.Byte[],System.Int32,System.Int32)">
+            <summary>
+            Write to the upload stream
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.UploadStream.WriteAsync(System.Byte[],System.Int32,System.Int32,System.Threading.CancellationToken)">
+            <summary>
+            Async write to the upload stream
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.UploadStream.CanRead">
+            <summary>
+            False, upload streams are not readable.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.UploadStream.CanSeek">
+            <summary>
+            False, upload streams cannot be seeked.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.UploadStream.CanWrite">
+            <summary>
+            True, upload streams can be written to..
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.UploadStream.Length">
+            <summary>
+            The in-progress length of the upload.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.UploadStream.Position">
+            <summary>
+            The in-progress length of the upload. Same as <see cref="P:RethinkDb.Driver.ReGrid.UploadStream.Length"/>.
+            </summary>
+        </member>
+        <member name="P:RethinkDb.Driver.ReGrid.UploadStream.Id">
+            <summary>
+            The unique file id this upload stream represents.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.UploadStream.Dispose(System.Boolean)">
+            <summary>
+            Disposes of the upload stream.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.UploadStream.Flush">
+            <summary>
+            Not supported. Does nothing.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.UploadStream.FlushAsync(System.Threading.CancellationToken)">
+            <summary>
+            Not supported. Does nothing.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.UploadStream.Seek(System.Int64,System.IO.SeekOrigin)">
+            <summary>
+            Not supported.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.UploadStream.SetLength(System.Int64)">
+            <summary>
+            Not supported.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.UploadStream.Read(System.Byte[],System.Int32,System.Int32)">
+            <summary>
+            Not supported.
+            </summary>
+        </member>
+        <member name="M:RethinkDb.Driver.ReGrid.UploadStream.ReadAsync(System.Byte[],System.Int32,System.Int32,System.Threading.CancellationToken)">
+            <summary>
+            Not supported.
+            </summary>
+        </member>
+    </members>
+</doc>

@@ -1,0 +1,15 @@
+﻿<UserControl xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:HyOnPlayer" 
+             x:Class="HyOnPlayer.DShowDisplayElement" 
+             mc:Ignorable="d" >
+    
+    <Grid x:Name="ContentGrid" >
+        <local:DirectShowControl x:Name="DisplayElement" AspectRatioMode="DependOnOwner" LoadedBehavior="Play" SpeedRate="1.0" Volume="100" Loop="True" Visibility="Hidden"/>
+        <WebBrowser x:Name="WebBrowserElement" Visibility="Hidden"/>
+        <Rectangle x:Name="ExeRect" Stretch="Fill" Visibility="Hidden"/>
+        <!--<Grid x:Name="ExeGrid" Visibility="Hidden"/>-->
+    </Grid>
+</UserControl>

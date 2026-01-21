@@ -1,0 +1,16 @@
+﻿<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:HyOnPlayer"
+    xmlns:TurtleMediaControl="clr-namespace:TurtleMediaControl"
+    xmlns:ttools="clr-namespace:TurtleTools"
+    x:Class="HyOnPlayer.ContentsPlayWindow"
+    SizeChanged="Window_SizeChanged" Width="0" Height="0" Visibility="Hidden"
+    Title="ContentsPlayWindow" WindowStyle="None" ResizeMode="NoResize" Background="Black" IsHitTestVisible="False">
+    <Grid x:Name="ContentGrid">
+        <Grid x:Name="OverlayRoot">
+            <local:MPVLibControl Width="{Binding ElementName=ContentGrid, Path=ActualWidth}" Height="{Binding ElementName=ContentGrid, Path=ActualHeight}" x:Name="MPVPlayer" Volume="80" Loop="False" Stretch="Fill" AutoPlay="True" FileEndedEvent="Player_FileEndedEvent" FileLoadedEvent="Player_FileLoadedEvent" Visibility="Hidden" />
+            <TurtleMediaControl:TransImageControl x:Name="TransImgCtrl" AspectRatioMode="DependOnOwner" Visibility="Hidden"/>
+        </Grid>
+    </Grid>
+</Window>

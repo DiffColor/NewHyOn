@@ -1,0 +1,175 @@
+﻿<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="d" x:Class="AndoW_Manager.ContentsInfoBatchUpdateWindow"
+    xmlns:dd="clr-namespace:GongSolutions.Wpf.DragDrop;assembly=GongSolutions.Wpf.DragDrop"
+    IsVisibleChanged="Window_IsVisibleChanged"   
+    Height="1020" MinWidth="340" WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="CanResizeWithGrip" AllowsTransparency="True" Background="{x:Null}">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="../ResourceDictionary1.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="242*"/>
+        </Grid.RowDefinitions>
+        <Rectangle Fill="#3302133A" Margin="10,10,-5,-5">
+            <Rectangle.Effect>
+                <BlurEffect Radius="50"/>
+            </Rectangle.Effect>
+        </Rectangle>
+
+        <Border BorderThickness="1,1,1,1" BorderBrush="#FF4A4A9A" Background="#FFF4F6FB" Grid.RowSpan="2">
+            <Grid x:Name="LayoutGrid">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="27"/>
+                    <RowDefinition Height="35"/>
+                    <RowDefinition/>
+                </Grid.RowDefinitions>
+                <Rectangle x:Name="titleRect" PreviewMouseLeftButtonDown="BtnWin_drag_PreviewMouseLeftButtonDown">
+                    <Rectangle.Fill>
+                        <LinearGradientBrush EndPoint="1.007,0.5" StartPoint="-0.027,0.5">
+                            <GradientStop Color="Black"/>
+                            <GradientStop Color="#FF5252AB" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Rectangle.Fill>
+                </Rectangle>
+                <Grid x:Name="WinTOP" Margin="0,3.5">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition/>
+                        <ColumnDefinition Width="109"/>
+                    </Grid.ColumnDefinitions>
+                </Grid>
+                <StackPanel HorizontalAlignment="Left" Orientation="Horizontal" Margin="7,0,0,0">
+                    <TextBlock HorizontalAlignment="Left" TextWrapping="Wrap" FontFamily="Malgun Gothic" FontSize="13.333" IsEnabled="False" Text="컨텐츠 정보 일괄편집" VerticalAlignment="Center" Padding="0,0,0,3" Margin="0,0,0,1" FontWeight="Bold" Foreground="White"/>
+                </StackPanel>
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition/>
+                    </Grid.ColumnDefinitions>
+                    <Rectangle Fill="#FFB5B8CE"/>
+                    <StackPanel Orientation="Horizontal" Grid.ColumnSpan="3" HorizontalAlignment="Left"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,15,0">
+                        <TextBlock x:Name="TextAngleGrade5_Copy7" TextWrapping="Wrap" Text="재생 시간 :" Foreground="Black" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" FontSize="13.333" Margin="12,0,0,0"/>
+                        <ComboBox DropDownClosed="MinCombo_DropDownClosed" x:Name="MinCombo" VerticalAlignment="Center" Height="24" Width="52" HorizontalAlignment="Right" Margin="7,0,0,0" FontFamily="Malgun Gothic" FontSize="14.667" FontWeight="Bold"/>
+                        <ComboBox DropDownOpened="SecCombo_DropDownOpened" x:Name="SecCombo" VerticalAlignment="Center" Height="24" Width="52" HorizontalAlignment="Right" Margin="7,0,0,0" FontFamily="Malgun Gothic" FontSize="14.667" FontWeight="Bold"/>
+                        <Button x:Name="ChangeTimeBtn" Style="{DynamicResource ButtonStyle2}" Height="27" Width="92" Margin="8,0,2,0">
+                            <TextBlock x:Name="TextAngleGrade3" TextWrapping="Wrap" Text="시간 변경" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" FontWeight="Bold"/>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+                <Grid Margin="12,4,12,12" Grid.Row="3">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition/>
+                    </Grid.ColumnDefinitions>
+                    <Grid x:Name="ContentsListGrid" Margin="4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="109*"/>
+                            <ColumnDefinition Width="39*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="30"/>
+                            <RowDefinition/>
+                        </Grid.RowDefinitions>
+                        <Rectangle Margin="0,0,0,807" Grid.ColumnSpan="2" Grid.RowSpan="2"/>
+                        <Border Grid.Row="1" Grid.ColumnSpan="2" Background="#FFCFD6E6" CornerRadius="6,6,6,6" BorderBrush="White" BorderThickness="1,1,1,1" >
+                            <ListBox x:Name="ContentListBox" Padding="7,7,0,0" BorderThickness="1" BorderBrush="{x:Null}" Background="{x:Null}" 
+                                LayoutUpdated="ContentListBox_LayoutUpdated" Drop="ContentListBox_Drop" 
+                                SelectionChanged="ContentListBox_SelectionChanged"
+                                SelectionMode="Extended" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                dd:DragDrop.IsDragSource="True" dd:DragDrop.IsDropTarget="True" dd:DragDrop.UseDefaultEffectDataTemplate="True" Margin="12,12,6,12" >
+
+                                <ListBox.Resources>
+                                    <Style TargetType="{x:Type ListBoxItem}">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                                                    <Border x:Name="Bd"
+                                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                                        Background="{TemplateBinding Background}"
+                                                        Padding="{TemplateBinding Padding}"
+                                                        SnapsToDevicePixels="true">
+                                                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                            SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"
+                                                            VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <MultiTrigger>
+                                                            <MultiTrigger.Conditions>
+                                                                <Condition Property="Selector.IsSelectionActive" Value="False" />
+                                                                <Condition Property="IsSelected" Value="True" />
+                                                            </MultiTrigger.Conditions>
+                                                            <Setter Property="Background" TargetName="Bd" Value="Transparent" />
+                                                            <Setter Property="BorderBrush" TargetName="Bd" Value="#26A0DA" />
+                                                            <Setter Property="BorderThickness" TargetName="Bd" Value="1" />
+                                                        </MultiTrigger>
+                                                        <MultiTrigger>
+                                                            <MultiTrigger.Conditions>
+                                                                <Condition Property="Selector.IsSelectionActive" Value="True" />
+                                                                <Condition Property="IsSelected" Value="True" />
+                                                            </MultiTrigger.Conditions>
+                                                            <Setter Property="Background" TargetName="Bd" Value="Transparent" />
+                                                            <Setter Property="BorderBrush" TargetName="Bd" Value="#26A0DA" />
+                                                            <Setter Property="BorderThickness" TargetName="Bd" Value="1" />
+                                                        </MultiTrigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ListBox.Resources>
+                                <ListBox.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ListBox.ItemsPanel>
+
+                            </ListBox>
+                        </Border>
+                        <TextBlock x:Name="NoContentsTxt" TextWrapping="NoWrap" Text="컨텐츠가 없습니다" Foreground="White" FontFamily="Malgun Gothic" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="14.667" Grid.Row="1" Grid.ColumnSpan="2"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,8,0" Grid.ColumnSpan="2">
+                            <Button x:Name="DeleteBtn" Margin="0,0,14,0" Style="{DynamicResource Btn_defaultSW}" Height="22" HorizontalAlignment="Right" Width="76" VerticalAlignment="Center">
+                                <TextBlock x:Name="DeleteBtnTxt" TextWrapping="Wrap" Text="선택 삭제" Foreground="Black" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic"/>
+                            </Button>
+                            <Button x:Name="SelectAllBtn" Margin="0,0,7,0" Style="{DynamicResource Btn_defaultSW}" Height="22" HorizontalAlignment="Right" Width="76" VerticalAlignment="Center">
+                                <TextBlock x:Name="TextAngleGrade2" TextWrapping="Wrap" Text="전체 선택" Foreground="Black" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic"/>
+                            </Button>
+                            <Button x:Name="BTN0DO_Copy3" Style="{DynamicResource Btn_defaultSW}" Height="22" HorizontalAlignment="Right" Width="76" VerticalAlignment="Center" Margin="0,2.5">
+                                <TextBlock x:Name="TextAngleGrade4" TextWrapping="Wrap" Text="전체 해제" Foreground="Black" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic"/>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,7,0">
+                    <Button x:Name="BtnWin_close" Height="21" Style="{DynamicResource BtnWin_1}" HorizontalAlignment="Right" Width="28" Click="BtnWin_close_Click" BorderThickness="1,1,1,2" Foreground="White">
+                        <Path Data="M8.2080002,0 L11.875,0 11.875,8.2080001 20.083,8.2080001 20.083,11.875 11.875,11.875 11.875,20.083 8.2080002,20.083 8.2080002,11.875 0,11.875 0,8.2080001 8.2080002,8.2080001 z" Fill="White" HorizontalAlignment="Center" RenderTransformOrigin="0.499999995441284,0.500000004558718" Stretch="Fill" StrokeThickness="0" Width="13" Height="13" VerticalAlignment="Center" Margin="0" >
+                            <Path.RenderTransform>
+                                <TransformGroup>
+                                    <ScaleTransform/>
+                                    <SkewTransform/>
+                                    <RotateTransform Angle="-135"/>
+                                    <TranslateTransform/>
+                                </TransformGroup>
+                            </Path.RenderTransform>
+                        </Path>
+                    </Button>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Grid.Row="2"/>
+                <Grid x:Name="UpdateGrid" Grid.Row="1" Grid.RowSpan="3" Background="#A3686868" Visibility="Hidden">
+                    <Button x:Name="BTN0DO_Copy5" Style="{DynamicResource Btn_defaultSW}" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="0,0,30,30" Width="150" Height="30">
+                        <TextBlock x:Name="TextAngleGrade6" TextWrapping="Wrap" Text="업데이트 중지" Foreground="#FFFF4600" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" FontSize="18.667"/>
+                    </Button>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Background="Black">
+                        <TextBlock x:Name="TextAngleGrade5_Copy4" TextWrapping="Wrap" Text="업데이트 현황 : " Foreground="Yellow" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" FontSize="64" Margin="12,0,0,0"/>
+                        <TextBlock x:Name="TextAngleGrade5_Copy5" TextWrapping="Wrap" Text="1 / 16" Foreground="#FFFF4600" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" FontSize="64" Margin="12,0,10,0"/>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Border>
+
+    </Grid>
+</Window>

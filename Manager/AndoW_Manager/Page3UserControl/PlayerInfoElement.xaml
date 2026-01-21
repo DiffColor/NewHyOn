@@ -1,0 +1,271 @@
+﻿<UserControl 
+        x:Class="AndoW_Manager.PlayerInfoElement"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        mc:Ignorable="d" Height="241" Width="170" BorderThickness="1" BorderBrush="#FFADBECC">
+    <UserControl.Resources>
+        <Style x:Key="Btn_defaultSW_Local" TargetType="{x:Type Button}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Grid>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualStateGroup.Transitions>
+                                        <VisualTransition From="Pressed" GeneratedDuration="0:0:0.3"/>
+                                    </VisualStateGroup.Transitions>
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="MouseOver">
+                                        <Storyboard>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[1].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0:0:0.2" Value="#FF08193B"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[0].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0:0:0.2" Value="#FF00071A"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[2].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0:0:0.2" Value="#FF051A45"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <Storyboard>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[2].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0" Value="#FF000E1B"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[0].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0" Value="#FF000914"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[1].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0" Value="#FF000D35"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Stroke).(GradientBrush.GradientStops)[0].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0" Value="#68000000"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Stroke).(GradientBrush.GradientStops)[1].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0" Value="#19000000"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled"/>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <Rectangle x:Name="rectangle" RadiusY="0" RadiusX="0">
+                                <Rectangle.Fill>
+                                    <LinearGradientBrush EndPoint="0.5,1" StartPoint="0.5,0">
+                                        <GradientStop Color="#FF0C0C0C" Offset="0.667"/>
+                                        <GradientStop Color="#FF252525"/>
+                                        <GradientStop Color="#FF121212" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Rectangle.Fill>
+                                <Rectangle.Stroke>
+                                    <LinearGradientBrush EndPoint="0.5,1" StartPoint="0.5,0">
+                                        <GradientStop Color="#59000000" Offset="0"/>
+                                        <GradientStop Color="#19FFFFFF" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Rectangle.Stroke>
+                            </Rectangle>
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True"/>
+                            <Trigger Property="IsDefaulted" Value="True"/>
+                            <Trigger Property="IsMouseOver" Value="True"/>
+                            <Trigger Property="IsPressed" Value="True"/>
+                            <Trigger Property="IsEnabled" Value="False"/>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+    <Grid x:Name="rootGrid">
+        <Grid.ContextMenu>
+            <ContextMenu x:Name="DisplayCotextMenu">
+                <MenuItem Header="원격접속" ToolTip="Remote Control"  x:Name="MC_RemoteCotrol"/>
+                <Separator/>
+                <MenuItem Header="플레이어 깨우기" ToolTip="Power On" x:Name="MC_PowerOn"/>
+                <!--<MenuItem Header="플레이어 전원종료" ToolTip="Power Off" x:Name="MC_PowerOff"/>-->
+                <!--<MenuItem Header="플레이어 시작" ToolTip="Player Restart" x:Name="MC_Launcher_Enable"/>-->
+                <!--<MenuItem Header="플레이어 재시작" ToolTip="Player Restart" x:Name="MC_RestartPlayer"/>-->
+                <MenuItem Header="플레이어 재시작" ToolTip="Reboot" x:Name="MC_Reboot"/>
+                <Separator/>
+                <MenuItem Header="방송시간 설정" ToolTip="플레이어의 방송시간을 설정합니다."  x:Name="MC_EditWeeklySch"/>
+                <!--<MenuItem Header="특별스케줄 설정" ToolTip="플레이어의 특별 스케줄을 설정합니다."  x:Name="MC_EditSpecialSch"/>-->
+                <!--<MenuItem Header="방송시간 업데이트" ToolTip="Update TimeTable"  x:Name="MC_UpdateWeeklySch"/>-->
+                <!--<MenuItem Header="이벤트스케줄 업데이트" ToolTip="Update Schedule"  x:Name="MC_UpdateSpecialSch"/>-->
+                <!--<Separator/>-->
+                <!--<MenuItem Header="플레이어 설정값 편집" ToolTip="Player Configuration"  x:Name="MC_SetPlayerConfig"/>-->
+                <!--<MenuItem Header="플레이어 설정값 업데이트" ToolTip="Player Configuration Update"  x:Name="MC_SetPlayerConfigUpdate"/>-->
+                <!--<MenuItem Header="플레이어 실행파일 업데이트" ToolTip="Update Player Files"  x:Name="MC_UpdatePlayer"/>-->
+                <!--<MenuItem Header="파일 전송" ToolTip="Senf Files To Player"  x:Name="MC_SendFiles"/>-->
+                <!--<Separator/>-->
+                <!--<MenuItem Header="이전 페이지" ToolTip="Play Previous Page"  x:Name="MC_PrevPage"/>-->
+                <!--<MenuItem Header="처음부터 재생하기" ToolTip="Play First Page"  x:Name="MC_PlayFirstPage"/>
+                <MenuItem Header="다음 페이지" ToolTip="Play Next Page"  x:Name="MC_NextPage"/>
+                <Separator/>-->
+                <!--<MenuItem Header="긴급이미지 표출" ToolTip="Display Emergency Image"  x:Name="MC_DisplayEmergencyImage"/>-->
+                <!--<MenuItem Header="SourceKey 가져오기" ToolTip="인증을 위한 플레이어의 SourceKey값을 가져옵니다."  x:Name="MC_GetSourceKey"/>
+                <MenuItem Header="AuthKey 전송" ToolTip="인증을 위해 플레이어에 AuthKey값을 전송합니다."  x:Name="MC_SendAuthKey"/>-->
+                <!--<Separator/>
+                <MenuItem Header="플레이어 로그보기" ToolTip="플레이어의 로그를 확인합니다."  x:Name="MC_ShowPlayerLog"/>
+                <MenuItem Header="플레이어 용량 확보" ToolTip="플레이어에서 사용하지 않는 컨텐츠를 삭제합니다."  x:Name="MC_DeleteContents"/>
+                -->
+
+                <!--<Separator/>
+                <MenuItem Header="플레이어 업그레이드" ToolTip="플레이어의 버전을 업그레이드 합니다."  x:Name="MC_Upgrade" />-->
+
+                <Separator/>
+                <MenuItem Header="업데이트 큐 삭제" ToolTip="진행중인 업데이트 큐를 즉시 삭제합니다." x:Name="MC_ClearQueue"/>
+                <Separator/>
+                <MenuItem Header="라이센스 취득" ToolTip="플레이어의 인증코드를 입력합니다"  x:Name="MC_Auth" />
+
+            </ContextMenu>
+        </Grid.ContextMenu>
+        <Grid.RowDefinitions>
+            <RowDefinition/>
+        </Grid.RowDefinitions>
+        <Rectangle Margin="8,7,0,0" Opacity="0.15">
+            <Rectangle.Effect>
+                <BlurEffect Radius="15"/>
+            </Rectangle.Effect>
+            <Rectangle.Fill>
+                <LinearGradientBrush EndPoint="0,1" StartPoint="0,0">
+                    <GradientStop Color="#FF061C9A" Offset="0"/>
+                    <GradientStop Color="#FF001527" Offset="1"/>
+                </LinearGradientBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+        <Rectangle x:Name="BackRectangle">
+            <Rectangle.Fill>
+                <LinearGradientBrush EndPoint="0.5,1" StartPoint="0.5,0">
+                    <GradientStop Color="#FFECEFF1" Offset="0.339"/>
+                    <GradientStop Color="#FFD2E5F5" Offset="0.51"/>
+                    <GradientStop Color="White" Offset="0.665"/>
+                    <GradientStop Color="#FFD1DDE8" Offset="0.515"/>
+                </LinearGradientBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+        <Rectangle Margin="0" Height="20" VerticalAlignment="Top" Fill="#FF4243B9"/>
+        <Rectangle x:Name="UpdatingProgress" Height="20" HorizontalAlignment="Left" VerticalAlignment="Top" Width="0" >
+            <Rectangle.Fill>
+                <LinearGradientBrush EndPoint="0.5,1" StartPoint="0.5,0">
+                    <GradientStop Color="#FF1843E4" Offset="1"/>
+                    <GradientStop Color="#FF0090FF" Offset="0"/>
+                </LinearGradientBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+        <Border x:Name="SelectBorder_Copy1" BorderBrush="#FF2D75FF" BorderThickness="2" Grid.RowSpan="4" d:IsHidden="True"/>
+        <Border x:Name="SelectBorder" BorderBrush="#FF2D75FF" BorderThickness="1" Grid.RowSpan="4"/>
+        <Grid Grid.RowSpan="5">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="20"/>
+                <RowDefinition/>
+                <RowDefinition Height="40"/>
+                <!--<RowDefinition Height="30"/>-->
+                <RowDefinition Height="30"/>
+            </Grid.RowDefinitions>
+            <StackPanel Visibility="Collapsed" Orientation="Horizontal" HorizontalAlignment="Center" Grid.Row="2" Margin="5,0,0,0">
+                <Button x:Name="BTN0DO_Copy1" Visibility="Collapsed" Style="{DynamicResource ChangeOrderStyle}" Height="20" FontFamily="Malgun Gothic" FontSize="13.333" Width="53">
+                    <TextBlock x:Name="TextAngleGrade2" TextWrapping="Wrap" Text="원격" Foreground="#FFCDC574" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" FontSize="12"/>
+                </Button>
+                <Button x:Name="BTN0DO_Copy2" Style="{DynamicResource ChangeOrderStyle}" Height="20" FontFamily="Malgun Gothic" FontSize="13.333" Width="53">
+                    <TextBlock x:Name="TextAngleGrade3" TextWrapping="Wrap" Text="재생" Foreground="#FFCDC574" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" FontSize="12"/>
+                </Button>
+                <Button x:Name="BTN0DO_Copy3" Style="{DynamicResource ChangeOrderStyle}" Margin="12,0,0,0" Height="20" FontFamily="Malgun Gothic" FontSize="13.333" Width="53">
+                    <TextBlock x:Name="TextAngleGrade4" TextWrapping="Wrap" Text="정지" Foreground="#FFCDC574" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" FontSize="12"/>
+                </Button>
+                <Button x:Name="BTN0DO_Copy" Style="{DynamicResource ChangeOrderStyle}" Height="20" Margin="0,0,6,2" Visibility="Collapsed">
+                    <Path Stretch="Fill" Fill="#FFB2B2B2" Data="F1 M 408.811,278.415L 395.846,285.9L 395.846,278.415L 382.881,285.9L 382.881,278.415L 380.523,278.415L 380.523,294.918L 382.881,294.918L 382.881,287.428L 395.846,294.918L 395.846,287.428L 408.811,294.918L 408.811,278.415 Z " Height="8" Width="12"/>
+                </Button>
+                <Button x:Name="BTN0DO_Copy4" Style="{DynamicResource ChangeOrderStyle}" Height="20" Margin="0,0,6,2" Visibility="Collapsed">
+                    <Path Stretch="Fill" Fill="#FFB2B2B2" Data="F1 M 758.453,263.749L 758.453,271.234L 745.487,263.749L 745.487,271.234L 732.523,263.749L 732.523,280.251L 745.487,272.762L 745.487,280.251L 758.453,272.762L 758.453,280.251L 760.81,280.251L 760.81,263.749L 758.453,263.749 Z " Height="8" Width="12"/>
+                </Button>
+            </StackPanel>
+            <Grid x:Name="LayoutGrid">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="2*"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="26"/>
+                    <ColumnDefinition/>
+                    <ColumnDefinition Width="0"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="TextBlockOrderingNumber" TextWrapping="Wrap" Text="01" FontSize="12" FontFamily="Malgun Gothic" HorizontalAlignment="Center" VerticalAlignment="Center" Height="14.484" Foreground="White" Margin="0,0,0,1"/>
+                <Rectangle x:Name="DeletePlayerRect" Grid.Column="2" Fill="#2A2B2B2B" StrokeThickness="0"/>
+                <TextBlock x:Name="ExitTextBlock" TextWrapping="Wrap" Text="X" FontFamily="Malgun Gothic" Foreground="#FF8F8F8F" Grid.Column="2" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <Grid Grid.Column="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="37*"/>
+                        <ColumnDefinition Width="0"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="TextBlockOrderingNumber_Copy" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" Text="PlayerName" FontSize="10" FontFamily="Malgun Gothic" Foreground="#FF88FF00" HorizontalAlignment="Left" VerticalAlignment="Center" FontWeight="Bold" Margin="0,3" MaxWidth="132"/>
+                    <StackPanel x:Name="MinControlStackPannel" Orientation="Horizontal" Grid.Column="1">
+                        <Button x:Name="BTN0DO_Copy6" Style="{DynamicResource Btn_defaultSW}" HorizontalAlignment="Right" Width="23" Margin="0" VerticalAlignment="Center" Height="13">
+                            <TextBlock x:Name="TextAngleGrade7" TextWrapping="Wrap" Text="R/C" Foreground="#FFA6A6A6" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" FontSize="9.333"/>
+                        </Button>
+                        <Rectangle x:Name="DspOnliePlayerRect" Fill="YellowGreen" HorizontalAlignment="Right" Height="11" Stroke="Black" VerticalAlignment="Center" Width="11" Margin="1,0,0,0"/>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+            <Grid Grid.Row="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="43*"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition/>
+                </Grid.ColumnDefinitions>
+                <Rectangle x:Name="pagePrevieImgRect" HorizontalAlignment="Center" VerticalAlignment="Center" Width="150" Height="90" Stroke="White" StrokeThickness="2" Fill="#FFD5D5DC"/>
+                <Rectangle x:Name="pagePrevieImgRect_Copy" HorizontalAlignment="Center" VerticalAlignment="Center" Width="79" Height="119" Stroke="White" StrokeThickness="2" Fill="#FFD5D5DC" RadiusX="6" d:IsHidden="True"/>
+                <TextBlock x:Name="PowerOnOffTextBlk" TextWrapping="Wrap" Text="OFF" FontFamily="Malgun Gothic" Foreground="Gray" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="13.333" FontWeight="Bold"/>
+                <Grid Margin="0,5" Grid.ColumnSpan="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="23*"/>
+                        <RowDefinition Height="23*"/>
+                        <RowDefinition Height="23*"/>
+                    </Grid.RowDefinitions>
+                </Grid>
+            </Grid>
+            <Label Grid.Row="1" HorizontalAlignment="Right" x:Name="pversion" Content="1.0.2" FontSize="9" Foreground="#FF7D7D7D" VerticalAlignment="Top" />
+            <StackPanel Orientation="Horizontal" Grid.Row="3" Margin="0,0,0,3" HorizontalAlignment="Center">
+                <ComboBox x:Name="PlaylistCombo" VerticalAlignment="Center" Height="23" Width="125" HorizontalAlignment="Right" Foreground="Black"/>
+                <Button x:Name="BTN0DO_Copy5" Style="{DynamicResource power}" Width="30" VerticalAlignment="Center" Height="23" Margin="-1,0,0,0">
+                    <Grid Height="NaN" Width="NaN" Margin="0,1,0,0">
+                        <Path Data="M9.018,8.197Q14.931,4.396,14.36,0.278L14.36,0.048Q14.057,0.048 14.057,0.048 9.32,-0.471 5.12,4.655C1.559,4.108 1.861,4.885 0.081,8.197 -0.222,8.974 0.383,8.974 0.954,8.974Q1.559,8.715 2.735,8.456 4.852,10.241 4.852,10.241 4.516,11.249 4.247,11.768C3.944,12.286 4.247,12.804 4.852,12.545 8.715,10.99 9.589,11.249 9.018,8.197z M9.891,3.849C9.32,3.359 9.32,2.841 9.891,2.322 10.496,1.833 11.37,1.833 11.672,2.322 12.277,2.841 12.277,3.359 11.672,3.849 11.37,4.396 10.496,4.396 9.891,3.849z" HorizontalAlignment="Center" Height="13" Stretch="Fill" Stroke="Black" StrokeThickness="0" UseLayoutRounding="False" VerticalAlignment="Center" Width="14" Margin="0,4,0,0">
+                            <Path.Fill>
+                                <LinearGradientBrush EndPoint="0.5,1" StartPoint="0.5,0">
+                                    <GradientStop Color="#FF0027FF" Offset="1"/>
+                                    <GradientStop Color="#FF0079A2" Offset="0"/>
+                                </LinearGradientBrush>
+                            </Path.Fill>
+                            <Path.Effect>
+                                <BlurEffect/>
+                            </Path.Effect>
+                        </Path>
+                        <Path Data="M9.018,8.197Q14.931,4.396,14.36,0.278L14.36,0.048Q14.057,0.048 14.057,0.048 9.32,-0.471 5.12,4.655C1.559,4.108 1.861,4.885 0.081,8.197 -0.222,8.974 0.383,8.974 0.954,8.974Q1.559,8.715 2.735,8.456 4.852,10.241 4.852,10.241 4.516,11.249 4.247,11.768C3.944,12.286 4.247,12.804 4.852,12.545 8.715,10.99 9.589,11.249 9.018,8.197z M9.891,3.849C9.32,3.359 9.32,2.841 9.891,2.322 10.496,1.833 11.37,1.833 11.672,2.322 12.277,2.841 12.277,3.359 11.672,3.849 11.37,4.396 10.496,4.396 9.891,3.849z" HorizontalAlignment="Center" Height="13" Stretch="Fill" Stroke="Black" StrokeThickness="0" UseLayoutRounding="False" VerticalAlignment="Center" Width="14">
+                            <Path.Fill>
+                                <LinearGradientBrush EndPoint="0.55,0.997" StartPoint="0.45,0.003">
+                                    <GradientStop Color="#FF00E0E6" Offset="0.665"/>
+                                    <GradientStop Color="White" Offset="0"/>
+                                    <GradientStop Color="#FF00FFCA" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Path.Fill>
+                        </Path>
+                    </Grid>
+                </Button>
+            </StackPanel>
+            <StackPanel Orientation="Vertical" HorizontalAlignment="Center" d:LayoutOverrides="Height" Grid.Row="2" VerticalAlignment="Top">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" >
+                    <Label Content="HDMI :" FontSize="11" Margin="0,-7,0,0" Foreground="Black" />
+                    <Label x:Name="ConnectedLabel" Content="Connected" FontSize="11" Margin="-7,-7,0,0" Foreground="#FF007CB1" Visibility="Collapsed" />
+                    <Label x:Name="DisconnectedLabel" Content="Disconnected" FontSize="11" Margin="-7,-7,0,0" Foreground="Red" Visibility="Visible" />
+                </StackPanel>
+                <TextBlock x:Name="CurrentPlayingPageName"
+                    Text="Player Status" TextWrapping="Wrap" FontFamily="Malgun Gothic" Foreground="Black" FontSize="11" HorizontalAlignment="Center" Margin="0,-4,0,0" />
+            </StackPanel>
+        </Grid>
+        <Path x:Name="SelectIcon" Data="M16.953,2.543C16.953,2.774,16.837,3.005,16.607,3.236Q8.765,11.211 8.765,11.211 7.265,12.714 7.265,12.714C7.035,12.83 6.804,12.945 6.458,12.945 6.227,12.945 5.997,12.83 5.766,12.714Q4.267,11.211 4.267,11.211 0.346,7.166 0.346,7.166C0.115,7.05 0,6.819 0,6.473 0,6.126 0.115,5.895 0.346,5.779Q1.845,4.277,1.845,4.277C2.076,4.045 2.306,3.93 2.537,3.93 2.883,3.93 3.114,4.045 3.344,4.277Q6.458,7.513 6.458,7.513 13.723,0.231 13.723,0.231C13.839,0.116 14.069,0 14.415,0 14.646,0 14.992,0.116 15.107,0.231Q16.607,1.734,16.607,1.734C16.837,1.965,16.953,2.196,16.953,2.543z" Fill="#FFEB0000" HorizontalAlignment="Left" Height="11" Stretch="Fill" StrokeThickness="0" UseLayoutRounding="False" VerticalAlignment="Top" Width="14" Margin="7,28,7,0" Visibility="Hidden"/>
+    </Grid>
+</UserControl>

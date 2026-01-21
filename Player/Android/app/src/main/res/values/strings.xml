@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+	<string name="app_version">v2.56</string>
+	
+    <string name="app_name">AndoW Signage</string>
+
+	<string name="settings1">Player Settings</string>
+	<string name="settings2">Schedule Settings</string>
+	<string name="settings3">USB Auth Settings</string>
+	<string name="ps_item1">Player Name : </string>
+	<string name="ps_item2">Manager IP : </string>
+	<string name="ps_item3">Player IP\r\n(Manual) : </string>
+	<string name="ps_item5">Keep Aspect Ratio</string>
+	<string name="ps_item_switch_content">Switch immediately after current content</string>
+	<string name="ps_item6">Source Key : </string>
+	<string name="ps_item7">  Auth Key : </string>
+
+	<string name="config_noti_name">AndoW Configuration</string>
+	<string name="config_noti_desc">Touch Me!!</string>
+	
+	<string name="confirm">Set</string>
+	<string name="hint1">Player_123</string>
+	<string name="export_realm_button">export</string>
+	<string name="export_realm_success">파일 추출 완료: %1$s</string>
+	<string name="export_realm_fail">파일 추출 실패: %1$s</string>
+
+</resources>

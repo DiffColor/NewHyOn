@@ -1,0 +1,157 @@
+<Window
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="d"
+	x:Class="AndoW_Manager.GetAuthWindow"
+	x:Name="Window"
+    Loaded="Window_Loaded"
+	Width="552" Height="189" Background="{x:Null}" WindowStyle="None" ResizeMode="NoResize" BorderThickness="1" BorderBrush="Black">
+
+    <Window.Resources>
+        <Style x:Key="Btn_default3" TargetType="{x:Type Button}">
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Grid>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualStateGroup.Transitions>
+                                        <VisualTransition GeneratedDuration="0:0:0.05" To="MouseOver">
+                                            <Storyboard/>
+                                        </VisualTransition>
+                                        <VisualTransition From="MouseOver" GeneratedDuration="0:0:0.05"/>
+                                    </VisualStateGroup.Transitions>
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="MouseOver"/>
+                                    <VisualState x:Name="Pressed"/>
+                                    <VisualState x:Name="Disabled"/>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <Rectangle x:Name="rectangle" RadiusY="2" RadiusX="2" Stroke="#62000000" Fill="#19FFFFFF" StrokeThickness="0"/>
+                            <ContentPresenter HorizontalAlignment="Center" RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" VerticalAlignment="Center" OpacityMask="Black"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="true"/>
+                            <Trigger Property="IsDefaulted" Value="true"/>
+                            <Trigger Property="IsMouseOver" Value="true"/>
+                            <Trigger Property="IsPressed" Value="true"/>
+                            <Trigger Property="IsEnabled" Value="false">
+                                <Setter Property="Foreground" Value="#ADADAD"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="30"/>
+            <RowDefinition/>
+        </Grid.RowDefinitions>
+
+        <!-- MainWindow의 Window_top과 동일한 스타일의 상단 바 -->
+        <Grid x:Name="Window_top" Grid.Row="0">
+            <Grid.Background>
+                <LinearGradientBrush EndPoint="0.96,1.435" StartPoint="-0.027,0.027">
+                    <GradientStop Color="Black"/>
+                    <GradientStop Color="#FF5252AB" Offset="1"/>
+                </LinearGradientBrush>
+            </Grid.Background>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <Rectangle x:Name="DragRect"
+                       Grid.Column="0"
+                       PreviewMouseLeftButtonDown="DragRect_PreviewMouseLeftButtonDown"
+                       StrokeThickness="0"
+                       Fill="#005252AB"/>
+
+            <StackPanel Orientation="Horizontal" Margin="11,0,0,0">
+                <TextBlock Text="인증 설정"
+                           TextWrapping="Wrap"
+                           FontFamily="Arial"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           VerticalAlignment="Center"
+                           FontSize="13.333"
+                           FontWeight="Bold"
+                           Foreground="#FF9C9BFB"/>
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" Grid.Column="1" HorizontalAlignment="Right">
+                <Button x:Name="minBTN_Copy" HorizontalAlignment="Right" Width="38" FontSize="13.333" Foreground="White" Style="{StaticResource Btn_default3}" Margin="1,3" Visibility="Collapsed">
+                    <Button.Background>
+                        <LinearGradientBrush EndPoint="0,1" StartPoint="0,0">
+                            <GradientStop Color="#FF071C4D" Offset="0"/>
+                            <GradientStop Color="#FF071C4D" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Button.Background>
+                    <Grid>
+                        <TextBlock x:Name="MaximizedIcon"
+                                   Text="□"
+                                   FontFamily="Segoe UI Symbol"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontSize="13.333"/>
+                        <TextBlock x:Name="WindowIcon"
+                                   Text="❐"
+                                   FontFamily="Segoe UI Symbol"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontSize="13.333"
+                                   Visibility="Collapsed"/>
+                    </Grid>
+                </Button>
+                <Button x:Name="minBTN" Content="─" FontFamily="Arial Black" HorizontalAlignment="Right" Width="38" FontSize="13.333" Foreground="White" Style="{StaticResource Btn_default3}" Margin="1,3" Visibility="Collapsed">
+                    <Button.Background>
+                        <LinearGradientBrush EndPoint="0,1" StartPoint="0,0">
+                            <GradientStop Color="#FF071C4D" Offset="0"/>
+                            <GradientStop Color="#FF071C4D" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Button.Background>
+                </Button>
+                <Button x:Name="ExitBTN" FontFamily="Arial Black" HorizontalAlignment="Right" Width="38" FontSize="13.333"  Foreground="White" Style="{StaticResource Btn_default3}" Margin="1,3,3,3">
+                    <Button.Background>
+                        <LinearGradientBrush EndPoint="0,1" StartPoint="0,0">
+                            <GradientStop Color="#FF071C4D" Offset="0"/>
+                            <GradientStop Color="#FF071C4D" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Button.Background>
+                    <Path Data="M9.719,9.719C9.349,10.09,8.747,10.088,8.374,9.716L4.998,6.34 1.622,9.716C1.25,10.088 0.647,10.09 0.277,9.719 -0.094,9.349 -0.092,8.747 0.28,8.374L3.656,4.998 0.28,1.622C-0.092,1.249 -0.094,0.647 0.277,0.277 0.647,-0.094 1.25,-0.092 1.622,0.28L4.998,3.656 8.374,0.28C8.747,-0.092 9.349,-0.094 9.719,0.277 10.09,0.647 10.089,1.249 9.716,1.622L6.34,4.998 9.716,8.374C10.089,8.747,10.09,9.349,9.719,9.719z" Fill="White" Height="9" Stretch="Fill" Stroke="Black" StrokeThickness="0" UseLayoutRounding="False" Width="9"/>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <Grid x:Name="LayoutRoot" Grid.Row="1" Background="#FFE4E8F1">
+            <GroupBox x:Name="AuthGroup" Header=" 현재 인증 상태 : 미인증 " Margin="10,7,10,10" FontWeight="Bold" Foreground="#FFED3F3F" FontSize="16" BorderThickness="1" BorderBrush="#FF494998">
+                <Grid Margin="15,10,22,10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition/>
+                        <RowDefinition/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="95"/>
+                        <ColumnDefinition/>
+                        <ColumnDefinition Width="120"/>
+                    </Grid.ColumnDefinitions>
+                    <Rectangle Grid.ColumnSpan="4" Fill="White" Height="36" StrokeThickness="0" RadiusX="6" RadiusY="6" Margin="0,0,-5,0"/>
+                    <Rectangle Grid.ColumnSpan="4" Fill="White" Height="36" StrokeThickness="0" RadiusX="6" RadiusY="6" Grid.Row="3" Margin="0,0,-5,0"/>
+                    <Label Content="소스키 : " Margin="0" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="14.667"/>
+                    <Label Content="인증번호 : " HorizontalAlignment="Right" Margin="0" Grid.Row="1" VerticalAlignment="Center" FontSize="14.667"/>
+                    <TextBox x:Name="MacAddress" Grid.Column="1" Margin="0,0,5,0" TextWrapping="Wrap" VerticalAlignment="Center" FontSize="18" Grid.ColumnSpan="2" BorderThickness="0" Background="White" BorderBrush="Black" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+                    <PasswordBox x:Name="Passwd" Grid.Column="1" Margin="0" Grid.Row="1" BorderThickness="0" VerticalAlignment="Center" FontSize="18" BorderBrush="{x:Null}" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
+                    <Button x:Name="AuthBtn" Click="AuthBtn_Click" Content="인   증" Grid.Column="2" Margin="7,7,0,7" Grid.Row="1" Style="{DynamicResource Btn_defaultSW}" Height="28"/>
+                </Grid>
+            </GroupBox>
+        </Grid>
+    </Grid>
+</Window>

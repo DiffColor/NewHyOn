@@ -1,0 +1,12 @@
+﻿<Window x:Class="HyOnPlayer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        LocationChanged="Window_LocationChanged"
+        Title="HyOn Player" WindowStyle="None" ResizeMode="NoResize" WindowStartupLocation="Manual" Background="Black" >
+    <Grid x:Name="LayoutGrid" Background="Black">
+        <ScrollViewer x:Name="MainScrollViewer" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Hidden">
+            <Canvas x:Name="DesignerCanvas" SnapsToDevicePixels="True" />
+        </ScrollViewer>
+        <Image x:Name="EmgImg" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Hidden"/>
+    </Grid>
+</Window>

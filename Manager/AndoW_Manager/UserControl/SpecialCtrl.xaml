@@ -1,0 +1,71 @@
+<UserControl x:Class="AndoW_Manager.SpecialCtrl"
+            xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+            xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+            xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+            xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+            xmlns:local="clr-namespace:AndoW_Manager"
+            xmlns:ttools="clr-namespace:TurtleTools"
+            mc:Ignorable="d" 
+            TextElement.Foreground="Black"
+            FontFamily="Malgun Gothic"
+            PreviewMouseDown="UserControl_PreviewMouseDown"
+            MinHeight="42">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/MaterialDesignResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <ttools:VisibilityConverter x:Key="VisibilityConverter"/>
+            <Style x:Key="SpecialCtrlDayToggleButtonStyle" TargetType="{x:Type ToggleButton}" BasedOn="{StaticResource MaterialDesignFlatPrimaryToggleButton}">
+                <Setter Property="Foreground" Value="White"/>
+                <Style.Triggers>
+                    <Trigger Property="IsChecked" Value="False">
+                        <Setter Property="Foreground" Value="#FF9498D0"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+        </ResourceDictionary>
+    </UserControl.Resources>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition />
+            <RowDefinition Height="1" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="40" />
+            <ColumnDefinition Width="*" MinWidth="110" />
+            <ColumnDefinition Width="*" MinWidth="110" />
+            <ColumnDefinition Width="80" />
+            <ColumnDefinition Width="80" />
+            <ColumnDefinition Width="80" />
+            <ColumnDefinition Width="80" />
+            <ColumnDefinition Width="240" />
+            <ColumnDefinition Width="80" />
+        </Grid.ColumnDefinitions>
+
+        <Rectangle Fill="#FFCACADE" Height="10" Width="10" StrokeThickness="0" RadiusX="2" RadiusY="2"/>
+
+        <CheckBox Grid.Column="0"  x:Name="SelectChBox" Checked="SelectChBox_Checked" Unchecked="SelectChBox_Unchecked" HorizontalAlignment="Center"/>
+        <TextBlock Grid.Column="1" x:Name="GroupNameTBlock" Text="" VerticalAlignment="Center" HorizontalAlignment="Center" />
+        <TextBlock Grid.Column="2" x:Name="PlaylistTBlock" Text="" VerticalAlignment="Center" HorizontalAlignment="Center" />
+        <TextBlock Grid.Column="3" x:Name="StartDateTBlock" Text="" VerticalAlignment="Center" HorizontalAlignment="Center" />
+        <TextBlock Grid.Column="4" x:Name="EndDateTBlock" Text="" VerticalAlignment="Center" HorizontalAlignment="Center" />
+        <TextBlock Grid.Column="5" x:Name="StartTimeTBlock" Text="" VerticalAlignment="Center" HorizontalAlignment="Center" />
+        <TextBlock Grid.Column="6" x:Name="EndTimeTBlock" Text="" VerticalAlignment="Center" HorizontalAlignment="Center" />
+        <StackPanel Grid.Column="7" Orientation="Horizontal" HorizontalAlignment="Center" Margin="7,0">
+            <ToggleButton x:Name="MonToggle" Content="월" FontSize="12" Width="24" Height="24" Style="{StaticResource SpecialCtrlDayToggleButtonStyle}" IsChecked="False" />
+            <ToggleButton x:Name="TueToggle" Content="화" FontSize="12" Width="24" Height="24" Style="{StaticResource SpecialCtrlDayToggleButtonStyle}" IsChecked="False" Margin="7,0,0,0"/>
+            <ToggleButton x:Name="WedToggle" Content="수" FontSize="12" Width="24" Height="24" Style="{StaticResource SpecialCtrlDayToggleButtonStyle}" IsChecked="False" Margin="7,0,0,0"/>
+            <ToggleButton x:Name="ThuToggle" Content="목" FontSize="12" Width="24" Height="24" Style="{StaticResource SpecialCtrlDayToggleButtonStyle}" IsChecked="False" Margin="7,0,0,0"/>
+            <ToggleButton x:Name="FriToggle" Content="금" FontSize="12" Width="24" Height="24" Style="{StaticResource SpecialCtrlDayToggleButtonStyle}" IsChecked="False" Margin="7,0,0,0"/>
+            <ToggleButton x:Name="SatToggle" Content="토" FontSize="12" Width="24" Height="24" Style="{StaticResource SpecialCtrlDayToggleButtonStyle}" IsChecked="False" Margin="7,0,0,0"/>
+            <ToggleButton x:Name="SunToggle" Content="일" FontSize="12" Width="24" Height="24" Style="{StaticResource SpecialCtrlDayToggleButtonStyle}" IsChecked="False" Margin="7,0,0,0"/>
+        </StackPanel>
+
+        <Grid Grid.Column="7" IsEnabled="False" Background="#00000000" />
+
+        <Button Grid.Column="8" x:Name="EditBtn" Click="EditBtn_Click" Content="편집" Margin="7,2" Style="{DynamicResource Btn_defaultSW}"/>
+
+        <Rectangle Fill="{DynamicResource Color_line001}" Grid.Row="1" Grid.ColumnSpan="8"/>
+    </Grid>
+</UserControl>

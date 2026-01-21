@@ -1,0 +1,171 @@
+﻿<UserControl
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:dd="clr-namespace:GongSolutions.Wpf.DragDrop;assembly=GongSolutions.Wpf.DragDrop"
+             xmlns:AndoW_Manager="clr-namespace:AndoW_Manager" 
+			 x:Class="AndoW_Manager.Page3" 
+             mc:Ignorable="d" 
+             d:DesignHeight="1080" d:DesignWidth="1920" Background="#FFF4F6FB">
+    <UserControl.Resources>
+    </UserControl.Resources>
+    <Grid x:Name="LayoutGrid">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <Grid x:Name="ContentsListGrid_Copy2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="50"/>
+                <RowDefinition Height="8"/>
+                <RowDefinition/>
+            </Grid.RowDefinitions>
+            <StackPanel Orientation="Horizontal" Visibility="Collapsed">
+                <TextBlock
+					VerticalAlignment="Center" Text="신규 플레이어 이름:" TextWrapping="Wrap" HorizontalAlignment="Left" FontFamily="Malgun Gothic" Foreground="#FFB6B6B6" Margin="192,0,6,0"/>
+                <TextBox x:Name="TextBoxNewPlayerName_Copy" TextWrapping="NoWrap" FontFamily="Malgun Gothic" Background="{DynamicResource color_textBoxFill001}" Style="{DynamicResource TextBoxStyle1}" Foreground="White" Width="215" VerticalAlignment="Center" Height="25" BorderBrush="{DynamicResource color_textBoxFill001}" BorderThickness="0"/>
+                <Button x:Name="BTN0DO_Copy3" Style="{DynamicResource power}" Height="28" VerticalAlignment="Center" Margin="5,0,0,0">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="M1.5768099,10.9948 L1.5768099,19.1484 13.729199,19.1484 13.729199,10.9948 z M0,9.4173004 L15.3047,9.4173004 15.3047,20.7227 0,20.7227 z M17.2005,0 L19.0013,0 19.0013,5.7525603 24.667898,5.7525603 24.667898,7.5533401 19.0013,7.5533401 19.0013,13.3047 17.2005,13.3047 17.2005,7.5533401 11.531299,7.5533401 11.531299,5.7525603 17.2005,5.7525603 z" Fill="{DynamicResource Color_font003}" Height="14" Stretch="Fill" Width="16" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="11,0,5,0"/>
+                        <TextBlock x:Name="TextAngleGrade3" TextWrapping="Wrap" Text="플레이어 추가" Foreground="{DynamicResource Color_font003}" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" Margin="0,0,11,0"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+            <Border Grid.Row="2" Grid.Column="0" BorderThickness="1" Margin="2">
+                <ScrollViewer x:Name="PlayerListScrollViewer" Style="{StaticResource ModernScrollViewer}" Background="#FF252525" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                    <ListBox x:Name="PlayerListBox" Background="Transparent" Margin="40,3,40,40" HorizontalAlignment="Center"
+								LayoutUpdated="PlayerListBox_LayoutUpdated" Drop="PlayerListBox_Drop" BorderThickness="0"
+								SelectionMode="Extended" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+								dd:DragDrop.IsDragSource="True" dd:DragDrop.IsDropTarget="True" dd:DragDrop.UseDefaultEffectDataTemplate="True" >
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.Resources>
+                            <Style TargetType="{x:Type ListBoxItem}">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                                            <Border x:Name="Bd"
+													BorderBrush="{TemplateBinding BorderBrush}"
+													BorderThickness="{TemplateBinding BorderThickness}"
+													Background="{TemplateBinding Background}"
+													SnapsToDevicePixels="true">
+                                                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+																SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"
+																VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <MultiTrigger>
+                                                    <MultiTrigger.Conditions>
+                                                        <Condition Property="Selector.IsSelectionActive" Value="False" />
+                                                        <Condition Property="IsSelected" Value="True" />
+                                                    </MultiTrigger.Conditions>
+                                                    <Setter Property="Background" TargetName="Bd" Value="Transparent" />
+                                                    <Setter Property="BorderBrush" TargetName="Bd" Value="#26A0DA" />
+                                                    <!--<Setter Property="BorderThickness" TargetName="Bd" Value="2" />-->
+                                                </MultiTrigger>
+                                                <MultiTrigger>
+                                                    <MultiTrigger.Conditions>
+                                                        <Condition Property="Selector.IsSelectionActive" Value="True" />
+                                                        <Condition Property="IsSelected" Value="True" />
+                                                    </MultiTrigger.Conditions>
+                                                    <Setter Property="Background" TargetName="Bd" Value="Transparent" />
+                                                    <Setter Property="BorderBrush" TargetName="Bd" Value="#26A0DA" />
+                                                    <!--<Setter Property="BorderThickness" TargetName="Bd" Value="2" />-->
+                                                </MultiTrigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Setter Property="Margin" Value="7"/>
+                            </Style>
+                        </ListBox.Resources>
+                    </ListBox>
+                </ScrollViewer>
+            </Border>
+            <StackPanel Orientation="Horizontal" Margin="0,0,50,0" HorizontalAlignment="Right" Grid.Column="0" VerticalAlignment="Bottom">
+                <Button x:Name="BTN0DO_Copy9" Visibility="Collapsed" Style="{DynamicResource Btn_defaultSW}" Width="110" Height="30" Margin="0,2.5">
+                    <TextBlock x:Name="TextAngleGrade10" TextWrapping="Wrap" Foreground="#FFFFAE21" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" Text="처음페이지"/>
+                </Button>
+                <Button x:Name="BTN0DO_Copy8" Visibility="Collapsed" Style="{DynamicResource Btn_defaultSW}" Width="110" Height="30" Margin="0,2.5">
+                    <TextBlock x:Name="TextAngleGrade9" TextWrapping="Wrap" Foreground="#FFEBFF21" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" Text="다음페이지"/>
+                </Button>
+                <Button x:Name="BTN0DO_Copy1" Style="{DynamicResource Btn_defaultSW}" Width="130" Height="30" Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="M14.8528,14.890699 L23.931,16.290499 21.5351,18.684999 26.4232,23.573 23.558599,26.4377 18.6706,21.5495 16.2514,23.9688 z M11.57162,14.8686 L10.173217,23.9454 7.7773533,21.5495 2.8894053,26.4377 0.024719238,23.573 4.9126682,18.684999 2.493474,16.2658 z M23.535103,0 L26.398401,2.8659098 21.510402,7.7540894 23.931002,10.171899 14.852801,11.569099 16.251401,2.4922798 18.647101,4.8880296 z M2.8645601,0 L7.7539101,4.8880301 10.1732,2.4688401 11.5703,11.5483 2.4921904,10.148601 4.8867207,7.7514 0,2.8633699 z" Fill="White" Height="12" Stretch="Fill" Width="12" Margin="0,0,6,0"/>
+                        <TextBlock x:Name="TextAngleGrade2" TextWrapping="Wrap" Text="플레이어 접기" Foreground="#FFA6A6A6" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="BTN0DO_Copy2" Style="{DynamicResource Btn_defaultSW}" Width="130" Height="30" Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="M17.7267,14.886601 L22.614699,19.7734 25.0327,17.355499 26.429699,26.429699 17.354199,25.032499 19.75,22.636601 14.8633,17.75 z M8.67975,14.8633 L11.5443,17.726574 6.65625,22.613232 9.0756197,25.033711 0,26.4296 1.39853,17.355478 3.7917204,19.749958 z M26.4298,0.001281932 L25.030087,9.0767958 22.636867,6.6810491 17.750025,11.569081 14.8855,8.7031757 19.772242,3.8164036 17.354222,1.3972177 z M0,0 L9.0756197,1.39722 6.6810894,3.7928802 11.5677,8.68106 8.7032199,11.5443 3.8151894,6.65753 1.3971901,9.0768101 z" Fill="White" Height="12" Stretch="Fill" Width="12" Margin="0,0,6,0"/>
+                        <TextBlock x:Name="TextAngleGrade4" TextWrapping="Wrap" Text="플레이어 펼치기" Foreground="#FFA6A6A6" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="BTN0DO_Copy" Style="{DynamicResource Btn_defaultSW}" Width="170" Height="30"  Margin="7,0,0,3">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="M6.6016202,10.72 L20.980419,10.72 20.980419,12.12173 6.6016202,12.12173 z M6.6016202,7.5618299 L20.980419,7.5618299 20.980419,8.9641103 6.6016202,8.9641103 z M6.888,4.5194696 L6.888,6.8879994 4.48175,6.8879994 4.48175,17.693998 23.076799,17.693998 23.076799,4.5194696 15.9531,4.5194696 z M0,0 L6.888,0 6.888,2.9446398 15.9531,2.9446398 24.6511,2.9446398 24.6511,19.269499 2.90747,19.269499 2.90747,6.8879994 0,6.8879994 z" Fill="#FF3F51B5" Height="16" Stretch="Fill" Width="19" Margin="0,0,6,2"/>
+                        <TextBlock x:Name="TextAngleGrade1" TextWrapping="Wrap" FontSize="12" Text="플레이어정보 관리" Foreground="#FF3F51B5" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="EditPListBtn" Click="EditPListBtn_Click" Style="{DynamicResource Btn_defaultSW}" Width="170" Height="30" Margin="7,0,0,3">
+                    <TextBlock TextWrapping="Wrap" Text="플레이리스트 관리" Foreground="#FF3F51B5" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" FontSize="12"/>
+                </Button>
+                <Button x:Name="BatchUpdateBtn" Click="BatchUpdateBtn_Click" Style="{DynamicResource Btn_defaultSW}" Width="170" Height="30" Margin="7,0,0,3" Visibility="Collapsed">
+                    <TextBlock TextWrapping="Wrap" Text="화면구성 일괄업데이트" Foreground="#FF3F51B5" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" FontSize="12"/>
+                </Button>
+                <Button x:Name="BatchUpgradeBtn" Click="BatchUpgradeBtn_Click" Style="{DynamicResource Btn_defaultSW}" Width="170" Height="30" Margin="7,0,0,3">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="F1M1,9.602L7.944,9.602C8.497,9.602 8.944,10.049 8.944,10.602 8.944,11.154 8.497,11.602 7.944,11.602L1,11.602C0.447,11.602 0,11.154 0,10.602 0,10.049 0.447,9.602 1,9.602z M4.483,0L8.653,4.193C9.043,4.584 9.041,5.218 8.649,5.607 8.454,5.801 8.199,5.898 7.944,5.898 7.688,5.898 7.431,5.8 7.235,5.603L5.472,3.83 5.472,7.602C5.472,8.154 5.024,8.602 4.472,8.602 3.919,8.602 3.472,8.154 3.472,7.602L3.472,3.84 1.707,5.605C1.316,5.996 0.684,5.996 0.293,5.605 -0.098,5.215 -0.098,4.582 0.293,4.191z" Fill="#FF5F6FC5" Height="12" Stretch="Fill" StrokeThickness="0" UseLayoutRounding="False" Width="9" Margin="0,0,5,0"/>
+                        <TextBlock TextWrapping="Wrap" Text="플레이어 업그레이드" Foreground="#FF3F51B5" FontFamily="Malgun Gothic" FontSize="12"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="UpdateThrottleSettingsBtn" Click="UpdateThrottleSettingsBtn_Click" Style="{DynamicResource Btn_defaultSW}" Width="170" Height="30" Margin="7,0,0,3">
+                    <TextBlock TextWrapping="Wrap" Text="다운로드 제한 설정" Foreground="#FF3F51B5" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" FontSize="12"/>
+                </Button>
+                <Button x:Name="GroupCommandBtn" Style="{DynamicResource Btn_defaultSW}" Height="30" IsEnabled="False" Width="170" Margin="7,0,0,3">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="M16.953,2.543C16.953,2.774,16.837,3.005,16.607,3.236Q8.765,11.211 8.765,11.211 7.265,12.714 7.265,12.714C7.035,12.83 6.804,12.945 6.458,12.945 6.227,12.945 5.997,12.83 5.766,12.714Q4.267,11.211 4.267,11.211 0.346,7.166 0.346,7.166C0.115,7.05 0,6.819 0,6.473 0,6.126 0.115,5.895 0.346,5.779Q1.845,4.277,1.845,4.277C2.076,4.045 2.306,3.93 2.537,3.93 2.883,3.93 3.114,4.045 3.344,4.277Q6.458,7.513 6.458,7.513 13.723,0.231 13.723,0.231C13.839,0.116 14.069,0 14.415,0 14.646,0 14.992,0.116 15.107,0.231Q16.607,1.734,16.607,1.734C16.837,1.965,16.953,2.196,16.953,2.543z" Fill="#FF5F6FC5" Height="11" Stretch="Fill" Stroke="Black" StrokeThickness="0" UseLayoutRounding="False" Width="14" Margin="0,0,4,0"/>
+                        <TextBlock Text="일괄 명령 실행" Foreground="#FF3F51B5"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+
+        <!-- 그룹 관리 영역 -->
+        <Grid x:Name="GroupManagementGrid" Width="220" Background="#FFDEE4EF" Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="70"/>
+                <RowDefinition/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- 구분선 추가 -->
+
+            <!-- 헤더 배경 강화 -->
+
+            <!-- 그룹 스크롤뷰 테두리 강화 -->
+            <Border x:Name="GroupScrollBorder" Grid.Row="1" BorderThickness="0,0,0,1" Margin="0,8,0,0">
+                <ScrollViewer x:Name="GroupScrollViewer" Style="{StaticResource ModernScrollViewer}" Background="White" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="GroupButtonsPanel" Margin="10,5,10,20">
+                        <!-- 그룹 버튼들이 동적으로 추가됩니다 -->
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <StackPanel Margin="15,5,15,0" VerticalAlignment="Bottom">
+                <Button x:Name="AddGroupBtn" Style="{DynamicResource ButtonStyle2}" Height="34">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="M8,16 C12.4183,16 16,12.4183 16,8 C16,3.58172 12.4183,0 8,0 C3.58172,0 0,3.58172 0,8 C0,12.4183 3.58172,16 8,16 z M4,8 L12,8 M8,4 L8,12" Stroke="White" StrokeThickness="1.5" Height="15" Width="15" Stretch="Uniform" Margin="0,0,8,0"/>
+                        <TextBlock Text="새 그룹 추가" Foreground="White" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

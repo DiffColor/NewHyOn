@@ -1,0 +1,10 @@
+﻿<UserControl x:Class="TurtleMediaControl.TransImageControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" 
+             SizeChanged="TransitionImage_SizeChanged"
+             Unloaded="TransitionImage_Unloaded">
+    <Grid x:Name="RootGrid" Background="Black">
+        <Image x:Name="oldChild" Opacity="1" Stretch="Fill" />
+        <Image x:Name="currentChild" Stretch="Fill" />
+    </Grid>
+</UserControl>

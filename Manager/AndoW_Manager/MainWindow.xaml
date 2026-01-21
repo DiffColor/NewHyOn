@@ -1,0 +1,314 @@
+﻿<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" 
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:Microsoft_Windows_Themes="clr-namespace:Microsoft.Windows.Themes;assembly=PresentationFramework.Aero"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        xmlns:ee="http://schemas.microsoft.com/expression/2010/effects"     
+        xmlns:mk ="clr-namespace:AndoW_Manager"
+        xmlns:WpfPageTransitions="clr-namespace:WpfPageTransitions"	
+	    x:Class="AndoW_Manager.MainWindow"
+	    x:Name="Window"    
+	    Title="NEW HYON"
+        Closed="Window_Closed"
+	    mc:Ignorable="d" MinWidth="1280" MinHeight="720" 
+        WindowStartupLocation="CenterScreen" WindowStyle="None" BorderThickness="1" BorderBrush="Black" ResizeMode="CanMinimize" Background="{x:Null}" WindowState="Normal" ShowInTaskbar="True">
+    <Window.Resources>
+        <Style x:Key="Btn_default2" TargetType="{x:Type Button}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Grid>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualStateGroup.Transitions>
+                                        <VisualTransition From="Pressed" GeneratedDuration="0:0:0.3"/>
+                                    </VisualStateGroup.Transitions>
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="MouseOver">
+                                        <Storyboard>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[1].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0:0:0.2" Value="#FF08193B"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[0].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0:0:0.2" Value="#FF00071A"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[2].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0:0:0.2" Value="#FF051A45"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <Storyboard>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[2].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0" Value="#FF000E1B"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[0].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0" Value="#FF000914"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[1].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0" Value="#FF000D35"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Stroke).(GradientBrush.GradientStops)[0].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0" Value="#68000000"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Stroke).(GradientBrush.GradientStops)[1].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0" Value="#19000000"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled"/>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <Rectangle x:Name="rectangle" RadiusY="4" RadiusX="4">
+                                <Rectangle.Fill>
+                                    <LinearGradientBrush EndPoint="0.5,1" StartPoint="0.5,0">
+                                        <GradientStop Color="#FF0C0C0C" Offset="0.667"/>
+                                        <GradientStop Color="#FF252525"/>
+                                        <GradientStop Color="#FF121212" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Rectangle.Fill>
+                                <Rectangle.Stroke>
+                                    <LinearGradientBrush EndPoint="0.5,1" StartPoint="0.5,0">
+                                        <GradientStop Color="#59000000" Offset="0"/>
+                                        <GradientStop Color="#19FFFFFF" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Rectangle.Stroke>
+                            </Rectangle>
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True"/>
+                            <Trigger Property="IsDefaulted" Value="True"/>
+                            <Trigger Property="IsMouseOver" Value="True"/>
+                            <Trigger Property="IsPressed" Value="True"/>
+                            <Trigger Property="IsEnabled" Value="False"/>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="Btn_default3" TargetType="{x:Type Button}">
+            <!--<Setter Property="FocusVisualStyle" Value="{StaticResource ButtonFocusVisual}"/>
+			<Setter Property="Background" Value="{StaticResource ButtonNormalBackground}"/>
+			<Setter Property="BorderBrush" Value="{StaticResource ButtonNormalBorder}"/>-->
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Grid>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualStateGroup.Transitions>
+                                        <VisualTransition GeneratedDuration="0:0:0.05" To="MouseOver">
+                                            <Storyboard/>
+                                        </VisualTransition>
+                                        <VisualTransition From="MouseOver" GeneratedDuration="0:0:0.05"/>
+                                    </VisualStateGroup.Transitions>
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="MouseOver"/>
+                                    <VisualState x:Name="Pressed"/>
+                                    <VisualState x:Name="Disabled"/>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <Rectangle x:Name="rectangle" RadiusY="2" RadiusX="2" Stroke="#62000000" Fill="#19FFFFFF" StrokeThickness="0"/>
+                            <ContentPresenter HorizontalAlignment="Center" RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" VerticalAlignment="Center" OpacityMask="Black"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="true"/>
+                            <Trigger Property="ToggleButton.IsChecked" Value="true"/>
+                            <Trigger Property="IsEnabled" Value="false">
+                                <Setter Property="Foreground" Value="#ADADAD"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="Btn_defaultSW_Local" TargetType="{x:Type Button}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Grid>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualStateGroup.Transitions>
+                                        <VisualTransition From="Pressed" GeneratedDuration="0:0:0.3"/>
+                                    </VisualStateGroup.Transitions>
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="MouseOver">
+                                        <Storyboard>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[1].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0:0:0.2" Value="#FF08193B"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[0].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0:0:0.2" Value="#FF00071A"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[2].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0:0:0.2" Value="#FF051A45"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <Storyboard>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[2].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0" Value="#FF000E1B"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[0].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0" Value="#FF000914"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Fill).(GradientBrush.GradientStops)[1].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0" Value="#FF000D35"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Stroke).(GradientBrush.GradientStops)[0].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0" Value="#68000000"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Shape.Stroke).(GradientBrush.GradientStops)[1].(GradientStop.Color)" Storyboard.TargetName="rectangle">
+                                                <EasingColorKeyFrame KeyTime="0" Value="#19000000"/>
+                                            </ColorAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled"/>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <Rectangle x:Name="rectangle" RadiusY="0" RadiusX="0">
+                                <Rectangle.Fill>
+                                    <LinearGradientBrush EndPoint="0.5,1" StartPoint="0.5,0">
+                                        <GradientStop Color="#FF0C0C0C" Offset="0.667"/>
+                                        <GradientStop Color="#FF252525"/>
+                                        <GradientStop Color="#FF121212" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Rectangle.Fill>
+                                <Rectangle.Stroke>
+                                    <LinearGradientBrush EndPoint="0.5,1" StartPoint="0.5,0">
+                                        <GradientStop Color="#59000000" Offset="0"/>
+                                        <GradientStop Color="#19FFFFFF" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Rectangle.Stroke>
+                            </Rectangle>
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True"/>
+                            <Trigger Property="IsDefaulted" Value="True"/>
+                            <Trigger Property="IsMouseOver" Value="True"/>
+                            <Trigger Property="IsPressed" Value="True"/>
+                            <Trigger Property="IsEnabled" Value="False"/>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <Grid x:Name="LayoutRoot">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="30"/>
+            <RowDefinition/>
+        </Grid.RowDefinitions>
+        <Rectangle Grid.Row="1" Stroke="Black" StrokeThickness="0"/>
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="90"/>
+                <ColumnDefinition/>
+            </Grid.ColumnDefinitions>
+            <Grid>
+                <Grid.Background>
+                    <LinearGradientBrush EndPoint="0.5,1" StartPoint="0.5,0">
+                        <GradientStop Color="#FF090D3E" Offset="0.41"/>
+                        <GradientStop Color="#FF232A7A" Offset="1"/>
+                        <GradientStop Color="#FF040625" Offset="0"/>
+                    </LinearGradientBrush>
+                </Grid.Background>
+                <StackPanel>
+                    <mk:FlatButton1 x:Name="LeftMenuBTN1" Height="110" />
+                    <mk:FlatButton1 x:Name="LeftMenuBTN2" Height="110" Visibility="Collapsed"/>
+                    <mk:FlatButton1 x:Name="LeftMenuBTN4" Height="110" />
+                    <mk:FlatButton1 x:Name="LeftMenuBTN3" Height="110" />
+                </StackPanel>
+                <Path x:Name="logo" Data="M93.047406,163.22366 C92.90009,163.21967 92.750981,163.22061 92.600484,163.22652 91.26299,163.27992 90.296788,164.10602 90.055295,165.48753 89.910092,166.31113 89.908193,167.34574 90.083295,168.13725 90.331288,169.26235 90.933492,169.51176 91.759694,169.65356 93.186086,169.90035 95.129483,169.71606 95.93749,169.26235 97.043576,168.64065 97.062482,167.36584 97.062482,166.50974 97.062482,164.44788 95.257131,163.28331 93.047406,163.22366 z M92.785085,152.49265 C91.487592,152.49265 90.870992,152.62365 90.576093,152.76225 89.507092,153.27266 89.505094,154.14636 89.505094,155.78178 89.505094,157.40868 90.001889,157.99609 90.438092,158.28959 90.920491,158.60989 92.521382,158.78109 94.601483,158.03439 95.499288,157.71409 96.051984,157.16068 96.07739,155.58978 96.112584,153.65416 95.407483,152.49265 92.785085,152.49265 z M92.197438,147.73209 C93.996518,147.70197 95.980817,147.89239 97.58328,148.56623 98.908177,149.12423 100.19067,150.22904 100.66917,151.13855 101.45498,152.62365 101.74077,153.99197 101.66858,155.54288 101.58387,157.44718 100.60477,158.81429 98.808484,159.94839 98.287679,160.2747 98.674382,160.5474 99.165982,160.6483 100.18158,160.8554 101.57158,161.44531 102.58517,162.67181 104.80457,165.35993 104.90427,171.32547 100.90487,173.56048 98.792279,174.74208 96.189977,175.01759&#xA;93.099584,175.01759 90.248593,175.01759 88.231702,174.93158 86.5332,173.91348 85.779897,173.45888 84.940694,172.53117 84.576802,171.61847 84.0351,170.26305 83.764905,168.26694 83.764905,165.33643 83.764905,165.33643 83.251203,155.28767 83.764905,151.99265 83.9082,151.08515 83.901006,149.72184 86.023396,148.87164 87.524701,148.26993 89.370992,147.86113 91.439389,147.75773 91.687192,147.74519 91.940427,147.73639 92.197438,147.73209 z M73.633435,146.17183 C72.957635,146.13723 72.799436,146.62553 72.328137,148.21673 72.328137,148.21673 71.777936,150.11583 71.718736,150.43353 71.559236,151.29293 71.413335,152.35994 71.904935,152.81043 72.238236,153.11264 72.595037,153.26364 73.022134,153.29624 73.682935,153.34304 74.192636,153.23104 74.625035,152.69984 74.866532,152.41013 74.867833,151.61914 74.803334,150.95834 74.656232,149.45834 74.625035,149.05203 74.185536,147.33063 74.104138,147.01693 73.964135,146.19073&#xA;73.633435,146.17183 z M73.828057,141.5858 C73.889001,141.58682 73.94745,141.58957 74.003236,141.59363 75.055936,141.67383 76.095735,141.87303 77.168633,144.02663 77.891934,145.47263 78.751233,148.48373 79.189435,150.37173 L80.386037,155.53904 C81.044538,158.36714 81.662732,161.09055 81.365232,162.59824 81.166028,163.59115 80.302739,163.91985 79.723332,163.87555 78.873033,163.81315 77.965436,163.47785 77.328736,162.76365 76.877534,162.25785 76.590432,161.47855 76.447232,160.82944 76.305337,160.19195 76.066438,159.07745 75.561837,158.50314 74.824235,157.66734 73.664735,157.47784 72.643235,157.40034 71.472634,157.31435 70.467439,157.85995 69.635434,158.65944 69.243436,159.03315 68.791039,159.77665&#xA;68.595738,160.24545 68.008435,161.62625 67.682935,162.57155 66.750039,162.80845 66.240239,162.93555 65.527936,162.93034 65.07874,162.78774 64.629537,162.64584 64.045938,162.15945 63.946637,161.41275 63.750035,159.93425 64.226537,157.55145 65.238935,154.51364 65.785138,152.87504 68.544236,146.10993 69.952435,144.08593 71.438092,141.94355 72.913903,141.5705 73.828057,141.5858 z M53.141217,140.26875 C53.927011,140.26875 55.08331,140.68736 55.65941,141.96986 56.474603,143.76546 56.350804,146.98748 56.380803,149.39898 L56.285104,153.00311 C56.285104,154.34821 56.561105,158.61512 56.844304,160.06113 57.173802,161.69983 57.959596,162.97464 59.402894,163.99674 60.447888,164.73754 63.356072,164.89774 65.210866,164.71354 66.732965,164.55984 67.848256,164.51554 68.693257,164.92244 69.83455,165.46944 70.574147,166.44195 70.540948,167.91735 70.51555,169.12436 68.864457,170.06836 66.464765,170.40626 64.751172,170.64646 63.089078,170.75846 60.204988,170.75846 58.025998,170.75846 54.38931,170.16596&#xA;52.780519,168.87756 50.539025,167.08266 49.285832,164.63724 48.945333,158.52592 48.776032,155.51881 48.902932,152.7531 49.188134,149.19778 49.436833,146.09177 49.795232,143.76947 50.596326,141.96986 51.181626,140.65416 52.344319,140.26875 53.141217,140.26875 z M68.626939,118.72246 C67.498639,118.72246 67.13474,119.01606 66.85674,119.27387 66.354142,119.73287 66.298841,120.50947 66.289742,121.63587 66.278642,123.19377 66.53254,124.33177 67.433938,124.53098 68.66924,124.80577 70.09184,124.54268 70.848336,123.71267 71.283235,123.23607 71.339837,122.68137 71.288335,121.56417 71.205735,119.69717 70.771436,118.72246 68.626939,118.72246 z M92.076077,118.02257 C92.779271,118.02257 93.809773,118.39947 94.329373,119.54337 95.053975,121.14888 95.116475,124.63129 95.144475,126.7889 L95.144475,131.34031 C95.144475,132.54342 95.131474,134.42233 95.387273,135.71393 95.67957,137.17824 96.382764,138.31564 97.671163,139.23154 98.607961,139.89575 101.14446,139.87225 102.00386,139.87225 103.19455,139.87225 104.07085,139.87225 104.82545,140.23355 105.84495,140.72255 106.27205,141.49335 106.09885,142.84426 105.96605,143.91066 104.61905,144.75307 103.12426,144.96017 101.59176,145.17377 100.06955,145.28057 97.494664,145.28057 95.543569,145.28057 93.189969,144.74667&#xA;91.754476,143.59426 89.749982,141.98746 89.006482,139.32344 89.006482,136.51744 L89.006482,126.7889 C89.006482,124.00369 89.087178,121.15338 89.801381,119.54337 90.321881,118.36947 91.365781,118.02257 92.076077,118.02257 z M68.104138,115.23486 C71.161435,115.23486 73.303334,115.69646 74.774034,116.88256 76.027333,117.86306 76.701131,119.30306 76.701131,121.19717 76.701131,123.46977 75.790334,124.46798 74.604833,125.68267 74.172536,126.12487 74.312535,126.64628 74.472634,127.24198 74.695333,128.05968 75.154931,129.11838 75.786435,130.81889 76.542932,132.86899 77.014333,133.77059 77.159432,134.78099 77.277329,135.5929 76.684529,136.28959 75.733033,136.4549 74.562531,136.65929 73.940736,136.41849&#xA;73.117833,135.92759 72.527337,135.57209 72.230435,135.13649 71.798135,134.03099 71.555337,133.41719 71.437535,132.69769 71.093034,131.20168 70.796834,129.90158 70.397737,128.81818 69.863938,128.32008 69.326138,127.82278 68.908837,127.74918 67.892541,127.89048 67.500638,127.89048 66.755143,128.24918 66.64124,129.06748 66.499341,130.12868 66.517842,130.87489 66.517842,131.94769 66.517842,133.42099 66.473943,135.02709 65.443341,135.77329 64.979142,136.10529&#xA;64.292943,136.28959 63.865842,136.28959 63.365243,136.28959 62.888646,135.8117 62.689446,135.14169 62.264344,133.72319 62.096944,132.40998 61.914742,129.49458 61.776643,127.27518 61.331346,121.38007 61.986943,117.97246 62.174443,117.00046 62.890645,116.22766 64.040341,115.71796 65.056645,115.27056 66.47004,115.23486 68.104138,115.23486 z M104.739,115.23335 C105.18063,115.23578 105.59555,115.24655 105.93867,115.24655 107.05398,115.24655 109.13208,115.42435 109.99148,115.55515 111.44328,115.78045 111.87618,116.46135 111.87618,117.17886 111.87618,117.62606 111.80788,118.26606 111.08069,118.68336 110.33388,119.11377 109.54808,119.09027 108.27987,119.09027 107.45308,119.09027 106.37497,119.13397 105.73237,119.36567 104.66327,119.75047 104.10537,120.31027 103.96187,121.13778 103.89766,121.51738 103.91787,122.20168&#xA;104.19787,122.55378 104.53247,122.98088 105.01297,123.30058 105.62357,123.34808 106.21477,123.39228 106.95828,123.36948 107.63207,123.36948 108.28318,123.36948 109.29358,123.40158 109.84238,123.50569 111.30008,123.77519 111.99408,125.39569 110.68868,126.2557 109.91008,126.7706 108.22847,127.106 106.75778,127.227 105.97718,127.2896 105.02397,127.46141 104.54747,127.94131 103.93287,128.55311 103.71737,129.18071 103.87747,130.00702 103.98427,130.57862&#xA;104.42047,131.18612 104.90817,131.48222 105.82607,132.04613 106.74278,131.98943 108.07348,132.05453 109.10048,132.10143 110.47908,132.06372 111.22847,132.29213 112.41728,132.65283 112.48498,133.17173 112.45758,133.75504 112.43158,134.42234 112.08198,135.01744 111.29387,135.29684 110.30978,135.64894 109.38208,135.88015 107.06897,136.00504 105.05717,136.11774 103.61057,135.95494 102.20827,135.43274 100.89576,134.94454 100.04546,133.90673 99.682866,132.54683&#xA;99.342366,131.25112 99.195264,128.77131 99.195264,127.1085 L99.195264,124.03049 C99.195264,122.97178 99.274663,120.40277 99.487569,119.21457 99.822865,117.33576 100.40096,116.38775 101.58257,115.69645 102.21288,115.3302 103.28035,115.24602 104.29015,115.23439 104.44162,115.23264 104.59179,115.23253 104.739,115.23335 z M82.240804,108.60523 C85.498586,108.60523 88.292279,108.73673 89.803266,109.37014 90.609265,109.71074 90.865163,110.34164 90.947865,111.07075 90.988461,111.41775 90.870961,112.05515 90.254468,112.52255 89.709569,112.93135 88.450475,113.11495 87.657475,113.16575 86.348882,113.25246 85.667882,113.45936 85.191388,114.48806 84.464093,116.05257 84.72189,117.39438 84.72189,120.30519 L84.935483,126.13652 C84.953687,128.54863 84.757092,129.72254 84.178998,130.47184 83.604795,131.21274 81.887303,131.46735 80.831311,130.74784 80.034413,130.20624 79.625615,128.90743 79.641912,126.16332 L79.669911,121.8312 C79.669911,118.53298 79.677014,115.43927 78.738217,113.94246 78.305917,113.25046 77.159425,113.12145 76.634725,113.06555 75.968732,112.99775 75.022733,112.95485 74.448541,112.68265 73.680943,112.31815 73.520841,111.93925 73.484342,111.07075 73.467443,110.69504 73.70704,109.92944 74.37304,109.56884 75.735032,108.83623 78.677716,108.60523 82.240804,108.60523 z M57.148427,105.97441 C57.856721,105.98281 58.733018,106.41251 59.18942,107.46132 59.728513,108.70353 59.688115,110.04013 59.702416,112.10205 59.733716,116.15277 59.680314,121.86381 58.469319,125.76944 57.324826,129.44656 55.123631,130.59037 50.02345,130.56107 48.310555,130.55207 46.372363,130.31177 45.012364,129.62816 42.369176,128.29995 41.40298,125.98554 41.027383,120.59221 L40.931682,116.25298 C40.931682,114.10206 40.863982,111.56294 41.027383,109.50633 41.187579,107.55892 42.634175,107.10061 43.403672,107.15602 44.423169,107.23342 45.124366,107.56552 45.522168,108.90333 45.840463,109.97174 46.026063,112.05125 46.11266,113.62866 46.317063,117.27918 46.349963,121.68931 46.589162,123.43412 46.657561,123.92892 46.78836,125.29863 48.218053,125.92694 49.333352,126.41264 50.480447,126.29934 51.470044,126.04474 54.063733,125.39053 54.330735,123.38722&#xA;54.330735,119.3749 L54.330735,114.73677 C54.330735,111.42365 54.275334,109.13843 54.774034,107.34932 54.983731,106.59281 55.962827,105.95871 57.148427,105.97441 z M47.555955,87.93846 C49.697953,87.914352 51.126248,88.381792 51.84575,90.077134 52.096345,90.662469 52.268846,92.070612 52.317044,92.686454 52.550744,95.54328 50.841149,97.552493 49.108754,97.791413 48.162755,97.923575 46.488259,98.047174 44.658862,98.073277 44.088565,98.079875 39.980474,98.118276 39.110078,98.349278 37.755179,98.704776 37.00458,99.398078 36.860681,100.59158 36.811181,101.02118 36.735681,103.59729 36.735681,104.29669 L36.540383,123.36043 C36.540381,125.09684 36.571681,127.49134 36.087884,128.85654 35.220786,131.27775 33.399091,132.12285 31.692695,132.12285 29.973998,132.12285 28.405602,131.37665 27.546002,128.92495 27.069705,127.56815 26.841206,125.07273 26.841207,123.36043 L26.841207,106.03039 C26.841206,104.75039 26.927805,102.36689 26.666705,101.23209 26.228607,99.320678 25.928407,98.868278 24.732489,97.964474 23.955782,97.377294 21.960337,97.270483 21.03651,97.270482 17.841207,97.270483 15.227933,95.430089 15.227931,93.183954 15.227933,92.228872 15.619869,90.955409 16.805408,90.217156 18.414145,89.222335 21.212629,88.923545 23.98118,88.807665 29.754599,88.569933 36.729882,88.18007 41.505868,88.030868 42.464868,87.998337 46.683259,87.948197&#xA;47.555955,87.93846 z M182.98982,47.272083 L184.95483,47.272083 186.02083,50.557884 C186.31483,51.516186 186.56883,52.488182 186.77583,53.397083 L186.81282,53.397083 C187.02882,52.512985 187.30682,51.505085 187.62382,50.547382 L188.75383,47.272083 190.69381,47.272083 191.16482,55.447186 189.71083,55.447186 189.55282,52.111282 C189.50282,51.057285 189.44383,49.782383 189.45683,48.678284 L189.41983,48.678284 C189.15283,49.673782 188.81282,50.777885 188.44882,51.809086 L187.24882,55.349583 186.10783,55.349583 185.01782,51.856785 C184.69882,50.813084 184.40883,49.697784 184.18983,48.678284 L184.16583,48.678284 C184.13083,49.745384 184.08082,51.044884 184.01982,52.160683 L183.83983,55.447186 182.44482,55.447186 z M175.55383,47.272083 L181.72683,47.272083 181.72683,48.521385 179.37483,48.521385 179.37483,55.447186 177.88383,55.447186 177.88383,48.521385 175.55383,48.521385 z M146.52298,0.0024795532 C147.68084,0.1129837 148.88278,3.8963165 147.97685,8.0037766 146.86085,13.061783 149.24684,15.316383 144.63286,21.126785 140.01785,26.936684 135.59086,30.908783 135.26786,33.484985 134.29786,41.233585 116.70586,56.980385 112.35987,60.099585 121.56286,54.898983 132.76686,46.098183 136.08886,42.448483 146.67384,46.522682 157.34485,52.719883 167.45984,61.822184 171.64483,65.590485 180.57483,64.195284 180.57483,64.195284 180.57483,64.195284 181.41383,64.753084&#xA;180.57483,65.867785 179.93783,66.721285 177.83484,69.686684 176.87584,71.041687 180.01182,72.859284 184.02383,75.401685 188.53082,79.061786 197.92881,86.687385 214.62681,108.54708 215.84181,112.13508 217.05981,115.72309 215.70581,119.69708 215.70581,119.69709 215.70581,119.69708 215.43881,121.35408 213.5738,120.40808 211.70781,119.46708 211.48381,116.26208 207.15281,115.62209 202.82382,114.98009 189.56382,108.60509 180.94482,104.24309 174.52884,100.99308&#xA;167.96583,95.573485 162.76783,93.281786 162.33185,93.613885 161.89483,93.936685 161.45685,94.257086 165.43184,102.87208 169.95384,117.77409 170.02183,120.42609 170.09683,123.49409 168.55484,126.64909 168.55484,126.64909 168.55484,126.64909 168.09283,127.99208 167.14483,127.04708 166.19383,126.10109 165.72784,123.06709 163.23884,122.15409 160.74884,121.23809 152.62684,117.17009 148.23785,112.80508 146.12285,110.69708 143.11785,109.34608 140.18985,108.50808&#xA;149.69584,105.11509 157.56685,97.623685 157.56685,97.623686 127.50686,115.16709 85.614583,106.09608 66.309896,91.594285 60.149796,86.965385 54.186902,80.600884 50.879304,76.346984 47.570405,72.094284 49.304105,67.682884 49.304105,67.682884 49.304105,67.682884 45.205806,73.825384 25.044618,71.934185 4.8829002,70.046185 0.00918293,50.628185 8.9645386E-05,49.281784 -0.02206707,45.162083 4.067771,39.088482 17.281924,37.850883 21.95322,37.414585 27.606817,37.122982&#xA;35.460313,40.820183 30.949315,37.738884 26.729218,36.103382 23.037219,35.749184 19.871821,23.947784 26.808017,10.139984 29.644616,7.9165802 31.144615,6.7427216 29.944116,10.620285 37.962911,17.913383 47.231805,26.342384 55.197301,45.818283 55.197301,45.818283 58.191499,43.077385 67.259793,38.277885 84.517583,36.628883 87.044286,34.118484 89.019582,31.930885 89.867879,30.466682 93.339177,24.507084 113.31487,20.682884 115.68387,19.407486 118.05687,18.13208&#xA;144.49084,2.7205734 145.75485,0.5539093 145.99092,0.14706421 146.25576,-0.023025513 146.52298,0.0024795532 z" Fill="White" Stretch="Uniform" VerticalAlignment="Bottom" Height="29" Margin="0,0,0,25" />
+            </Grid>
+            <WpfPageTransitions:PageTransition Grid.Column="1" x:Name="PageTransition1" Background="#FFF4F6FB"/>
+            <Button x:Name="BTN0DO_Copy1" Visibility="Collapsed" Style="{DynamicResource Btn_defaultSW}" Height="28" Width="108" Margin="0,6.5,0,0" VerticalAlignment="Top">
+                <TextBlock x:Name="TextAngleGrade2" TextWrapping="Wrap" Text="통신 상태" Foreground="#FF2D75FF" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" FontSize="13.333"/>
+            </Button>
+        </Grid>
+        <Grid x:Name="Window_top">
+            <Grid.Background>
+                <LinearGradientBrush EndPoint="0.96,1.435" StartPoint="-0.027,0.027">
+                    <GradientStop Color="Black"/>
+                    <GradientStop Color="#FF5252AB" Offset="1"/>
+                </LinearGradientBrush>
+            </Grid.Background>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="174"/>
+                <ColumnDefinition Width="779*"/>
+                <ColumnDefinition Width="125*"/>
+            </Grid.ColumnDefinitions>
+            <Rectangle x:Name="DragRect" Grid.Column="1" PreviewMouseLeftButtonDown="BtnWin_drag_PreviewMouseLeftButtonDown" StrokeThickness="3" Fill="#005252AB"/>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock x:Name="Favorite_title_Copy" Text="New Hyon ( v1.01 )" TextWrapping="Wrap" FontFamily="Arial" HorizontalAlignment="Center" TextAlignment="Center" VerticalAlignment="Center" Margin="11,0,0,0" FontSize="13.333" FontWeight="Bold" Foreground="#FF9C9BFB"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Grid.Column="2" HorizontalAlignment="Right" Margin="0,0,5,0" Width="118">
+                <Button x:Name="maxBTN" HorizontalAlignment="Right" Width="38" FontSize="13.333" Foreground="White" IsDefault="True" IsCancel="True" Style="{DynamicResource Btn_default3}" Margin="1,3">
+                    <Button.Background>
+                        <LinearGradientBrush EndPoint="0,1" StartPoint="0,0">
+                            <GradientStop Color="#FF071C4D" Offset="0"/>
+                            <GradientStop Color="#FF071C4D" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Button.Background>
+                    <Grid>
+                        <!-- Window 모드(일반 창)에서 보이는 최대화 아이콘 -->
+                        <TextBlock x:Name="MaximizedIcon"
+                                   Text="□"
+                                   FontFamily="Segoe UI Symbol"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontSize="13.333"/>
+                        <!-- 전체창(최대화 상태)에서 보이는 창 복원 아이콘 -->
+                        <TextBlock x:Name="WindowIcon"
+                                   Text="❐"
+                                   FontFamily="Segoe UI Symbol"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontSize="13.333"
+                                   Visibility="Collapsed"/>
+                    </Grid>
+                </Button>
+                <Button x:Name="minBTN" Content="─" FontFamily="Arial Black" HorizontalAlignment="Right" Width="38" FontSize="13.333" Foreground="White" IsDefault="True" IsCancel="True" Style="{DynamicResource Btn_default3}" Margin="1,3">
+                    <Button.Background>
+                        <LinearGradientBrush EndPoint="0,1" StartPoint="0,0">
+                            <GradientStop Color="#FF071C4D" Offset="0"/>
+                            <GradientStop Color="#FF071C4D" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Button.Background>
+                </Button>
+                <Button x:Name="ExitBTN" FontFamily="Arial Black" HorizontalAlignment="Right" Width="38" FontSize="13.333"  Foreground="White" Style="{DynamicResource Btn_default3}" Margin="1,3">
+                    <Button.Background>
+                        <LinearGradientBrush EndPoint="0,1" StartPoint="0,0">
+                            <GradientStop Color="#FF071C4D" Offset="0"/>
+                            <GradientStop Color="#FF071C4D" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Button.Background>
+                    <Path Data="M9.719,9.719C9.349,10.09,8.747,10.088,8.374,9.716L4.998,6.34 1.622,9.716C1.25,10.088 0.647,10.09 0.277,9.719 -0.094,9.349 -0.092,8.747 0.28,8.374L3.656,4.998 0.28,1.622C-0.092,1.249 -0.094,0.647 0.277,0.277 0.647,-0.094 1.25,-0.092 1.622,0.28L4.998,3.656 8.374,0.28C8.747,-0.092 9.349,-0.094 9.719,0.277 10.09,0.647 10.089,1.249 9.716,1.622L6.34,4.998 9.716,8.374C10.089,8.747,10.09,9.349,9.719,9.719z" Fill="White" Height="9" Stretch="Fill" Stroke="Black" StrokeThickness="0" UseLayoutRounding="False" Width="9"/>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <Rectangle x:Name="DimOverlay" Grid.RowSpan="2" Fill="#80000000" Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="100"/>
+
+        <materialDesign:Snackbar Grid.RowSpan="3" x:Name="SnackbarCtrl" materialDesign:ThemeAssist.Theme="Light" MessageQueue="{materialDesign:MessageQueue}" VerticalAlignment="Bottom">
+            <materialDesign:Snackbar.Resources>
+                <ResourceDictionary>
+                    <ResourceDictionary.MergedDictionaries>
+                        <ResourceDictionary Source="pack://application:,,,/MaterialDesignResources.xaml" />
+                    </ResourceDictionary.MergedDictionaries>
+                </ResourceDictionary>
+            </materialDesign:Snackbar.Resources>
+        </materialDesign:Snackbar>
+
+    </Grid>
+</Window>

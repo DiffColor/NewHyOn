@@ -1,0 +1,23 @@
+﻿<UserControl xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:DirectShowControls="clr-namespace:WPFMediaKit.DirectShow.Controls;assembly=WPFMediaKit"
+             xmlns:local="clr-namespace:HyOnPlayer" 
+             x:Class="HyOnPlayer.WMKitMediaElement" 
+             mc:Ignorable="d" >
+    
+    <Grid x:Name="ContentGrid" >
+        <DirectShowControls:MediaUriElement x:Name="MediaElementOnMultimedia"
+                                                Stretch="Fill"
+                                                VideoRenderer="VideoMixingRenderer9"
+                                                LoadedBehavior="Play"
+                                                SpeedRatio="1"
+                                                Loop="True"
+                                                Volume="1"
+                                                OverridesDefaultStyle="True"/>
+    	<WebBrowser x:Name="WebBrowser1" Visibility="Hidden"/>
+        <Rectangle x:Name="ExeRect" Stretch="Fill" Visibility="Hidden"/>
+        <!--<Grid x:Name="ExeGrid" Visibility="Hidden"/>-->
+    </Grid>
+</UserControl>

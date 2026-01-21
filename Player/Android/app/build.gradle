@@ -1,0 +1,42 @@
+apply plugin: 'com.android.application'
+apply plugin: 'realm-android'
+
+android {
+    ndkVersion "26.1.10909125"
+    signingConfigs {
+        debug {
+            storePassword 'zbqj2636'
+            keyAlias = 'quber'
+            keyPassword 'zbqj2636'
+            storeFile file('/Users/jazzlife/Documents/Workspaces/Android_PlatformKeys/QUBER_QR1G_M110S/platform.jks')
+        }
+    }
+    compileSdkVersion 22
+    buildToolsVersion "29.0.2"
+
+    defaultConfig {
+        applicationId "kr.co.turtlelab.andowsignage"
+        minSdkVersion 17
+        targetSdkVersion 17
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    implementation 'com.android.support:support-v4:22.0.0'
+    implementation 'com.google.code.gson:gson:2.2.4'
+    implementation 'com.github.asbachb:ftp4j:1.7.2'
+    implementation files('libs/universal-image-loader-1.9.3.jar')
+    implementation files('libs/commons-io-2.6.jar')
+    implementation 'com.rethinkdb:rethinkdb-driver:2.4.4'
+}
