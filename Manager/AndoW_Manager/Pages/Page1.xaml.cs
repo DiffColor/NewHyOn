@@ -1467,6 +1467,10 @@ namespace AndoW_Manager
             {
                 ScreenGuideGrid.GridLineBrush = ColorTools.GetSolidBrushByColorString("#3FC1CAD8");
             }
+            if (ResolutionGuideGrid != null)
+            {
+                ResolutionGuideGrid.GridLineBrush = ColorTools.GetSolidBrushByColorString("#FFFF4A4A");
+            }
         }
 
 
@@ -2099,7 +2103,6 @@ namespace AndoW_Manager
                 double offsetX = (thumbWidth - contentWidth) / 2d;
                 double offsetY = (thumbHeight - contentHeight) / 2d;
 
-
                 List<ElementInfoClass> previewElements = elements;
                 if (!isLandscape && elements != null && elements.Count > 0)
                 {
@@ -2211,7 +2214,20 @@ namespace AndoW_Manager
                     BitmapSource mediaSource = BuildMediaPreview(element);
                     if (mediaSource != null)
                     {
-                        drawingContext.DrawImage(mediaSource, destination);
+                        bool preserveAspectRatio = DataShop.Instance?.g_ServerSettingsManager?.sData?.PreserveAspectRatio ?? false;
+                        if (preserveAspectRatio)
+                        {
+                            SolidColorBrush letterboxBrush = new SolidColorBrush(Color.FromRgb(0x12, 0x12, 0x12));
+                            letterboxBrush.Freeze();
+                            drawingContext.DrawRectangle(letterboxBrush, null, destination);
+
+                            Rect uniformDestination = GetUniformDestination(destination, mediaSource);
+                            drawingContext.DrawImage(mediaSource, uniformDestination);
+                        }
+                        else
+                        {
+                            drawingContext.DrawImage(mediaSource, destination);
+                        }
                     }
                     else
                     {
@@ -2637,12 +2653,29 @@ namespace AndoW_Manager
 
         void SavePreviewFiles()
         {
+            double canvasWidth = Math.Max(1, g_CurrentPageInfo.PIC_CanvasWidth);
+            double canvasHeight = Math.Max(1, g_CurrentPageInfo.PIC_CanvasHeight);
+            if (!g_CurrentPageInfo.PIC_IsLandscape)
+            {
+                double widthScale = MainWindow.Instance?.g_wLandScale ?? 0;
+                double heightScale = MainWindow.Instance?.g_hLandScale ?? 0;
+
+                if (widthScale <= 0 || heightScale <= 0)
+                {
+                    widthScale = BaseLandscapeWidth / BasePortraitWidth;
+                    heightScale = BaseLandscapeHeight / BasePortraitHeight;
+                }
+
+                canvasWidth = Math.Max(1, canvasWidth * widthScale);
+                canvasHeight = Math.Max(1, canvasHeight * heightScale);
+            }
+
             PreviewCanvas canvas = new PreviewCanvas();
             canvas.Direction = g_CurrentPageInfo.PIC_IsLandscape ? DeviceOrientation.Landscape.ToString() : DeviceOrientation.Portrait.ToString();
             canvas.Rows = Math.Max(1, g_CurrentPageInfo.PIC_Rows);
             canvas.Columns = Math.Max(1, g_CurrentPageInfo.PIC_Columns);
-            canvas.Width = Math.Max(1, g_CurrentPageInfo.PIC_CanvasWidth);
-            canvas.Height = Math.Max(1, g_CurrentPageInfo.PIC_CanvasHeight);
+            canvas.Width = canvasWidth;
+            canvas.Height = canvasHeight;
             canvas.FillContent = !DataShop.Instance.g_ServerSettingsManager.sData.PreserveAspectRatio;
 
             XmlTools.WriteXml(FNDTools.GetPreviewCanvasFilePath(), canvas);
@@ -4657,6 +4690,7 @@ namespace AndoW_Manager
         {
             SetGuide(newRowCnt, newColCnt);
             SetScreenGuide(newRowCnt, newColCnt);
+            SetResolutionGuide(newRowCnt, newColCnt);
         }
 
         private static int GetAspectUnitCount(double width, double height, out int colCount, out int rowCount)
@@ -4742,6 +4776,61 @@ namespace AndoW_Manager
                 RowDefinition _row = new RowDefinition();
                 _row.Height = new GridLength(g_unitRowHeight, GridUnitType.Star);
                 ScreenGuideGrid.RowDefinitions.Add(_row);
+            }
+        }
+
+        private static Rect GetUniformDestination(Rect destination, BitmapSource source)
+        {
+            if (source == null || destination.Width <= 0 || destination.Height <= 0)
+            {
+                return destination;
+            }
+
+            double srcWidth = source.PixelWidth;
+            double srcHeight = source.PixelHeight;
+            if (srcWidth <= 0 || srcHeight <= 0)
+            {
+                return destination;
+            }
+
+            double scale = Math.Min(destination.Width / srcWidth, destination.Height / srcHeight);
+            if (double.IsNaN(scale) || double.IsInfinity(scale) || scale <= 0)
+            {
+                return destination;
+            }
+
+            double width = srcWidth * scale;
+            double height = srcHeight * scale;
+            double x = destination.X + (destination.Width - width) / 2d;
+            double y = destination.Y + (destination.Height - height) / 2d;
+            return new Rect(x, y, width, height);
+        }
+
+        private void SetResolutionGuide(int newRowCnt, int newColCnt)
+        {
+            if (ResolutionGuideGrid == null)
+            {
+                return;
+            }
+
+            ResolutionGuideGrid.RowDefinitions.Clear();
+            ResolutionGuideGrid.ColumnDefinitions.Clear();
+
+            int rows = Math.Max(1, newRowCnt);
+            int columns = Math.Max(1, newColCnt);
+
+            for (int i = 0; i < columns; i++)
+            {
+                ColumnDefinition column = new ColumnDefinition();
+                column.Width = new GridLength(1, GridUnitType.Star);
+                ResolutionGuideGrid.ColumnDefinitions.Add(column);
+            }
+
+            for (int i = 0; i < rows; i++)
+            {
+                RowDefinition row = new RowDefinition();
+                row.Height = new GridLength(1, GridUnitType.Star);
+                ResolutionGuideGrid.RowDefinitions.Add(row);
             }
         }
 

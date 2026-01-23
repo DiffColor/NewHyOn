@@ -155,11 +155,32 @@ namespace AndoW_Manager
             int row = Convert.ToInt32(RowCombo.SelectedValue);
             int column = Convert.ToInt32(ColumnCombo.SelectedValue);
 
-            double widthPixels = column * baseWidth;
-            double heightPixels = row * baseHeight;
+            double widthPixels;
+            double heightPixels;
+            if (force)
+            {
+                bool parsedWidth = double.TryParse(WidthPixTBox.Text, out widthPixels) && widthPixels > 0;
+                bool parsedHeight = double.TryParse(HeightPixTBox.Text, out heightPixels) && heightPixels > 0;
 
-            WidthPixTBox.Text = widthPixels.ToString();
-            HeightPixTBox.Text = heightPixels.ToString();
+                if (!parsedWidth)
+                {
+                    widthPixels = column * baseWidth;
+                    WidthPixTBox.Text = widthPixels.ToString();
+                }
+
+                if (!parsedHeight)
+                {
+                    heightPixels = row * baseHeight;
+                    HeightPixTBox.Text = heightPixels.ToString();
+                }
+            }
+            else
+            {
+                widthPixels = column * baseWidth;
+                heightPixels = row * baseHeight;
+                WidthPixTBox.Text = widthPixels.ToString();
+                HeightPixTBox.Text = heightPixels.ToString();
+            }
 
             if (ResInfo == null)
                 ResInfo = new ResolutionSelection();
@@ -169,14 +190,6 @@ namespace AndoW_Manager
             ResInfo.Column = column;
             ResInfo.WidthPixels = widthPixels;
             ResInfo.HeightPixels = heightPixels;
-
-            if (force)
-            {
-                if (double.TryParse(WidthPixTBox.Text, out double w))
-                    ResInfo.WidthPixels = w;
-                if (double.TryParse(HeightPixTBox.Text, out double h))
-                    ResInfo.HeightPixels = h;
-            }
         }
 
         private void Window_Loaded(object sender, RoutedEventArgs e)

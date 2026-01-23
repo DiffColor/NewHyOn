@@ -7,7 +7,8 @@
         xmlns:mk ="clr-namespace:AndoW_Manager"
 	x:Class="AndoW_Manager.EditOnAirTimeWindow"
 	x:Name="Window"    
-    mc:Ignorable="d" Foreground="{x:Null}" Background="{x:Null}" Width="440" Height="453"  WindowStartupLocation="CenterScreen" AllowsTransparency="True" WindowStyle="None" BorderThickness="1" ResizeMode="NoResize">    <Window.Resources>
+	mc:Ignorable="d" Foreground="{x:Null}" Background="{x:Null}" Width="440" Height="453"  WindowStartupLocation="CenterScreen" AllowsTransparency="True" WindowStyle="None" BorderThickness="1" ResizeMode="NoResize">
+    <Window.Resources>
         <Style x:Key="Btn_default2" TargetType="{x:Type Button}">
             <Setter Property="Template">
                 <Setter.Value>
@@ -103,7 +104,8 @@
                                 <ColumnDefinition Width="210*"/>
                                 <ColumnDefinition Width="60*"/>
                             </Grid.ColumnDefinitions>
-                            <Button x:Name="SetAllBtn" Click="SetAllBtn_Click" Height="30" Margin="3,5,0,5" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Grid.Row="0" Grid.Column="3" FontFamily="Malgun Gothic" Style="{DynamicResource ButtonStyle2}" Foreground="White" FontSize="10.667">                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
+                            <Button x:Name="SetAllBtn" Click="SetAllBtn_Click" Height="30" Margin="3,5,0,5" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Grid.Row="0" Grid.Column="3" FontFamily="Malgun Gothic" Style="{DynamicResource ButtonStyle2}" Foreground="White" FontSize="10.667">
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
                                     <Path Data="F1M1,9.602L7.944,9.602C8.497,9.602 8.944,10.049 8.944,10.602 8.944,11.154 8.497,11.602 7.944,11.602L1,11.602C0.447,11.602 0,11.154 0,10.602 0,10.049 0.447,9.602 1,9.602z M4.483,0L8.653,4.193C9.043,4.584 9.041,5.218 8.649,5.607 8.454,5.801 8.199,5.898 7.944,5.898 7.688,5.898 7.431,5.8 7.235,5.603L5.472,3.83 5.472,7.602C5.472,8.154 5.024,8.602 4.472,8.602 3.919,8.602 3.472,8.154 3.472,7.602L3.472,3.84 1.707,5.605C1.316,5.996 0.684,5.996 0.293,5.605 -0.098,5.215 -0.098,4.582 0.293,4.191z" Fill="White" Height="12" Stretch="Fill" StrokeThickness="0" UseLayoutRounding="False" Width="9" RenderTransformOrigin="0.5,0.5" Margin="0,0,4,-2">
                                         <Path.RenderTransform>
                                             <TransformGroup>
@@ -142,12 +144,14 @@
                     </Grid>
                     <Grid Grid.Row="3">
                         <StackPanel VerticalAlignment="Center" Orientation="Horizontal" HorizontalAlignment="Center">
-                            <Button x:Name="BTN0DO_Copy" Style="{DynamicResource Btn_defaultSW}" Height="30" Width="149">                                <StackPanel Orientation="Horizontal">
+                            <Button x:Name="BTN0DO_Copy" Style="{DynamicResource Btn_defaultSW}" Height="30" Width="149">
+                                <StackPanel Orientation="Horizontal">
                                     <Path Data="M14,12L12,12 12,14C12,15.105,11.105,16,10,16L2,16C0.895,16,0,15.105,0,14L0,6C0,4.895,0.895,4,2,4L4,4 4,2C4,0.895,4.895,0,6,0L14,0C15.105,0,16,0.895,16,2L16,10C16,11.105,15.105,12,14,12z M2,14L10,14 10,6 2,6z M14,2L6,2 6,4 10,4C11.105,4,12,4.895,12,6L12,10 14,10z" Fill="#FF234CCC" Height="12" Stretch="Fill" Stroke="Black" StrokeThickness="0" UseLayoutRounding="False" Width="12" Margin="0,0,6,0"/>
                                     <TextBlock x:Name="TextAngleGrade1" TextWrapping="Wrap" Foreground="#FF234CCC" FontFamily="Malgun Gothic" Text="모든플레이어에 복사" FontWeight="Bold"/>
                                 </StackPanel>
                             </Button>
-                            <Button x:Name="BTN0DO_Copy5" Style="{DynamicResource Btn_default2}" Margin="12,0,0,0" Height="30" Width="130" Visibility="Visible">                                <StackPanel Orientation="Horizontal">
+                            <Button x:Name="BTN0DO_Copy5" Style="{DynamicResource Btn_default2}" Margin="12,0,0,0" Height="30" Width="130" Visibility="Visible">
+                                <StackPanel Orientation="Horizontal">
                                     <Path Stretch="Fill" Fill="White" Data="M 415.637,253.323C 414.83,252.967 413.916,252.911 413.068,253.18C 411.456,253.688 410.408,255.218 410.517,256.902L 409.417,256.974C 409.274,254.781 410.639,252.789 412.735,252.127C 413.963,251.74 415.293,251.874 416.423,252.484L 417.479,251.356L 417.76,254.487L 414.444,254.597L 415.637,253.323 Z M 415.597,261.206C 415.132,261.352 414.649,261.425 414.17,261.425C 413.388,261.425 412.613,261.224 411.913,260.847L 410.855,261.977L 410.574,258.847L 413.889,258.735L 412.697,260.01C 413.503,260.365 414.417,260.421 415.265,260.153C 416.878,259.644 417.927,258.113 417.816,256.431L 418.917,256.359C 419.061,258.55 417.696,260.543 415.597,261.206 Z " Width="12" Height="13" Margin="0,0,6,0"/>
                                     <TextBlock x:Name="TextAngleGrade6" TextWrapping="Wrap" Text="업데이트" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" FontWeight="Bold"/>
                                 </StackPanel>
