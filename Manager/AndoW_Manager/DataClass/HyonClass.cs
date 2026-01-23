@@ -167,16 +167,16 @@ namespace AndoW_Manager
             return cloneList;
         }
 
-        private void TransformToLandscapeData()
-        {
-            foreach (ElementInfoClass eic in g_ElementInfoClassList)
-            {
-                eic.EIF_Width *= MainWindow.Instance.g_wLandScale;
-                eic.EIF_Height *= MainWindow.Instance.g_hLandScale;
-                eic.EIF_PosLeft *= MainWindow.Instance.g_wLandScale;
-                eic.EIF_PosTop *= MainWindow.Instance.g_hLandScale;
-            }
-        }
+        //private void TransformToLandscapeData()
+        //{
+        //    foreach (ElementInfoClass eic in g_ElementInfoClassList)
+        //    {
+        //        eic.EIF_Width *= MainWindow.Instance.g_wLandScale;
+        //        eic.EIF_Height *= MainWindow.Instance.g_hLandScale;
+        //        eic.EIF_PosLeft *= MainWindow.Instance.g_wLandScale;
+        //        eic.EIF_PosTop *= MainWindow.Instance.g_hLandScale;
+        //    }
+        //}
 
     }
 

@@ -636,6 +636,17 @@ namespace HyOnPlayer
             }
         }
 
+        public void SetBaseSizeFromPageSize(double width, double height)
+        {
+            this.Dispatcher.Invoke(DispatcherPriority.Normal,
+                new Action(() =>
+                {
+                    DesignerCanvas.Width = g_FixedBaseWidth = width;
+                    DesignerCanvas.Height = g_FixedBaseHeight = height;
+                    AdjustCanvasSize();
+                }));
+        }
+
         public void PlayPrevContents()
         {
             this.Dispatcher.Invoke(DispatcherPriority.Normal,
@@ -873,32 +884,8 @@ namespace HyOnPlayer
             g_FitscaleValueX = MainScrollViewer.ActualWidth / DesignerCanvas.Width;
             g_FitscaleValueY = MainScrollViewer.ActualHeight / DesignerCanvas.Height;
 
-            if (DesignerCanvas.ActualWidth > DesignerCanvas.ActualHeight)
-            {
-                if (g_FitscaleValueX > g_FitscaleValueY)
-                {
-                    ScaleTransform scale = new ScaleTransform(g_FitscaleValueX, g_FitscaleValueY);
-                    DesignerCanvas.RenderTransform = scale;
-                }
-                else
-                {
-                    ScaleTransform scale = new ScaleTransform(g_FitscaleValueX, g_FitscaleValueX);
-                    DesignerCanvas.RenderTransform = scale;
-                }
-            }
-            else
-            {
-                if (g_FitscaleValueX < g_FitscaleValueY)
-                {
-                    ScaleTransform scale = new ScaleTransform(g_FitscaleValueX, g_FitscaleValueY);
-                    DesignerCanvas.RenderTransform = scale;
-                }
-                else
-                {
-                    ScaleTransform scale = new ScaleTransform(g_FitscaleValueY, g_FitscaleValueY);
-                    DesignerCanvas.RenderTransform = scale;
-                }
-            }
+            ScaleTransform scale = new ScaleTransform(g_FitscaleValueX, g_FitscaleValueY);
+            DesignerCanvas.RenderTransform = scale;
         }
 
         void InitTickTimer()
@@ -1341,8 +1328,7 @@ namespace HyOnPlayer
                     }
                 }
 
-                g_FixedBaseWidth = currentPage.PIC_CanvasWidth;
-                g_FixedBaseHeight = currentPage.PIC_CanvasHeight;
+                SetBaseSizeFromPageSize(currentPage.PIC_CanvasWidth, currentPage.PIC_CanvasHeight);
             }
 
             int diplayCnt = 0;

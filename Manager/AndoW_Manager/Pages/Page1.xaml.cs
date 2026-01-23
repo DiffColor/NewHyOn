@@ -1797,6 +1797,7 @@ namespace AndoW_Manager
                 if (saveCompleted)
                 {
                     PersistPageLayoutToPlaylists(savedPageName, elementSnapshot, thumbData);
+                    Page3.Instance?.UpdatePlayListForPlayer();
                     MessageTools.ShowMessageBox(string.Format("{0}을(를) 저장했습니다.", savedPageName), "확인");
                     MainWindow.Instance.RefreshSavedPageList();
                 }

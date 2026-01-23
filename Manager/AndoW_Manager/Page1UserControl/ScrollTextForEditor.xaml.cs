@@ -259,19 +259,19 @@ namespace AndoW_Manager
             g_ElementInfoClass.EIF_Width = Width;
             g_ElementInfoClass.EIF_Height = Height;
 
-            ConvertToLandData();
+            //ConvertToLandData();
         }
 
-        public void ConvertToLandData()
-        {
-            if (MainWindow.Instance.isPortraitEditor)
-            {
-                g_ElementInfoClass.EIF_PosLeft *= MainWindow.Instance.g_wLandScale;
-                g_ElementInfoClass.EIF_PosTop *= MainWindow.Instance.g_hLandScale;
-                g_ElementInfoClass.EIF_Width *= MainWindow.Instance.g_wLandScale;
-                g_ElementInfoClass.EIF_Height *= MainWindow.Instance.g_hLandScale;
-            }
-        }
+        //public void ConvertToLandData()
+        //{
+        //    if (MainWindow.Instance.isPortraitEditor)
+        //    {
+        //        g_ElementInfoClass.EIF_PosLeft *= MainWindow.Instance.g_wLandScale;
+        //        g_ElementInfoClass.EIF_PosTop *= MainWindow.Instance.g_hLandScale;
+        //        g_ElementInfoClass.EIF_Width *= MainWindow.Instance.g_wLandScale;
+        //        g_ElementInfoClass.EIF_Height *= MainWindow.Instance.g_hLandScale;
+        //    }
+        //}
 
         void SetBackOversized(double posX, double posY)
         {
