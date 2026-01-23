@@ -2098,6 +2098,21 @@ namespace AndoW_Manager
                 double offsetX = (thumbWidth - contentWidth) / 2d;
                 double offsetY = (thumbHeight - contentHeight) / 2d;
 
+
+                List<ElementInfoClass> previewElements = elements;
+                if (!isLandscape && elements != null && elements.Count > 0)
+                {
+                    previewElements = new List<ElementInfoClass>(elements.Count);
+                    foreach (ElementInfoClass element in elements)
+                    {
+                        ElementInfoClass previewElement = CreatePortraitPreviewElement(element);
+                        if (previewElement != null)
+                        {
+                            previewElements.Add(previewElement);
+                        }
+                    }
+                }
+
                 DrawingVisual visual = new DrawingVisual();
                 using (DrawingContext drawingContext = visual.RenderOpen())
                 {
@@ -2105,9 +2120,9 @@ namespace AndoW_Manager
                     canvasBrush.Freeze();
                     drawingContext.DrawRectangle(canvasBrush, null, new Rect(0, 0, thumbWidth, thumbHeight));
 
-                    if (elements != null && elements.Count > 0)
+                    if (previewElements != null && previewElements.Count > 0)
                     {
-                        foreach (ElementInfoClass element in elements.OrderBy(x => x.EIF_ZIndex))
+                        foreach (ElementInfoClass element in previewElements.OrderBy(x => x.EIF_ZIndex))
                         {
                             Rect destination = new Rect(
                                 offsetX + (element.EIF_PosLeft * scale),
@@ -2145,6 +2160,33 @@ namespace AndoW_Manager
                 Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
                 return string.Empty;
             }
+        }
+
+        private ElementInfoClass CreatePortraitPreviewElement(ElementInfoClass source)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            ElementInfoClass clone = new ElementInfoClass();
+            clone.CopyData(source);
+
+            double wScale = MainWindow.Instance?.g_wPortScale ?? 0;
+            double hScale = MainWindow.Instance?.g_hPortScale ?? 0;
+
+            if (wScale <= 0 || hScale <= 0)
+            {
+                wScale = BasePortraitWidth / BaseLandscapeWidth;
+                hScale = BasePortraitHeight / BaseLandscapeHeight;
+            }
+
+            clone.EIF_PosLeft *= wScale;
+            clone.EIF_PosTop *= hScale;
+            clone.EIF_Width *= wScale;
+            clone.EIF_Height *= hScale;
+
+            return clone;
         }
 
         private void DrawElementPreview(DrawingContext drawingContext, ElementInfoClass element, Rect destination, string pageName)

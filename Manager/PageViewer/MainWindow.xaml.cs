@@ -14,7 +14,7 @@ namespace PageViewer
     /// </summary>
     public partial class MainWindow : Window
     {
-        double mScale = 1;
+        double mScaleX = 1, mScaleY = 1;
 
         MultimediaTimer.Timer g_TickTimer = new MultimediaTimer.Timer();
 
@@ -97,21 +97,26 @@ namespace PageViewer
 
             double _width, _height = 0;
 
-            if(mCanvas.Width <= mCanvas.Height)
-            {
-                _height = ContentGrid.Height;
-                mScale = _height / mCanvas.Height;
-                _width = mCanvas.Width * mScale;
-                double _halfmargin = (ContentGrid.Width - _width) / 2;
-                ContentCanvas.Margin = new Thickness(_halfmargin, 0, _halfmargin, 0);
-            } else
-            {
-                _width = ContentGrid.Width;
-                mScale = _width / mCanvas.Width;
-                _height = mCanvas.Height * mScale;
-                double _halfmargin = (ContentGrid.Height - _height) / 2;
-                ContentCanvas.Margin = new Thickness(0, _halfmargin, 0, _halfmargin);
-            }
+            //if(mCanvas.Width <= mCanvas.Height)
+            //{
+            //    _height = ContentGrid.Height;
+            //    mScale = _height / mCanvas.Height;
+            //    _width = mCanvas.Width * mScale;
+            //    double _halfmargin = (ContentGrid.Width - _width) / 2;
+            //    ContentCanvas.Margin = new Thickness(_halfmargin, 0, _halfmargin, 0);
+            //} else
+            //{
+            //    _width = ContentGrid.Width;
+            //    mScale = _width / mCanvas.Width;
+            //    _height = mCanvas.Height * mScale;
+            //    double _halfmargin = (ContentGrid.Height - _height) / 2;
+            //    ContentCanvas.Margin = new Thickness(0, _halfmargin, 0, _halfmargin);
+            //}
+
+            _width = ContentGrid.Width;
+            mScaleX = _width / mCanvas.Width;
+            _height = ContentGrid.Height;
+            mScaleY = _height / mCanvas.Height;
 
             CreateElements();
         }
@@ -124,12 +129,12 @@ namespace PageViewer
                 {
                     case DisplayType.Media:
                         MediaControl _mediactrl = new MediaControl();
-                        _mediactrl.Width = element.Width * mScale;
-                        _mediactrl.Height = element.Height * mScale;
+                        _mediactrl.Width = element.Width * mScaleX;
+                        _mediactrl.Height = element.Height * mScaleY;
                         _mediactrl.MEDisplayElement.Stretch = mCanvas.FillContent ? System.Windows.Media.Stretch.Fill : System.Windows.Media.Stretch.Uniform;
                         _mediactrl.ImageCtrl.Stretch = mCanvas.FillContent ? System.Windows.Media.Stretch.Fill : System.Windows.Media.Stretch.Uniform;
-                        Canvas.SetLeft(_mediactrl, element.PosX * mScale);
-                        Canvas.SetTop(_mediactrl, element.PosY * mScale);
+                        Canvas.SetLeft(_mediactrl, element.PosX * mScaleX);
+                        Canvas.SetTop(_mediactrl, element.PosY * mScaleY);
                         Canvas.SetZIndex(_mediactrl, element.Index);
                         _mediactrl.SetData(element.DataList);
                         ContentCanvas.Children.Add(_mediactrl);
@@ -138,10 +143,10 @@ namespace PageViewer
 
                     case DisplayType.ScrollText:
                         ScrollTextControl _scrollctrl = new ScrollTextControl();
-                        _scrollctrl.Width = element.Width * mScale;
-                        _scrollctrl.Height = element.Height * mScale;
-                        Canvas.SetLeft(_scrollctrl, element.PosX * mScale);
-                        Canvas.SetTop(_scrollctrl, element.PosY * mScale);
+                        _scrollctrl.Width = element.Width * mScaleX;
+                        _scrollctrl.Height = element.Height * mScaleY;
+                        Canvas.SetLeft(_scrollctrl, element.PosX * mScaleX);
+                        Canvas.SetTop(_scrollctrl, element.PosY * mScaleY);
                         Canvas.SetZIndex(_scrollctrl, element.Index);
                         _scrollctrl.SetData(element.DataList);
                         ContentCanvas.Children.Add(_scrollctrl);
@@ -149,10 +154,10 @@ namespace PageViewer
 
                     case DisplayType.WelcomeBoard:
                         TextImageControl _txtimgctrl = new TextImageControl();
-                        _txtimgctrl.Width = element.Width * mScale;
-                        _txtimgctrl.Height = element.Height * mScale;
-                        Canvas.SetLeft(_txtimgctrl, element.PosX * mScale);
-                        Canvas.SetTop(_txtimgctrl, element.PosY * mScale);
+                        _txtimgctrl.Width = element.Width * mScaleX;
+                        _txtimgctrl.Height = element.Height * mScaleY;
+                        Canvas.SetLeft(_txtimgctrl, element.PosX * mScaleX);
+                        Canvas.SetTop(_txtimgctrl, element.PosY * mScaleY);
                         Canvas.SetZIndex(_txtimgctrl, element.Index);
                         _txtimgctrl.SetData(element.DataList);
                         ContentCanvas.Children.Add(_txtimgctrl);
