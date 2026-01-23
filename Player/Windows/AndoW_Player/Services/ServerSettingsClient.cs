@@ -83,6 +83,8 @@ namespace HyOnPlayer
                         cached = settings;
                         lastFetchAt = DateTime.Now;
                     }
+
+                    return settings;
                 }
             }
             catch (Exception ex)
