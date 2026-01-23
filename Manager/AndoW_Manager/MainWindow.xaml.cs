@@ -51,7 +51,6 @@ namespace AndoW_Manager
             Instance = this;
 
             ProcessTools.KillVNCViewer();
-            NetworkTools.StopFTPSrv();
 
             //Task.Factory.StartNew(() =>
             //{
@@ -212,36 +211,20 @@ namespace AndoW_Manager
 
         async void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
+            LocalSettingsStore.EnsureSeeded();
             RethinkDbConfigurator.EnsureConfigured();
 
-            bool shouldShowDbDialog = !RethinkDbBootstrapper.IsRethinkDbRunning();
-            DbLoadingWindow dbLoadingWindow = null;
+            DbLoadingWindow loadingWindow = new DbLoadingWindow();
+            loadingWindow.SetStatus("DB 연결 확인", "RethinkDB 서버에 연결 중입니다.");
+            loadingWindow.Show();
+            loadingWindow.Activate();
+            await Dispatcher.Yield(DispatcherPriority.Background);
 
-            try
-            {
-                if (shouldShowDbDialog)
-                {
-                    dbLoadingWindow = new DbLoadingWindow();
-                    dbLoadingWindow.Show();
-                    dbLoadingWindow.Activate();
-                    await Dispatcher.Yield(DispatcherPriority.Background);
-                }
+            await WaitForDatabaseReadyAsync(loadingWindow);
+            SignalRClientTools.StartSignalRClient();
+            await WaitForSignalRReadyAsync(loadingWindow);
 
-                bool dbReady = await Task.Run(() => RethinkDbBootstrapper.EnsureAndWaitTablesReadyAsync(RethinkDbConfigurator.GetDataDatabaseName()));
-
-                if (!dbReady)
-                {
-                    dbLoadingWindow?.Close();
-                    dbLoadingWindow = null;
-                    MessageBox.Show("데이터베이스 연결 확인이 필요합니다.", "DB 연결 실패", MessageBoxButton.OK, MessageBoxImage.Error);
-                    this.Close();
-                }
-            }
-            finally
-            {
-                dbLoadingWindow?.Close();
-            }
-
+            loadingWindow.Close();
             InitPages();
 
             if (g_Page1 != null && g_Page1.g_CurrentPageInfo != null)
@@ -268,10 +251,6 @@ namespace AndoW_Manager
             GotoPageByName("Page3");
 
             CheckAndAddSecurityRules();
-
-            NetworkTools.SetFTPConfigHomeDir();
-            NetworkTools.StartFTPSrv();
-            SignalRClientTools.StartSignalRClient();
 
             checkTimer.Tick += new EventHandler(checkTimer_Tick);
             checkTimer.Interval = new TimeSpan(0, 0, 4);
@@ -520,18 +499,8 @@ namespace AndoW_Manager
         {
             SecurityTools.SetICMP();
 
-            var _serverSettings = DataShop.Instance.g_ServerSettingsManager.sData;
-            if (_serverSettings != null)
-            {
-                if (SecurityTools.NeedToAddRule("ftp_ports"))
-                    SecurityTools.OpenPasvFTPPorts("ftp_ports", _serverSettings.FTP_PasvMinPort, _serverSettings.FTP_PasvMaxPort);
-            }
-
             if (SecurityTools.NeedToAddRule("signage_manager"))
                 progDic.Add("signage_manager", FNDTools.GetManagerExeFilePath());
-
-            if (SecurityTools.NeedToAddRule("ftp_srv"))
-                progDic.Add("ftp_srv", NetworkTools.GetFTPServerExePath());
             
             SecurityTools.ReleaseFirewallRules(SecurityTools.CreateAuthorAppNetshCmdList(progDic));
             SecurityTools.ReleaseFirewallRules(SecurityTools.CreateOpenPortNetshCmdList(portDic));
@@ -665,8 +634,62 @@ namespace AndoW_Manager
 
         internal bool CheckFTPServerAlive()
         {
-            //ProcessTools.CheckExeProcessAlive();
-            return true;
+            if (FtpTransferTools.TryTestConnection(out string error))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                Logger.WriteErrorLog(error, Logger.GetLogFileName());
+            }
+
+            return false;
+        }
+
+        private async Task WaitForDatabaseReadyAsync(DbLoadingWindow loadingWindow)
+        {
+            while (true)
+            {
+                bool connected = await Task.Run(() => RethinkDbContext.TryConnect(false));
+                if (connected)
+                {
+                    return;
+                }
+
+                Logger.WriteErrorLog("RethinkDB 연결 실패. 15초 후 재시도합니다.", Logger.GetLogFileName());
+                loadingWindow?.SetStatus(
+                    "DB 연결 실패",
+                    "RethinkDB 연결이 필요합니다.\r\n설정 확인 후 15초마다 재시도합니다.");
+                await Task.Delay(TimeSpan.FromSeconds(15));
+            }
+        }
+
+        private async Task WaitForSignalRReadyAsync(DbLoadingWindow loadingWindow)
+        {
+            loadingWindow?.SetStatus("SignalR 연결 확인", "SignalR 서버에 연결 중입니다.");
+            var initialWaitUntil = DateTime.Now.AddSeconds(1);
+
+            while (!SignalRClientTools.IsConnected())
+            {
+                if (SignalRClientTools.IsConnecting())
+                {
+                    await Task.Delay(250);
+                    continue;
+                }
+
+                if (DateTime.Now < initialWaitUntil)
+                {
+                    await Task.Delay(100);
+                    continue;
+                }
+
+                Logger.WriteErrorLog("SignalR 연결 실패. 15초 후 재시도합니다.", Logger.GetLogFileName());
+                loadingWindow?.SetStatus(
+                    "SignalR 연결 실패",
+                    "SignalR 서버 연결이 필요합니다.\r\n설정 확인 후 15초마다 재시도합니다.");
+                await Task.Delay(TimeSpan.FromSeconds(15));
+            }
         }
 
 

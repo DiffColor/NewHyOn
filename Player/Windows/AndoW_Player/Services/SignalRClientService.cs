@@ -21,15 +21,18 @@ namespace HyOnPlayer
         private readonly MainWindow owner;
         private readonly RemoteCommandService commandService;
         private readonly object syncRoot = new object();
+        private readonly ServerSettingsClient serverSettingsClient;
         private HubConnection connection;
         private IHubProxy hubProxy;
         private int reconnecting;
         private int stopping;
+        private string currentUrl;
 
         public SignalRClientService(MainWindow owner, RemoteCommandService commandService)
         {
             this.owner = owner;
             this.commandService = commandService;
+            serverSettingsClient = new ServerSettingsClient(owner?.g_LocalSettingsManager?.Settings?.ManagerIP);
         }
 
         public void Start()
@@ -76,38 +79,15 @@ namespace HyOnPlayer
         public void Dispose()
         {
             Stop();
+            serverSettingsClient?.Dispose();
         }
 
         private async Task StartAsync()
         {
-            string url = BuildUrl();
-            if (string.IsNullOrWhiteSpace(url))
+            bool connected = await EnsureConnectionAsync(forceRefreshSettings: false);
+            if (!connected)
             {
-                Logger.WriteLog("SignalR client skipped: manager host not configured.", Logger.GetLogFileName());
-                return;
-            }
-
-            HubConnection local;
-            lock (syncRoot)
-            {
-                if (connection != null)
-                {
-                    return;
-                }
-
-                local = BuildConnection(url);
-                connection = local;
-            }
-
-            try
-            {
-                await local.Start();
-                Logger.WriteLog($"SignalR client connected: {url}", Logger.GetLogFileName());
-            }
-            catch (Exception ex)
-            {
-                Logger.WriteErrorLog($"SignalR client connect failed: {ex}", Logger.GetLogFileName());
-                ScheduleReconnect();
+                ScheduleReconnect(allowStartWhenDisconnected: true);
             }
         }
 
@@ -152,7 +132,7 @@ namespace HyOnPlayer
             }
 
             Logger.WriteLog("SignalR client disconnected. Reconnecting...", Logger.GetLogFileName());
-            ScheduleReconnect();
+            ScheduleReconnect(allowStartWhenDisconnected: false);
         }
 
         public void SendHeartbeat(HeartbeatPayload payload)
@@ -172,7 +152,7 @@ namespace HyOnPlayer
 
             if (localConnection == null || localProxy == null || localConnection.State != ConnectionState.Connected)
             {
-                ScheduleReconnect();
+                ScheduleReconnect(allowStartWhenDisconnected: true);
                 return;
             }
 
@@ -185,12 +165,12 @@ namespace HyOnPlayer
                 catch (Exception ex)
                 {
                     Logger.WriteErrorLog($"SignalR heartbeat send failed: {ex.Message}", Logger.GetLogFileName());
-                    ScheduleReconnect();
+                    ScheduleReconnect(allowStartWhenDisconnected: true);
                 }
             });
         }
 
-        private void ScheduleReconnect()
+        private void ScheduleReconnect(bool allowStartWhenDisconnected)
         {
             if (Interlocked.Exchange(ref reconnecting, 1) == 1)
             {
@@ -210,20 +190,15 @@ namespace HyOnPlayer
                             local = connection;
                         }
 
-                        if (local == null)
+                        if (local == null && !allowStartWhenDisconnected)
                         {
                             return;
                         }
 
-                        try
+                        bool connected = await EnsureConnectionAsync(forceRefreshSettings: true);
+                        if (connected)
                         {
-                            await local.Start();
-                            Logger.WriteLog("SignalR client reconnected.", Logger.GetLogFileName());
                             return;
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.WriteErrorLog($"SignalR client reconnect failed: {ex.Message}", Logger.GetLogFileName());
                         }
                     }
                 }
@@ -393,10 +368,20 @@ namespace HyOnPlayer
 
         private string BuildUrl()
         {
-            string host = owner?.g_LocalSettingsManager?.Settings?.ManagerIP;
+            return BuildUrl(forceRefreshSettings: false);
+        }
+
+        private string BuildUrl(bool forceRefreshSettings)
+        {
+            string rethinkHost = owner?.g_LocalSettingsManager?.Settings?.ManagerIP;
+            serverSettingsClient?.UpdateHost(rethinkHost);
+            var settings = serverSettingsClient?.GetSettings(forceRefreshSettings);
+
+            string host = settings?.MessageServerIp;
             if (string.IsNullOrWhiteSpace(host))
             {
-                host = "127.0.0.1";
+                Logger.WriteLog("SignalR client skipped: ServerSettings(MessageServerIp) not found in RethinkDB.", Logger.GetLogFileName());
+                return null;
             }
 
             int port = ResolvePort();
@@ -407,6 +392,72 @@ namespace HyOnPlayer
             }
 
             return $"http://{host}:{port}{hubPath}";
+        }
+
+        private async Task<bool> EnsureConnectionAsync(bool forceRefreshSettings)
+        {
+            string url = BuildUrl(forceRefreshSettings);
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                return false;
+            }
+
+            HubConnection local = null;
+            HubConnection old = null;
+            lock (syncRoot)
+            {
+                if (connection != null)
+                {
+                    if (string.Equals(currentUrl, url, StringComparison.OrdinalIgnoreCase))
+                    {
+                        local = connection;
+                    }
+                    else
+                    {
+                        old = connection;
+                        hubProxy = null;
+                        connection = null;
+                        currentUrl = null;
+                    }
+                }
+
+                if (local == null)
+                {
+                    local = BuildConnection(url);
+                    connection = local;
+                    currentUrl = url;
+                }
+            }
+
+            if (old != null)
+            {
+                try
+                {
+                    old.Stop();
+                    old.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Logger.WriteErrorLog($"SignalR client stop failed: {ex}", Logger.GetLogFileName());
+                }
+            }
+
+            if (local.State == ConnectionState.Connected)
+            {
+                return true;
+            }
+
+            try
+            {
+                await local.Start();
+                Logger.WriteLog($"SignalR client connected: {url}", Logger.GetLogFileName());
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog($"SignalR client connect failed: {ex}", Logger.GetLogFileName());
+                return false;
+            }
         }
 
         private static int ResolvePort()

@@ -121,7 +121,7 @@
     <value>Please input player name.</value>
   </data>
   <data name="ConfigMsg2" xml:space="preserve">
-    <value>Please check manager ip address.</value>
+    <value>Please check server ip address.</value>
   </data>
   <data name="ConfigMsg3" xml:space="preserve">
     <value>Please check player ip address.</value>

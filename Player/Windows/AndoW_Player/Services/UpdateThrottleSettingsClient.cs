@@ -8,7 +8,7 @@ namespace HyOnPlayer
 {
     internal sealed class UpdateThrottleSettingsClient : IDisposable
     {
-        private const string DatabaseName = "AndoW";
+        private const string DatabaseName = "NewHyOn";
         private const string TableName = "UpdateThrottleSettings";
         private const string DefaultId = "global";
 

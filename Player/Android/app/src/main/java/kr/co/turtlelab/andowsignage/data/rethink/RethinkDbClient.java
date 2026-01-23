@@ -44,7 +44,7 @@ import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
  */
 public class RethinkDbClient {
 
-    private static final String DATABASE = "AndoW";
+    private static final String DATABASE = "NewHyOn";
     private static final String TABLE_PLAYER = "PlayerInfoManager";
     private static final String TABLE_PAGE_LIST = "PageListInfoManager";
     private static final String TABLE_PAGE = "PageInfoManager";

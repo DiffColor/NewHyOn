@@ -456,12 +456,12 @@ namespace ConfigPlayer
             bool isLocalPlay = g_LocalSettingsManager.Settings.IsLocalPlay;
             if (!isLocalPlay)
             {
-                IPAddress ip;
-                if (!IPAddress.TryParse(ManagerIPTBox.Text, out ip))
+                if (!IsValidHostOrIp(ManagerIPTBox.Text))
                 {
                     MessageBox.Show(StringResource.ConfigMsg2);
                     return;
                 }
+                IPAddress ip;
                 if (!IPAddress.TryParse(PlayerIPTBox.Text, out ip))
                 {
                     MessageBox.Show(StringResource.ConfigMsg3);
@@ -480,6 +480,21 @@ namespace ConfigPlayer
 
             Application.Exit();
             this.Close();
+        }
+
+        private static bool IsValidHostOrIp(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            if (IPAddress.TryParse(value, out _))
+            {
+                return true;
+            }
+
+            return Uri.CheckHostName(value) != UriHostNameType.Unknown;
         }
 
         public void KillExesAll()

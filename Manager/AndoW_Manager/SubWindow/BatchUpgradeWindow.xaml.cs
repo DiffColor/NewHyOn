@@ -14,6 +14,7 @@ namespace AndoW_Manager
     public partial class BatchUpgradeWindow : Window
     {      
         public static BatchUpgradeWindow Instance { get; set; }
+        private string _uploadedApkPath = string.Empty;
 
         public BatchUpgradeWindow()
         {
@@ -117,20 +118,26 @@ namespace AndoW_Manager
 
         public bool IsStopUpdate = false;
 
-        void BTN0DO_Copy2_Click(object sender, RoutedEventArgs e)   //업그레이드 시작
+        async void BTN0DO_Copy2_Click(object sender, RoutedEventArgs e)   //업그레이드 시작
         {
-            if (!MainWindow.Instance.CheckFTPServerAlive())
-            {
-                MessageTools.ShowMessageBox("파일 전송 서비스가 실행되지 않았습니다.\r\n파일 전송 서비스를 확인해주세요.", "확인");
-                return;
-            }
-
             if (string.IsNullOrEmpty(APKFilePathTBox.Text) || File.Exists(APKFilePathTBox.Text) == false)
             {
                 MessageTools.ShowMessageBox("플레이어 APK를 선택해주세요.", "확인");
             }
             else
             {
+                if (!string.Equals(_uploadedApkPath, APKFilePathTBox.Text, StringComparison.OrdinalIgnoreCase))
+                {
+                    string uploadError = await FtpTransferTools.UploadUpgradeApkAsync(APKFilePathTBox.Text);
+                    if (!string.IsNullOrWhiteSpace(uploadError))
+                    {
+                        MessageTools.ShowMessageBox(uploadError, "확인");
+                        return;
+                    }
+
+                    _uploadedApkPath = APKFilePathTBox.Text;
+                }
+
                 BatchUpgrade(g_SelectedPlayerInfoList);
             }
         }
@@ -242,7 +249,7 @@ namespace AndoW_Manager
                 if ((bool)_ofd.ShowDialog())
                 {
                     APKFilePathTBox.Text = _ofd.FileName;
-                    FileTools.CopyFile(_ofd.FileName, FNDTools.GetUpgradeAPKFTPFilePath());
+                    _uploadedApkPath = string.Empty;
                 }
             }
             catch (System.Exception ex)

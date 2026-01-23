@@ -8,7 +8,7 @@ namespace HyOnPlayer
 {
     internal sealed class CommandHistoryClient : IDisposable
     {
-        private const string Database = "AndoW";
+        private const string Database = "NewHyOn";
         private const string Table = "CommandHistory";
         private const string User = "admin";
         private const string Password = "turtle04!9";

@@ -11,7 +11,7 @@ namespace HyOnPlayer
 {
     internal sealed class CommandQueueClient : IDisposable
     {
-        private const string DatabaseName = "AndoW";
+        private const string DatabaseName = "NewHyOn";
         private const string TableName = "CommandQueue";
 
         private static readonly RethinkDB R = RethinkDB.R;

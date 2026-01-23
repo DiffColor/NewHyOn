@@ -7,7 +7,7 @@ namespace HyOnPlayer
 {
     internal sealed class UpdateQueueRethinkClient : IDisposable
     {
-        private const string Database = "AndoW";
+        private const string Database = "NewHyOn";
         private const string Table = "UpdateQueue";
         private const string User = "admin";
         private const string Password = "turtle04!9";

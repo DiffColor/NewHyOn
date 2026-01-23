@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Configuration;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNet.SignalR.Client;
@@ -25,6 +24,14 @@ namespace TurtleTools
             lock (SyncRoot)
             {
                 return _connection != null && _connection.State == ConnectionState.Connected;
+            }
+        }
+
+        public static bool IsConnecting()
+        {
+            lock (SyncRoot)
+            {
+                return _connection != null && _connection.State == ConnectionState.Connecting;
             }
         }
 
@@ -251,16 +258,16 @@ namespace TurtleTools
 
         private static string ResolveHost()
         {
-            string value = ConfigurationManager.AppSettings["SignalRHost"];
-            return string.IsNullOrWhiteSpace(value) ? DefaultHost : value.Trim();
+            var settings = LocalSettingsStore.GetConnectionSettings();
+            return string.IsNullOrWhiteSpace(settings?.SignalRHost) ? DefaultHost : settings.SignalRHost.Trim();
         }
 
         private static int ResolvePort()
         {
-            string value = ConfigurationManager.AppSettings["SignalRPort"];
-            if (int.TryParse(value, out int port) && port > 0 && port <= 65535)
+            var settings = LocalSettingsStore.GetConnectionSettings();
+            if (settings?.SignalRPort > 0 && settings.SignalRPort <= 65535)
             {
-                return port;
+                return settings.SignalRPort;
             }
 
             return DefaultPort;
@@ -268,13 +275,13 @@ namespace TurtleTools
 
         private static string ResolveHubPath()
         {
-            string value = ConfigurationManager.AppSettings["SignalRHubPath"];
-            if (string.IsNullOrWhiteSpace(value))
+            var settings = LocalSettingsStore.GetConnectionSettings();
+            if (string.IsNullOrWhiteSpace(settings?.SignalRHubPath))
             {
                 return DefaultHubPath;
             }
 
-            return value;
+            return settings.SignalRHubPath.Trim();
         }
     }
 }

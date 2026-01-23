@@ -442,6 +442,7 @@ namespace AndoW_Manager
             DesignerCanvas.RenderTransform = scale;
             GuideGrid.RenderTransform = scale;
             ScreenGuideGrid.RenderTransform = scale;
+            ResolutionGuideGrid.RenderTransform = scale;
 
             /*
             if (DesignerCanvas.ActualWidth > DesignerCanvas.ActualHeight)
@@ -1430,6 +1431,10 @@ namespace AndoW_Manager
             if (ScreenGuideGrid != null)
             {
                 ScreenGuideGrid.GridLineBrush = ColorTools.GetSolidBrushByColorString("#FFFFFFFF");
+            }
+            if (ResolutionGuideGrid != null)
+            {
+                ResolutionGuideGrid.GridLineBrush = ColorTools.GetSolidBrushByColorString("#FFFFFFFF");
             }
 
             //if (NeedGuideCheckBox.IsChecked == true)

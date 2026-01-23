@@ -34,7 +34,8 @@ namespace HyOnPlayer
         private static readonly TimeSpan StaleChunkThreshold = TimeSpan.FromMinutes(2);
         private int isUpdateRequested;
         private readonly string managerHost;
-        private const string RethinkDbName = "AndoW";
+        private readonly ServerSettingsClient serverSettingsClient;
+        private const string RethinkDbName = "NewHyOn";
         private const string PlayerTableName = "PlayerInfoManager";
         private const string UpdateQueueTableName = "UpdateQueue";
         private const string RethinkUser = "admin";
@@ -50,11 +51,13 @@ namespace HyOnPlayer
         private int urgentUpdateInProgress;
         private string heartbeatStatus = string.Empty;
         private int heartbeatProgress;
+        private int forceRefreshFtpSettings;
 
         public UpdateService(MainWindow owner)
         {
             this.owner = owner;
             managerHost = owner?.g_LocalSettingsManager?.Settings?.ManagerIP;
+            serverSettingsClient = new ServerSettingsClient(managerHost);
             historyClient = new CommandHistoryClient(string.IsNullOrWhiteSpace(managerHost) ? "127.0.0.1" : managerHost);
             queueRethinkClient = new UpdateQueueRethinkClient(string.IsNullOrWhiteSpace(managerHost) ? "127.0.0.1" : managerHost);
             leaseClient = new UpdateLeaseClient(string.IsNullOrWhiteSpace(managerHost) ? "127.0.0.1" : managerHost);
@@ -96,6 +99,7 @@ namespace HyOnPlayer
             ReleaseLease();
             throttleSettingsClient?.Dispose();
             leaseClient?.Dispose();
+            serverSettingsClient?.Dispose();
         }
 
         public void RunUpdateAsync(PlayerInfoClass player)
@@ -1178,7 +1182,7 @@ namespace HyOnPlayer
                 chunk.DownloadedBytes = 0;
                 chunk.LastUpdatedTicks = nowTicks;
 
-                bool chunkOk = DownloadChunkRange(managerHost, entry, chunk, tempFilePath);
+                bool chunkOk = DownloadChunkRange(entry, chunk, tempFilePath);
                 if (!chunkOk)
                 {
                     chunk.Status = ChunkStatus.Pending;
@@ -1639,7 +1643,7 @@ namespace HyOnPlayer
             }
         }
 
-        private bool DownloadChunkRange(string host, DownloadEntry entry, DownloadChunk chunk, string tempFilePath)
+        private bool DownloadChunkRange(DownloadEntry entry, DownloadChunk chunk, string tempFilePath)
         {
             if (chunk == null)
             {
@@ -1654,7 +1658,14 @@ namespace HyOnPlayer
 
             try
             {
-                using (var client = new FtpClient(string.IsNullOrWhiteSpace(host) ? "127.0.0.1" : host, FTP_LOGIN, FTP_PASSWORD, FTP_PORT))
+                if (!TryResolveFtpEndpoint(out var ftp, out string reason))
+                {
+                    entry.LastError = $"FTP_SETTINGS_MISSING:{reason}";
+                    Logger.WriteErrorLog($"FTP endpoint resolve failed: {reason}", Logger.GetLogFileName());
+                    return false;
+                }
+
+                using (var client = new FtpClient(ftp.Host, FTP_LOGIN, FTP_PASSWORD, ftp.Port))
                 {
                     client.Connect();
                     long offset = chunk.Offset;
@@ -1707,15 +1718,59 @@ namespace HyOnPlayer
             }
             catch (IOException ioEx)
             {
+                Interlocked.Exchange(ref forceRefreshFtpSettings, 1);
                 entry.LastError = $"IO_ERROR:{ioEx.Message}";
                 Logger.WriteErrorLog($"Chunk download IO failed: {entry.FileName} / {ioEx}", Logger.GetLogFileName());
                 return false;
             }
             catch (Exception ex)
             {
+                Interlocked.Exchange(ref forceRefreshFtpSettings, 1);
                 entry.LastError = $"FTP_ERROR:{ex.Message}";
                 Logger.WriteErrorLog($"Chunk download failed: {entry.FileName} / {ex}", Logger.GetLogFileName());
                 return false;
+            }
+        }
+
+        private bool TryResolveFtpEndpoint(out FtpEndpoint endpoint, out string reason)
+        {
+            string rethinkHost = owner?.g_LocalSettingsManager?.Settings?.ManagerIP;
+            serverSettingsClient?.UpdateHost(rethinkHost);
+            bool forceRefresh = Interlocked.Exchange(ref forceRefreshFtpSettings, 0) == 1;
+            var settings = serverSettingsClient?.GetSettings(forceRefresh);
+
+            string host = settings?.DataServerIp;
+            if (string.IsNullOrWhiteSpace(host))
+            {
+                reason = "DataServerIp is empty (ServerSettings)";
+                Interlocked.Exchange(ref forceRefreshFtpSettings, 1);
+                endpoint = default;
+                return false;
+            }
+
+            int port = settings?.FTP_Port ?? 0;
+            if (port <= 0)
+            {
+                reason = "FTP_Port is empty (ServerSettings)";
+                Interlocked.Exchange(ref forceRefreshFtpSettings, 1);
+                endpoint = default;
+                return false;
+            }
+
+            endpoint = new FtpEndpoint(host.Trim(), port);
+            reason = null;
+            return true;
+        }
+
+        private readonly struct FtpEndpoint
+        {
+            public string Host { get; }
+            public int Port { get; }
+
+            public FtpEndpoint(string host, int port)
+            {
+                Host = string.IsNullOrWhiteSpace(host) ? "127.0.0.1" : host;
+                Port = port > 0 ? port : FTP_PORT;
             }
         }
 
@@ -1903,7 +1958,7 @@ namespace HyOnPlayer
 
     internal sealed class RethinkContentClient
     {
-        private const string Database = "AndoW";
+        private const string Database = "NewHyOn";
         private static readonly RethinkDB R = RethinkDB.R;
 
         private readonly string host;

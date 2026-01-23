@@ -8,7 +8,7 @@ namespace AndoW.LiteDb
 {
     /// <summary>
     /// 단일 파일 LiteDB 컨텍스트.
-    /// 앱 기준 경로(Data/AndoW.litedb)에 DB 파일을 생성하고 공유 커넥션 문자열을 유지한다.
+    /// 앱 기준 경로(local.db)에 DB 파일을 생성하고 공유 커넥션 문자열을 유지한다.
     /// </summary>
     public static class LiteDbContext
     {
@@ -32,7 +32,7 @@ namespace AndoW.LiteDb
                     return;
                 }
 
-                string dbPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "AndoW.db");
+                string dbPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "local.db");
                 Directory.CreateDirectory(Path.GetDirectoryName(dbPath) ?? AppDomain.CurrentDomain.BaseDirectory);
                 _connectionString = $"Filename={dbPath};Connection=shared;Password=turtle04!9";
                 ConfigureMapper();

@@ -166,7 +166,7 @@ namespace TurtleTools
 
         public static List<T> RunList<T>(ReqlExpr expr)
         {
-            return RunListInternal(expr, false);
+            return RunListInternal<T>(expr, false);
         }
 
         private static List<T> RunListInternal<T>(ReqlExpr expr, bool retried)
@@ -196,7 +196,7 @@ namespace TurtleTools
 
         public static T RunSingleOrDefault<T>(ReqlExpr expr)
         {
-            return RunSingleOrDefaultInternal(expr, false);
+            return RunSingleOrDefaultInternal<T>(expr, false);
         }
 
         private static T RunSingleOrDefaultInternal<T>(ReqlExpr expr, bool retried)

@@ -13,7 +13,7 @@ namespace HyOnPlayer
 {
     internal sealed class RethinkSyncService : IDisposable
     {
-        private const string DatabaseName = "AndoW";
+        private const string DatabaseName = "NewHyOn";
         private const string PlayerTable = "PlayerInfoManager";
         private const string WeeklyTable = "WeeklyInfoManagerClass";
 

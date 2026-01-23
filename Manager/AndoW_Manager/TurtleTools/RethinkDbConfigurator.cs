@@ -1,5 +1,4 @@
-using System;
-using System.Configuration;
+﻿using System;
 using System.Net;
 using System.Net.Sockets;
 using AndoW_Manager;
@@ -13,7 +12,7 @@ namespace TurtleTools
         private const int DefaultPort = 28015;
         private const string DefaultUser = "admin";
         private const string DefaultPassword = "turtle04!9";
-        private const string DefaultDatabaseName = "AndoW";
+        private const string DefaultDatabaseName = "NewHyOn";
         private static string _databaseName = DefaultDatabaseName;
         private static bool _configured;
         private static readonly object SyncRoot = new object();
@@ -44,28 +43,17 @@ namespace TurtleTools
                     return;
                 }
 
-                string host = ConfigurationManager.AppSettings["RethinkDbHost"];
-                string portValue = ConfigurationManager.AppSettings["RethinkDbPort"];
-                string databaseName = ConfigurationManager.AppSettings["RethinkDbDatabase"];
-                string user = ConfigurationManager.AppSettings["RethinkDbUser"];
-                string password = ConfigurationManager.AppSettings["RethinkDbPassword"];
+                var settings = LocalSettingsStore.GetConnectionSettings();
+                _databaseName = string.IsNullOrWhiteSpace(settings?.RethinkDatabase)
+                    ? DefaultDatabaseName
+                    : settings.RethinkDatabase.Trim();
 
-                _databaseName = string.IsNullOrWhiteSpace(databaseName) ? DefaultDatabaseName : databaseName.Trim();
+                int port = settings?.RethinkPort > 0 ? settings.RethinkPort : DefaultPort;
+                string configuredHost = string.IsNullOrWhiteSpace(settings?.RethinkHost) ? DefaultHost : settings.RethinkHost.Trim();
+                string configuredUser = string.IsNullOrWhiteSpace(settings?.RethinkUser) ? DefaultUser : settings.RethinkUser.Trim();
+                string configuredPassword = string.IsNullOrWhiteSpace(settings?.RethinkPassword) ? DefaultPassword : settings.RethinkPassword;
 
-                int port = DefaultPort;
-                if (!string.IsNullOrWhiteSpace(portValue) && int.TryParse(portValue, out var parsedPort) && parsedPort > 0)
-                {
-                    port = parsedPort;
-                }
-
-                string localDbHost = GetLocalDbHostOrDefault();
-                string configuredHost = string.IsNullOrWhiteSpace(localDbHost)
-                    ? (string.IsNullOrWhiteSpace(host) ? DefaultHost : host)
-                    : localDbHost;
-                string configuredUser = string.IsNullOrWhiteSpace(user) ? DefaultUser : user;
-                string configuredPassword = string.IsNullOrWhiteSpace(password) ? DefaultPassword : password;
                 RethinkDbContext.Configure(configuredHost, port, configuredUser, configuredPassword);
-
                 _configured = true;
             }
         }
@@ -85,32 +73,10 @@ namespace TurtleTools
             }
             catch (Exception ex)
             {
-                Logger.WriteErrorLog($"로컬 IP 주소 확인 실패: {ex.Message}", Logger.GetLogFileName());
+                Logger.WriteErrorLog($"Local IP lookup failed: {ex.Message}", Logger.GetLogFileName());
             }
 
             return LoopbackHost;
-        }
-
-        private static string GetLocalDbHostOrDefault()
-        {
-            try
-            {
-                using (var db = LocalDbContext.OpenDatabase())
-                {
-                    var collection = db.GetCollection<ServerSettings>("ServerSettings");
-                    var settings = collection.FindById(0);
-                    if (settings != null && string.IsNullOrWhiteSpace(settings.DataServerIp) == false)
-                    {
-                        return settings.DataServerIp.Trim();
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.WriteErrorLog($"local.db 데이터 서버 IP 확인 실패: {ex.Message}", Logger.GetLogFileName());
-            }
-
-            return null;
         }
     }
 }

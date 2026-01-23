@@ -281,6 +281,7 @@
     <Compile Include="Services\HeartbeatReporter.cs" />
     <Compile Include="Services\RethinkSyncService.cs" />
     <Compile Include="Services\SignalRClientService.cs" />
+    <Compile Include="Services\ServerSettingsClient.cs" />
     <Compile Include="Services\UpdateLeaseClient.cs" />
     <Compile Include="Services\UpdateQueueRethinkClient.cs" />
     <Compile Include="Services\UpdateThrottleSettingsClient.cs" />

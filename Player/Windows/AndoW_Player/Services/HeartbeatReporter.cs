@@ -199,7 +199,7 @@ namespace HyOnPlayer
     /*
     internal sealed class HeartbeatClient
     {
-        private const string DatabaseName = "AndoW";
+        private const string DatabaseName = "NewHyOn";
         private const string HeartbeatTable = "ClientHeartbeat";
 
         private static readonly RethinkDB R = RethinkDB.R;

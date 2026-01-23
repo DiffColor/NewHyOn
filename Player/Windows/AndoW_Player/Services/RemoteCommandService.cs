@@ -671,7 +671,7 @@ namespace HyOnPlayer
 
     internal sealed class RethinkCommandClient
     {
-        private const string DatabaseName = "AndoW";
+        private const string DatabaseName = "NewHyOn";
         private const string PlayerTableName = "PlayerInfoManager";
 
         private static readonly RethinkDB R = RethinkDB.R;

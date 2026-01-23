@@ -7,7 +7,6 @@ namespace AndoW_Manager
     public class ServerSettingsManager
     {
         public ServerSettings sData { get; private set; }
-        private const string CollectionName = "ServerSettings";
 
         public ServerSettingsManager()
         {
@@ -16,35 +15,50 @@ namespace AndoW_Manager
 
         public ServerSettings LoadData()
         {
-            using (var db = LocalDbContext.OpenDatabase())
+            LocalSettingsStore.EnsureSeeded();
+            var connection = LocalSettingsStore.GetConnectionSettings();
+            var ftp = LocalSettingsStore.GetFtpSettings();
+            var ui = LocalSettingsStore.GetUiSettings();
+
+            sData = new ServerSettings();
+
+            if (connection != null)
             {
-                var collection = db.GetCollection<ServerSettings>(CollectionName);
-                sData = collection.FindById(0);
+                sData.DataServerIp = connection.RethinkHost;
+                sData.MessageServerIp = connection.SignalRHost;
+            }
 
-                if (sData == null)
-                {
-                    sData = collection.FindOne(Query.All());
-                    if (sData != null)
-                    {
-                        sData.Id = 0;
-                    }
-                    else
-                    {
-                        sData = new ServerSettings();
-                    }
-                }
+            if (ftp != null)
+            {
+                sData.FTP_Port = ftp.Port > 0 ? ftp.Port : NetworkTools.FTP_PORT;
+                sData.FTP_PasvMinPort = ftp.PasvMinPort > 0 ? ftp.PasvMinPort : NetworkTools.FTP_PASV_MIN_PORT;
+                sData.FTP_PasvMaxPort = ftp.PasvMaxPort > 0 ? ftp.PasvMaxPort : NetworkTools.FTP_PASV_MAX_PORT;
+            }
 
-                if (string.IsNullOrWhiteSpace(sData.DataServerIp))
-                {
-                    sData.DataServerIp = "127.0.0.1";
-                }
+            if (ui != null)
+            {
+                sData.PreserveAspectRatio = ui.PreserveAspectRatio;
+                sData.DefaultWelcomeFontFamily = ui.DefaultWelcomeFontFamily ?? sData.DefaultWelcomeFontFamily;
+                sData.DefaultWelcomeFontSize = ui.DefaultWelcomeFontSize > 0 ? ui.DefaultWelcomeFontSize : sData.DefaultWelcomeFontSize;
+                sData.DefaultWelcomeFontColor = ui.DefaultWelcomeFontColor ?? sData.DefaultWelcomeFontColor;
+                sData.DefaultWelcomeBackgroundColor = ui.DefaultWelcomeBackgroundColor ?? sData.DefaultWelcomeBackgroundColor;
+                sData.DefaultWelcomeFontColorIndex = ui.DefaultWelcomeFontColorIndex;
+                sData.DefaultWelcomeBackgroundColorIndex = ui.DefaultWelcomeBackgroundColorIndex;
+                sData.DefaultResolutionOrientation = ui.DefaultResolutionOrientation;
+                sData.DefaultResolutionRows = ui.DefaultResolutionRows;
+                sData.DefaultResolutionColumns = ui.DefaultResolutionColumns;
+                sData.DefaultResolutionWidthPixels = ui.DefaultResolutionWidthPixels;
+                sData.DefaultResolutionHeightPixels = ui.DefaultResolutionHeightPixels;
+            }
 
-                if (string.IsNullOrWhiteSpace(sData.MessageServerIp))
-                {
-                    sData.MessageServerIp = "127.0.0.1";
-                }
+            if (string.IsNullOrWhiteSpace(sData.DataServerIp))
+            {
+                sData.DataServerIp = "127.0.0.1";
+            }
 
-                collection.Upsert(sData);
+            if (string.IsNullOrWhiteSpace(sData.MessageServerIp))
+            {
+                sData.MessageServerIp = "127.0.0.1";
             }
 
             return sData;
@@ -57,10 +71,55 @@ namespace AndoW_Manager
                 return;
             }
 
-            using (var db = LocalDbContext.OpenDatabase())
+            LocalSettingsStore.EnsureSeeded();
+            var connection = LocalSettingsStore.GetConnectionSettings();
+            var ftp = LocalSettingsStore.GetFtpSettings();
+            var ui = LocalSettingsStore.GetUiSettings();
+
+            if (connection != null)
             {
-                var collection = db.GetCollection<ServerSettings>(CollectionName);
-                collection.Upsert(settings);
+                if (!string.IsNullOrWhiteSpace(settings.DataServerIp))
+                {
+                    connection.RethinkHost = settings.DataServerIp.Trim();
+                }
+
+                if (!string.IsNullOrWhiteSpace(settings.MessageServerIp))
+                {
+                    connection.SignalRHost = settings.MessageServerIp.Trim();
+                }
+
+                LocalSettingsStore.SaveConnectionSettings(connection);
+            }
+
+            if (ftp != null)
+            {
+                ftp.Port = settings.FTP_Port;
+                ftp.PasvMinPort = settings.FTP_PasvMinPort;
+                ftp.PasvMaxPort = settings.FTP_PasvMaxPort;
+                if (!string.IsNullOrWhiteSpace(settings.DataServerIp))
+                {
+                    ftp.Host = settings.DataServerIp.Trim();
+                }
+
+                LocalSettingsStore.SaveFtpSettings(ftp);
+            }
+
+            if (ui != null)
+            {
+                ui.PreserveAspectRatio = settings.PreserveAspectRatio;
+                ui.DefaultWelcomeFontFamily = settings.DefaultWelcomeFontFamily;
+                ui.DefaultWelcomeFontSize = settings.DefaultWelcomeFontSize;
+                ui.DefaultWelcomeFontColor = settings.DefaultWelcomeFontColor;
+                ui.DefaultWelcomeBackgroundColor = settings.DefaultWelcomeBackgroundColor;
+                ui.DefaultWelcomeFontColorIndex = settings.DefaultWelcomeFontColorIndex;
+                ui.DefaultWelcomeBackgroundColorIndex = settings.DefaultWelcomeBackgroundColorIndex;
+                ui.DefaultResolutionOrientation = settings.DefaultResolutionOrientation;
+                ui.DefaultResolutionRows = settings.DefaultResolutionRows;
+                ui.DefaultResolutionColumns = settings.DefaultResolutionColumns;
+                ui.DefaultResolutionWidthPixels = settings.DefaultResolutionWidthPixels;
+                ui.DefaultResolutionHeightPixels = settings.DefaultResolutionHeightPixels;
+
+                LocalSettingsStore.SaveUiSettings(ui);
             }
 
             sData = settings;

@@ -120,12 +120,6 @@
   <data name="label2.Text" xml:space="preserve">
     <value>플레이어 IP :</value>
   </data>
-  <data name="label3.Text" xml:space="preserve">
-    <value>네트워크 상태 확인 :</value>
-  </data>
-  <data name="label4.Text" xml:space="preserve">
-    <value>초</value>
-  </data>
   <data name="TestModeCheckBox.Text" xml:space="preserve">
     <value>테스트 모드</value>
   </data>
@@ -146,21 +140,6 @@
   </data>
   <data name="label20.Text" xml:space="preserve">
     <value>플레이어 이름 :</value>
-  </data>
-  <data name="label21.Text" xml:space="preserve">
-    <value>플레이리스트 :</value>
-  </data>
-  <data name="label22.Text" xml:space="preserve">
-    <value>[ 페이지 목록 ]</value>
-  </data>
-  <data name="label23.Text" xml:space="preserve">
-    <value>로그파일 :</value>
-  </data>
-  <data name="ViewLogBtn.Text" xml:space="preserve">
-    <value>보기</value>
-  </data>
-  <data name="DeleteLogBtn.Text" xml:space="preserve">
-    <value>삭제</value>
   </data>
   <data name="label25.Text" xml:space="preserve">
     <value>인증 암호 :</value>
@@ -190,7 +169,7 @@
     <value>IP 보기</value>
   </data>
   <data name="label1.Text" xml:space="preserve">
-    <value>매니저 IP : </value>
+    <value>서버 IP : </value>
   </data>
   <data name="auth_group.Text" xml:space="preserve">
     <value>현재 인증 상태 : 정품 인증 완료</value>
@@ -198,8 +177,17 @@
   <data name="groupBox3.Text" xml:space="preserve">
     <value>네트워크 포트 설정</value>
   </data>
-  <data name="syncGroupBox.Text" xml:space="preserve">
-    <value>동기화 설정</value>
+  <data name="syncIpDeleteButton.Text" xml:space="preserve">
+    <value>삭제</value>
+  </data>
+  <data name="syncIpAddButton.Text" xml:space="preserve">
+    <value>추가</value>
+  </data>
+  <data name="syncIpsLabel.Text" xml:space="preserve">
+    <value>[ 동기화 클라이언트 ]</value>
+  </data>
+  <data name="syncPortLabel.Text" xml:space="preserve">
+    <value>동기화 포트 :</value>
   </data>
   <data name="syncEnabledCheckBox.Text" xml:space="preserve">
     <value>동기화 사용</value>
@@ -207,17 +195,8 @@
   <data name="isLeadingCheckBox.Text" xml:space="preserve">
     <value>리더 모드</value>
   </data>
-  <data name="syncPortLabel.Text" xml:space="preserve">
-    <value>동기화 포트 :</value>
-  </data>
-  <data name="syncIpsLabel.Text" xml:space="preserve">
-    <value>[ 동기화 클라이언트 ]</value>
-  </data>
-  <data name="syncIpAddButton.Text" xml:space="preserve">
-    <value>추가</value>
-  </data>
-  <data name="syncIpDeleteButton.Text" xml:space="preserve">
-    <value>삭제</value>
+  <data name="syncGroupBox.Text" xml:space="preserve">
+    <value>동기화 설정</value>
   </data>
   <data name="HwAccCheckBox.Text" xml:space="preserve">
     <value>HW 가속 활성화</value>
@@ -278,6 +257,27 @@
   </data>
   <data name="$this.Text" xml:space="preserve">
     <value>NewHyOn Player 환경 설정</value>
+  </data>
+  <data name="label3.Text" xml:space="preserve">
+    <value>네트워크 상태 확인 :</value>
+  </data>
+  <data name="label4.Text" xml:space="preserve">
+    <value>초</value>
+  </data>
+  <data name="label21.Text" xml:space="preserve">
+    <value>플레이리스트 :</value>
+  </data>
+  <data name="label22.Text" xml:space="preserve">
+    <value>[ 페이지 목록 ]</value>
+  </data>
+  <data name="label23.Text" xml:space="preserve">
+    <value>로그파일 :</value>
+  </data>
+  <data name="ViewLogBtn.Text" xml:space="preserve">
+    <value>보기</value>
+  </data>
+  <data name="DeleteLogBtn.Text" xml:space="preserve">
+    <value>삭제</value>
   </data>
   <data name="FailLogCheckBox.Text" xml:space="preserve">
     <value>접속실패 로그 기록</value>

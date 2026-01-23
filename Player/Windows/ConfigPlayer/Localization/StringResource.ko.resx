@@ -121,7 +121,7 @@
     <value>플레이어 이름을 입력해주세요.</value>
   </data>
   <data name="ConfigMsg2" xml:space="preserve">
-    <value>매니저 아이피주소가 올바르지 않습니다.</value>
+    <value>서버 아이피주소가 올바르지 않습니다.</value>
   </data>
   <data name="ConfigMsg3" xml:space="preserve">
     <value>플레이어 아이피주소가 올바르지 않습니다.</value>

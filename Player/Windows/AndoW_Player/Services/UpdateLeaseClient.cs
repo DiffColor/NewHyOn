@@ -9,7 +9,7 @@ namespace HyOnPlayer
 {
     internal sealed class UpdateLeaseClient : IDisposable
     {
-        private const string DatabaseName = "AndoW";
+        private const string DatabaseName = "NewHyOn";
         private const string TableName = "UpdateLease";
 
         private static readonly RethinkDB R = RethinkDB.R;

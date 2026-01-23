@@ -126,7 +126,7 @@ namespace AndoW_Manager
             gaw.ShowDialog();
         }
 
-        void MC_Upgrade_Click(object sender, RoutedEventArgs e)
+        async void MC_Upgrade_Click(object sender, RoutedEventArgs e)
         {
             Microsoft.Win32.OpenFileDialog openFileDialog = new Microsoft.Win32.OpenFileDialog();
 
@@ -136,7 +136,12 @@ namespace AndoW_Manager
             {
                 if ((bool)openFileDialog.ShowDialog())
                 {
-                    FileTools.CopyFile(openFileDialog.FileName, FNDTools.GetUpgradeAPKFTPFilePath());
+                    string uploadError = await FtpTransferTools.UploadUpgradeApkAsync(openFileDialog.FileName);
+                    if (!string.IsNullOrWhiteSpace(uploadError))
+                    {
+                        MessageTools.ShowMessageBox(uploadError, "확인");
+                        return;
+                    }
 
                     if (MessageTools.ShowMessageBox("플레이어의 업그레이드를 진행하시겠습니까?") == true)
                     {

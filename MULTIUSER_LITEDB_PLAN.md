@@ -8,21 +8,20 @@
 - Remove any local service startup (RethinkDB + SignalR self-host).
 
 ## Current State (code references)
-- SignalR is self-hosted inside Manager.
-  - AndoW_Manager/TurtleTools/SignalRServerTools.cs
-  - AndoW_Manager/MainWindow.xaml.cs (StartSignalRServer/StopSignalRServer)
-- RethinkDB is started/bootstrapped locally.
-  - AndoW_Manager/TurtleTools/RethinkDbBootstrapper.cs
-  - AndoW_Settings/TurtleTools/RethinkDbBootstrapper.cs
-  - AndoW_Manager/MainWindow.xaml.cs (EnsureAndWaitTablesReadyAsync)
-  - AndoW_Settings/Program.cs (EnsureRethinkDbReady)
-- DB connection settings are stored in app.config files.
+- SignalR server moved to external .NET 4.7.2 host.
+  - SignalR_Net472/SignalR_Net472/SignalRServerHost.cs
+  - SignalR_Net472/SignalR_Net472/Program.cs
+- Manager acts as SignalR client.
+  - AndoW_Manager/TurtleTools/SignalRClientTools.cs
+  - AndoW_Manager/MainWindow.xaml.cs (StartSignalRClient/StopSignalRClient)
+- RethinkDB is external; Manager waits for connectivity and retries every 15s.
+  - AndoW_Manager/MainWindow.xaml.cs (WaitForDatabaseReadyAsync)
+- app.config values are used only for first-run seeding.
   - AndoW_Manager/app.config
   - AndoW_Settings/app.config
-- Settings UI currently depends on RethinkDB (ServerSettings stored in DB).
+- Settings UI now reads/writes local.db values.
   - AndoW_Settings/Form1.cs
   - AndoW_Manager/DataManager/ServerSettingsManager.cs
-  - AndoW_Settings/DataManager/ServerSettingsManager.cs
 
 ## New Local Storage (LiteDB)
 - File: local.db
@@ -100,24 +99,32 @@
 
 ## Checklist
 - [x] Decide local.db location and finalize path helper.
-- [ ] Add LiteDB package to AndoW_Manager and AndoW_Settings.
-- [ ] Implement LocalSettingsStore (open/close, CRUD, singleton document).
-- [ ] Define local_connection/local_ftp/local_ui schema and seed singleton documents.
-- [ ] Add first-run migration from app.config to local.db.
-- [ ] If RethinkDB is reachable, migrate ServerSettings to local_ftp/local_ui.
-- [ ] Update RethinkDbConfigurator (Manager + Settings) to read local.db.
-- [ ] Update Settings UI to view/edit local.db values.
-- [ ] Remove FTP/UI defaults dependency on RethinkDB.
+- [x] Add LiteDB package to AndoW_Manager and AndoW_Settings.
+- [x] Implement LocalSettingsStore (open/close, CRUD, singleton document).
+- [x] Define local_connection/local_ftp/local_ui schema and seed singleton documents.
+- [x] Add first-run migration from app.config to local.db.
+- [x] If RethinkDB is reachable, migrate ServerSettings to local_ftp/local_ui.
+- [x] Update RethinkDbConfigurator (Manager + Settings) to read local.db.
+- [x] Update Settings UI to view/edit local.db values.
+- [x] Remove FTP/UI defaults dependency on RethinkDB.
 - [x] Decide and migrate UI default settings if needed.
-- [ ] Add external SignalR client connection for Manager.
-- [ ] Implement SignalR broadcast for player messages to all Managers.
-- [ ] Verify shared message model compatibility (server <-> Manager).
-- [ ] Remove SignalR self-host startup/stop in Manager.
-- [ ] Remove RethinkDB bootstrapper startup in Manager/Settings.
-- [ ] Add connection failure UX: guidance + waiting state (no fallback).
-- [ ] Implement fixed 15s retry for DB + SignalR.
-- [ ] Verify multiple Manager instances run concurrently without conflicts.
+- [x] Add external SignalR host project (SignalR_Net472).
+- [x] Add external SignalR client connection for Manager.
+- [x] Broadcast player heartbeats to all Managers (Managers group + ReceiveHeartbeat).
+- [x] Broadcast non-heartbeat player messages to all Managers (if needed). (현재 플레이어 비하트비트 송신 없음 확인)
+- [x] Verify shared message model compatibility (server <-> Manager).
+- [x] Remove SignalR self-host startup/stop in Manager.
+- [x] Remove SignalR server tools from Manager (no in-process hub).
+- [x] Add SignalR host/port/hubPath config for Manager client.
+- [x] Add SignalR server resilience (unhandled exception logging + restart loop).
+- [x] Update Player to connect to external SignalR host (not Manager).
+- [x] Move FTP server out of Manager (no local StartFTPSrv/StopFTPSrv).
+- [x] Add external FTP connection settings and validation (host/port/passive range).
+- [x] Remove RethinkDB bootstrapper startup in Manager/Settings.
+- [x] Add connection failure UX: guidance + waiting state (no fallback).
+- [x] Implement fixed 15s retry for DB + SignalR.
+- [x] 매니저/플레이어 단일 인스턴스 뮤텍스 유지 (멀티유저=다중 네트워크 접속).
 - [ ] Smoke test: Settings UI loads and saves without RethinkDB.
 - [ ] Smoke test: Manager connects to external DB/SignalR and handles messages.
-- [ ] Decide logging scope for connection failures (what/where to log).
+- [x] Decide logging scope for connection failures (what/where to log).
 

@@ -127,8 +127,9 @@
     <Reference Include="Microsoft.AspNet.SignalR.SystemWeb, Version=2.1.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
       <HintPath>..\packages\Microsoft.AspNet.SignalR.SystemWeb.2.1.0\lib\net45\Microsoft.AspNet.SignalR.SystemWeb.dll</HintPath>
     </Reference>
-    <Reference Include="Microsoft.AspNet.SignalR.Client, Version=2.4.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <HintPath>..\packages\Microsoft.AspNet.SignalR.Client.2.4.3\lib\net45\Microsoft.AspNet.SignalR.Client.dll</HintPath>
+    <Reference Include="Microsoft.AspNet.SignalR.Client, Version=2.1.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
+      <HintPath>..\packages\Microsoft.AspNet.SignalR.Client.2.1.0\lib\net45\Microsoft.AspNet.SignalR.Client.dll</HintPath>
+      <Private>True</Private>
     </Reference>
     <Reference Include="Microsoft.Bcl.AsyncInterfaces, Version=8.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>..\packages\Microsoft.Bcl.AsyncInterfaces.8.0.0\lib\net462\Microsoft.Bcl.AsyncInterfaces.dll</HintPath>
@@ -188,6 +189,9 @@
     <Reference Include="RethinkDb.Driver.ReGrid, Version=2.3.150.0, Culture=neutral, PublicKeyToken=289e75d5145ae4e6, processorArchitecture=MSIL">
       <HintPath>..\packages\RethinkDb.Driver.ReGrid.2.3.150\lib\net45\RethinkDb.Driver.ReGrid.dll</HintPath>
     </Reference>
+    <Reference Include="System.Buffers, Version=4.0.5.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Buffers.4.6.1\lib\net462\System.Buffers.dll</HintPath>
+    </Reference>
     <Reference Include="System.Collections.Immutable, Version=8.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>..\packages\System.Collections.Immutable.8.0.0\lib\net462\System.Collections.Immutable.dll</HintPath>
     </Reference>
@@ -234,9 +238,6 @@
     <Reference Include="PresentationFramework.Aero" />
     <Reference Include="System" />
     <Reference Include="System.Configuration" />
-    <Reference Include="System.Buffers, Version=4.0.3.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
-      <HintPath>..\packages\System.Buffers.4.5.1\lib\net461\System.Buffers.dll</HintPath>
-    </Reference>
     <Reference Include="System.Data" />
     <Reference Include="System.Drawing" />
     <Reference Include="System.Management" />
@@ -305,7 +306,6 @@
     </Compile>
     <Compile Include="TurtleTools\ComboBoxProperties.cs" />
     <Compile Include="TurtleTools\GuidelineGrid.cs" />
-    <Compile Include="TurtleTools\RethinkDbBootstrapper.cs" />
     <Compile Include="TurtleTools\RethinkDbManagerBase.cs" />
     <Compile Include="DataManager\PageInfoManager.cs" />
     <Compile Include="DataManager\PageListInfoManager.cs" />
@@ -465,8 +465,10 @@
     <Compile Include="TurtleTools\AuthTools.cs" />
     <Compile Include="TurtleTools\ColorTools.cs" />
     <Compile Include="TurtleTools\FileTools.cs" />
+    <Compile Include="TurtleTools\FtpTransferTools.cs" />
     <Compile Include="TurtleTools\Key.cs" />
     <Compile Include="TurtleTools\LocalDbContext.cs" />
+    <Compile Include="TurtleTools\LocalSettingsStore.cs" />
     <Compile Include="TurtleTools\RethinkDbContext.cs" />
     <Compile Include="TurtleTools\RethinkDbConfigurator.cs" />
     <Compile Include="TurtleTools\LoggerClass.cs" />
