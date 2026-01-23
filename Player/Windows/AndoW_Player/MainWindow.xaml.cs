@@ -97,6 +97,7 @@ namespace HyOnPlayer
         private string pendingSchedulePlaylist = string.Empty;
         private string pendingScheduleId = string.Empty;
         private string lastMissingScheduleLogged = string.Empty;
+        private string lastLocalFallbackPlaylist = string.Empty;
         private bool isScheduleSwitching;
         private PortInfoManager portInfoManager;
         private UdpSyncService syncService;
@@ -338,6 +339,7 @@ namespace HyOnPlayer
             InitTickTimer();
 
             this.g_PageInfoManager.LoadData(this.g_PlayerInfoManager.g_PlayerInfo.PIF_DefaultPlayList);
+            EnsureLocalPlaybackReady();
 
             g_PageIndex = 0;
 
@@ -615,8 +617,8 @@ namespace HyOnPlayer
             this.Left = Convert.ToDouble(g_TTPlayerInfoManager.g_PlayerInfo.TTInfo_DAta6);
             this.Top = Convert.ToDouble(g_TTPlayerInfoManager.g_PlayerInfo.TTInfo_Data7);
 
-            MainScrollViewer.Width = Width = Convert.ToDouble(g_TTPlayerInfoManager.g_PlayerInfo.TTInfo_DAta8);
-            MainScrollViewer.Height = Height = Convert.ToDouble(g_TTPlayerInfoManager.g_PlayerInfo.TTInfo_Data9);
+            MainScrollViewer.Width = g_FixedBaseWidth = Width = Convert.ToDouble(g_TTPlayerInfoManager.g_PlayerInfo.TTInfo_DAta8);
+            MainScrollViewer.Height = g_FixedBaseHeight = Height = Convert.ToDouble(g_TTPlayerInfoManager.g_PlayerInfo.TTInfo_Data9);
 
             this.WindowState = WindowState.Normal;
 
@@ -787,6 +789,7 @@ namespace HyOnPlayer
         {
             try
             {
+                EnsureLocalPlaybackReady();
                 if (g_PageInfoManager.g_PageInfoClassList.Count == 0)  // 재생할 컨텐츠 리스트가 없으면 그냥 리턴한다.
                 {
                     Thread.Sleep(250);
@@ -952,6 +955,7 @@ namespace HyOnPlayer
                 }
 
                 StopTickTimer();
+                EnsureLocalPlaybackReady();
                 EvaluateSchedule(force: true);
                 if (!TryApplyScheduledSwitch(isPageBoundary: true, isContentBoundary: true))
                 {
@@ -1083,18 +1087,108 @@ namespace HyOnPlayer
                         .ToList();
                     foreach (var page in pages)
                     {
-                        if (page?.PIC_Elements == null) continue;
-                        foreach (var element in page.PIC_Elements)
+                        if (PageHasPlayableContent(page))
                         {
-                            if (element?.EIF_ContentsInfoClassList == null) continue;
-                            foreach (var content in element.EIF_ContentsInfoClassList)
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
+            }
+
+            return false;
+        }
+
+        private bool PageHasPlayableContent(PageInfoClass page)
+        {
+            if (page?.PIC_Elements == null)
+            {
+                return false;
+            }
+
+            foreach (var element in page.PIC_Elements)
+            {
+                if (element?.EIF_ContentsInfoClassList == null)
+                {
+                    continue;
+                }
+
+                foreach (var content in element.EIF_ContentsInfoClassList)
+                {
+                    if (content == null || string.IsNullOrWhiteSpace(content.CIF_FileName))
+                    {
+                        continue;
+                    }
+
+                    string path = FNDTools.GetContentsFilePath(content.CIF_FileName);
+                    if (!File.Exists(path))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        if (new FileInfo(path).Length > 0)
+                        {
+                            return true;
+                        }
+                    }
+                    catch
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryFindPlayablePlaylist(out string playlistName)
+        {
+            playlistName = string.Empty;
+
+            try
+            {
+                using (var plRepo = new PageListRepository())
+                using (var pageRepo = new PageRepository())
+                {
+                    var pageLists = plRepo.LoadAll() ?? new List<PageListInfoClass>();
+                    if (pageLists.Count == 0)
+                    {
+                        return false;
+                    }
+
+                    var pages = pageRepo.LoadAll() ?? new List<PageInfoClass>();
+                    var pageMap = pages
+                        .Where(p => p != null && !string.IsNullOrWhiteSpace(p.PIC_GUID))
+                        .ToDictionary(p => p.PIC_GUID, p => p, StringComparer.OrdinalIgnoreCase);
+
+                    foreach (var pageList in pageLists)
+                    {
+                        if (pageList?.PLI_Pages == null || pageList.PLI_Pages.Count == 0)
+                        {
+                            continue;
+                        }
+
+                        foreach (var pageId in pageList.PLI_Pages)
+                        {
+                            if (string.IsNullOrWhiteSpace(pageId))
                             {
-                                if (content == null || string.IsNullOrWhiteSpace(content.CIF_FileName)) continue;
-                                string path = FNDTools.GetContentsFilePath(content.CIF_FileName);
-                                if (File.Exists(path))
-                                {
-                                    return true;
-                                }
+                                continue;
+                            }
+
+                            if (!pageMap.TryGetValue(pageId, out var page))
+                            {
+                                continue;
+                            }
+
+                            if (PageHasPlayableContent(page))
+                            {
+                                playlistName = pageList.PLI_PageListName ?? string.Empty;
+                                return !string.IsNullOrWhiteSpace(playlistName);
                             }
                         }
                     }
@@ -1106,6 +1200,102 @@ namespace HyOnPlayer
             }
 
             return false;
+        }
+
+        private void ApplyLocalPlaylist(string playlistName, bool updateDefaultIfEmpty, string reason)
+        {
+            if (string.IsNullOrWhiteSpace(playlistName))
+            {
+                return;
+            }
+
+            var info = g_PlayerInfoManager?.g_PlayerInfo;
+            if (info == null)
+            {
+                return;
+            }
+
+            bool changed = !string.Equals(info.PIF_CurrentPlayList, playlistName, StringComparison.OrdinalIgnoreCase);
+            bool updated = false;
+            if (changed)
+            {
+                info.PIF_CurrentPlayList = playlistName;
+                updated = true;
+            }
+
+            if (updateDefaultIfEmpty && string.IsNullOrWhiteSpace(info.PIF_DefaultPlayList))
+            {
+                info.PIF_DefaultPlayList = playlistName;
+                updated = true;
+            }
+
+            if (updated)
+            {
+                g_PlayerInfoManager.SaveData();
+            }
+
+            bool needsReload = !string.Equals(g_CurrentPageListName, playlistName, StringComparison.OrdinalIgnoreCase)
+                               || g_PageInfoManager?.g_PageInfoClassList == null
+                               || g_PageInfoManager.g_PageInfoClassList.Count == 0;
+            if (needsReload)
+            {
+                UpdateCurrentPageListName(playlistName);
+                g_PageInfoManager.LoadData(playlistName);
+                g_PageIndex = 0;
+            }
+
+            if (!string.IsNullOrWhiteSpace(reason)
+                && !string.Equals(lastLocalFallbackPlaylist, playlistName, StringComparison.OrdinalIgnoreCase))
+            {
+                Logger.WriteLog($"로컬 재생 플레이리스트 적용({reason}): {playlistName}", Logger.GetLogFileName());
+                lastLocalFallbackPlaylist = playlistName;
+            }
+        }
+
+        private bool EnsureLocalPlaybackReady()
+        {
+            try
+            {
+                var playerInfo = g_PlayerInfoManager?.g_PlayerInfo;
+                if (playerInfo == null)
+                {
+                    return false;
+                }
+
+                string current = playerInfo.PIF_CurrentPlayList;
+                string fallback = playerInfo.PIF_DefaultPlayList;
+
+                if (!string.IsNullOrWhiteSpace(current) && HasPlayableContent(current))
+                {
+                    ApplyLocalPlaylist(current, updateDefaultIfEmpty: false, reason: null);
+                    return true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(fallback) && HasPlayableContent(fallback))
+                {
+                    ApplyLocalPlaylist(fallback, updateDefaultIfEmpty: false, reason: "default");
+                    return true;
+                }
+
+                if (TryFindPlayablePlaylist(out var playlist))
+                {
+                    bool updateDefault = string.IsNullOrWhiteSpace(fallback) || !HasPlayableContent(fallback);
+                    ApplyLocalPlaylist(playlist, updateDefaultIfEmpty: updateDefault, reason: "fallback");
+                    return true;
+                }
+
+                if (!string.Equals(lastLocalFallbackPlaylist, "__NONE__", StringComparison.Ordinal))
+                {
+                    Logger.WriteLog("로컬 데이터에서 재생 가능한 플레이리스트를 찾지 못했습니다.", Logger.GetLogFileName());
+                    lastLocalFallbackPlaylist = "__NONE__";
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
+                return false;
+            }
         }
 
         private void HandleMissingScheduleContent(string playlistName)

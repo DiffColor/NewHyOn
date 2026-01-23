@@ -72,7 +72,7 @@ namespace HyOnPlayer
                 }
             }
             catch { }
-            EnsureUpdateQueueTable(managerHost);
+            Task.Run(() => EnsureUpdateQueueTable(managerHost));
             processorTimer = new Timer(ProcessorTick, null, 0, ProcessorIntervalMs);
             RecoverStalledQueues();
             ProcessQueue();
@@ -1419,6 +1419,7 @@ namespace HyOnPlayer
                     .Hostname(string.IsNullOrWhiteSpace(host) ? "127.0.0.1" : host)
                     .Port(28015)
                     .User(RethinkUser, RethinkPassword)
+                    .Timeout(3000)
                     .Connect())
                 {
                     var tables = R.Db(RethinkDbName).TableList().Run<List<string>>(conn);

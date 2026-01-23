@@ -518,10 +518,17 @@ namespace HyOnPlayer
                     ? (string.IsNullOrWhiteSpace(playerId) ? playerName : playerId)
                     : schedule.Id;
 
+                var resolvedPlayerId = string.IsNullOrWhiteSpace(schedule.PlayerID) ? playerId ?? playerName : schedule.PlayerID;
+                if (string.IsNullOrWhiteSpace(localId) || string.IsNullOrWhiteSpace(resolvedPlayerId))
+                {
+                    Logger.WriteErrorLog("ApplyWeeklySchedule skipped: missing id/playerId.", Logger.GetLogFileName());
+                    return false;
+                }
+
                 var local = new SharedWeeklyPlayScheduleInfo
                 {
                     Id = localId ?? string.Empty,
-                    PlayerID = string.IsNullOrWhiteSpace(schedule.PlayerID) ? playerId ?? playerName : schedule.PlayerID,
+                    PlayerID = resolvedPlayerId,
                     PlayerName = string.IsNullOrWhiteSpace(schedule.PlayerName) ? playerName ?? playerId : schedule.PlayerName,
                     MonSch = schedule.MonSch ?? DaySchedule.CreateDefault(),
                     TueSch = schedule.TueSch ?? DaySchedule.CreateDefault(),
