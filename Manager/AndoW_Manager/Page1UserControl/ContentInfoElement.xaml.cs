@@ -49,13 +49,13 @@ namespace AndoW_Manager
             SelectBorder.Visibility = System.Windows.Visibility.Hidden;
 
             ToolTip tt = new ToolTip();
-            tt.Content = g_ContentsInfoClass.CIF_FileName;
+            tt.Content = g_ContentsInfoClass.CIF_DisplayFileName;
             this.ToolTip = tt;
         }
 
         public void DisplayThisElementInfo()
         {
-            TextBlockPageName.Text = g_ContentsInfoClass.CIF_FileName;
+            TextBlockPageName.Text = g_ContentsInfoClass.CIF_DisplayFileName;
             TextBlockPageName_Copy.Text = string.Format("{0}:{1}", g_ContentsInfoClass.CIF_PlayMinute, g_ContentsInfoClass.CIF_PlaySec);
             var timeItemsCsv = Application.Current.TryFindResource("TimeItems") as string;
             if (!string.IsNullOrEmpty(timeItemsCsv))

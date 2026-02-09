@@ -70,7 +70,7 @@ namespace AndoW_Manager
 
         public void DisplayData()
         {
-            TextBlockPageName.Text = this.g_ContentsInfoClass.CIF_FileName;
+            TextBlockPageName.Text = this.g_ContentsInfoClass.CIF_DisplayFileName;
             Page1.Instance.EditScrollTextListToSelectedElement(this.g_ContentsInfoClass);
         }
 

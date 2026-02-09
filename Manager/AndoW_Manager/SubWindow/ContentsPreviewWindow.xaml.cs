@@ -21,7 +21,7 @@ namespace AndoW_Manager
         {
             InitializeComponent();
             g_ContentsInfoClass.CopyData(paramCls);
-            ContentsNameText.Text = paramCls.CIF_FileName;
+            ContentsNameText.Text = paramCls.CIF_DisplayFileName;
             InitExtentionSet();
             InitEventHandler();
 

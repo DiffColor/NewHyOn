@@ -67,7 +67,7 @@ namespace AndoW_Manager
 
         public void DisplayDataInfo()
         {
-            TextBlockOrderingNumber_Copy.Text = g_ContentsInfoClass.CIF_FileName;
+            TextBlockOrderingNumber_Copy.Text = g_ContentsInfoClass.CIF_DisplayFileName;
             CurrentPlayingPageName_Copy1.Text = g_ContentsInfoClass.CIF_ContentType;
             CurrentPlayingPageName_Copy2.Text = string.Format("{0}:{1}",
                 g_ContentsInfoClass.CIF_PlayMinute,

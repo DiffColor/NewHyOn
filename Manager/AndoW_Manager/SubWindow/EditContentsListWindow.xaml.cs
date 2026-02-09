@@ -167,7 +167,7 @@ namespace AndoW_Manager
         {
             if (g_CurSelectedInfo.CIF_FileName != string.Empty)
             {
-                TextAngleGrade5_Copy1.Text = g_CurSelectedInfo.CIF_FileName;
+                TextAngleGrade5_Copy1.Text = g_CurSelectedInfo.CIF_DisplayFileName;
 
                 scrollSpeedComboBox_Copy1.SelectedItem = g_CurSelectedInfo.CIF_PlayMinute;
                 scrollSpeedComboBox_Copy.SelectedItem = g_CurSelectedInfo.CIF_PlaySec;

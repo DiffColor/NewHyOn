@@ -195,11 +195,49 @@ namespace AndoW_Manager
         public int CIF_ScrollTextSpeedSec = 10;               // 자막속도
         public long CIF_FileSize = 0;
         public string CIF_FileHash = string.Empty;
+        [JsonIgnore]
+        public string CIF_DisplayFileName
+        {
+            get
+            {
+                if (IsFileBasedContent() && string.IsNullOrWhiteSpace(CIF_FileFullPath) == false)
+                {
+                    string trimmedPath = CIF_FileFullPath.Trim();
+                    trimmedPath = trimmedPath.Trim('\"');
+
+                    try
+                    {
+                        string fileName = Path.GetFileName(trimmedPath);
+                        if (string.IsNullOrWhiteSpace(fileName) == false)
+                        {
+                            return fileName;
+                        }
+                    }
+                    catch
+                    {
+                        // 파일명 파싱 실패 시 아래 기본값으로 대체
+                    }
+                }
+
+                return CIF_FileName;
+            }
+        }
 
 
         public ContentsInfoClass()
         {
             CIF_StrGUID = Guid.NewGuid().ToString();
+        }
+
+        private bool IsFileBasedContent()
+        {
+            if (string.IsNullOrWhiteSpace(this.CIF_ContentType))
+            {
+                return true;
+            }
+
+            return this.CIF_ContentType.Equals(ContentType.WebSiteURL.ToString(), StringComparison.OrdinalIgnoreCase) == false
+                && this.CIF_ContentType.Equals(ContentType.Browser.ToString(), StringComparison.OrdinalIgnoreCase) == false;
         }
 
         public void CopyData(ContentsInfoClass tmpData)
