@@ -45,8 +45,8 @@ namespace TurtleTools
             }
 
             bool isDisconnected = string.Equals(payload.Status, "disconnected", StringComparison.OrdinalIgnoreCase);
-            DateTime timestamp = payload.Timestamp == default(DateTime) ? DateTime.Now : payload.Timestamp;
-            DateTime? heartbeat = isDisconnected ? (DateTime?)null : timestamp;
+            DateTime receivedAt = DateTime.Now;
+            DateTime? heartbeat = isDisconnected ? (DateTime?)null : receivedAt;
             double progress = NormalizeHeartbeatProcess(payload.Process);
             var state = new PlayerHeartbeatState(
                 payload.ClientId.Trim(),
