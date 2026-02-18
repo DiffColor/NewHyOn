@@ -49,19 +49,26 @@ namespace TurtleTools
          */
         public static Rotation GetImageRotationFromExif(string imgpath)
         {
-            int angle = GetImageRotateAngleFromMediaInfo(imgpath);
+            int angle = GetImageRotateAngleFromExif(imgpath);
             return ConvertAngleToRotation(angle);
         }
 
         public static RotateFlipType GetImageRotateFlipTypeFromExif(string imgpath)
         {
-            int angle = GetImageRotateAngleFromMediaInfo(imgpath);
+            int angle = GetImageRotateAngleFromExif(imgpath);
             return ConvertAngleToRotateFlipType(angle);
         }
 
         public static int GetImageRotateAngleFromExif(string imgpath)
         {
-            return GetImageRotateAngleFromMediaInfo(imgpath);
+            int angle = GetImageRotateAngleFromSystemExif(imgpath);
+            if (angle == 0)
+            {
+                angle = GetImageRotateAngleFromMediaInfo(imgpath);
+            }
+
+            angle = NormalizeRotationByPixelSize(imgpath, angle);
+            return angle;
         }
 
         private static int GetImageRotateAngleFromMediaInfo(string mediaPath)
@@ -84,12 +91,7 @@ namespace TurtleTools
                 mediaInfo.Close();
                 if (angle == 0)
                 {
-                    int fallbackAngle = GetImageRotateAngleFromSystemExif(mediaPath);
-                    if (fallbackAngle != 0)
-                    {
-                        angle = fallbackAngle;
-                        return angle;
-                    }
+                    angle = GetImageRotateAngleFromSystemExif(mediaPath);
                 }
 
                 return angle;
@@ -158,6 +160,34 @@ namespace TurtleTools
             }
 
             return 0;
+        }
+
+        private static int NormalizeRotationByPixelSize(string imagePath, int angle)
+        {
+            int normalized = NormalizeRightAngle(angle);
+            if (normalized != 90 && normalized != 270)
+            {
+                return angle;
+            }
+
+            if (string.IsNullOrWhiteSpace(imagePath) || File.Exists(imagePath) == false)
+            {
+                return angle;
+            }
+
+            try
+            {
+                System.Drawing.Size size = GetDimensions(imagePath);
+                if (size.Width > 0 && size.Height > 0 && size.Height >= size.Width)
+                {
+                    return 0;
+                }
+            }
+            catch
+            {
+            }
+
+            return angle;
         }
         
         public static RotateFlipType ConvertAngleToRotateFlipType(int angle)
