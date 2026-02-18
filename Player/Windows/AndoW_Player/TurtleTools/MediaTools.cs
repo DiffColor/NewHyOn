@@ -71,7 +71,8 @@ namespace TurtleTools
                 var mediaInfo = new MediaInfo.DotNetWrapper.MediaInfo();
                 if (mediaInfo.Open(mediaPath) == 0)
                 {
-                    return 0;
+                    int fallbackAngle = GetImageRotateAngleFromSystemExif(mediaPath);
+                    return fallbackAngle;
                 }
 
                 int angle = ExtractMediaInfoAngle(mediaInfo, StreamKind.Image);
@@ -81,7 +82,51 @@ namespace TurtleTools
                 }
 
                 mediaInfo.Close();
+                if (angle == 0)
+                {
+                    int fallbackAngle = GetImageRotateAngleFromSystemExif(mediaPath);
+                    if (fallbackAngle != 0)
+                    {
+                        angle = fallbackAngle;
+                        return angle;
+                    }
+                }
+
                 return angle;
+            }
+            catch
+            {
+            }
+
+            return 0;
+        }
+
+        private static int GetImageRotateAngleFromSystemExif(string mediaPath)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(mediaPath) || File.Exists(mediaPath) == false)
+                {
+                    return 0;
+                }
+
+                const int orientationId = 0x0112;
+                using (var image = System.Drawing.Image.FromFile(mediaPath))
+                {
+                    if (image.PropertyIdList.Contains(orientationId) == false)
+                    {
+                        return 0;
+                    }
+
+                    var property = image.GetPropertyItem(orientationId);
+                    if (property == null || property.Value == null || property.Value.Length < 2)
+                    {
+                        return 0;
+                    }
+
+                    ushort orientation = BitConverter.ToUInt16(property.Value, 0);
+                    return GetImageRotateAngle(orientation);
+                }
             }
             catch
             {
@@ -1482,6 +1527,11 @@ namespace TurtleTools
             using (var fs = File.OpenRead(fpath))
             using (var image = System.Drawing.Image.FromStream(fs))
             {
+                int rotation = GetImageRotateAngleFromExif(fpath);
+                if (rotation != 0)
+                {
+                    image.RotateFlip(ConvertAngleToRotateFlipType(rotation));
+                }
                 _img = FixedSizeDrawingImage(image, Width, Height);
             }
 
