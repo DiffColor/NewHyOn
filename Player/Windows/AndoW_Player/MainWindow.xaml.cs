@@ -98,6 +98,9 @@ namespace HyOnPlayer
         private string pendingScheduleId = string.Empty;
         private string lastScheduleEvalStateKey = string.Empty;
         private string lastMissingScheduleLogged = string.Empty;
+        private string pendingPlaylistReload = string.Empty;
+        private string pendingPlaylistReloadReason = string.Empty;
+        private string lastPlaylistReloadStateKey = string.Empty;
         private string lastLocalFallbackPlaylist = string.Empty;
         private bool isScheduleSwitching;
         private PortInfoManager portInfoManager;
@@ -1121,6 +1124,74 @@ namespace HyOnPlayer
             return true;
         }
 
+        internal void RequestPlaylistReload(string playlistName, string reason)
+        {
+            if (string.IsNullOrWhiteSpace(playlistName))
+            {
+                return;
+            }
+
+            pendingPlaylistReload = playlistName;
+            pendingPlaylistReloadReason = reason ?? string.Empty;
+
+            string stateKey = $"PENDING|{pendingPlaylistReload}|{pendingPlaylistReloadReason}";
+            if (!string.Equals(lastPlaylistReloadStateKey, stateKey, StringComparison.Ordinal))
+            {
+                Logger.WriteLog($"플레이리스트 리로드 예약: {pendingPlaylistReload} ({pendingPlaylistReloadReason})", Logger.GetLogFileName());
+                lastPlaylistReloadStateKey = stateKey;
+            }
+        }
+
+        private bool TryApplyPendingPlaylistReload(bool isPageBoundary, bool isContentBoundary)
+        {
+            if (string.IsNullOrWhiteSpace(pendingPlaylistReload))
+            {
+                return false;
+            }
+
+            string timing = g_LocalSettingsManager?.Settings?.SwitchTiming ?? "Immediately";
+            bool allow = false;
+            if (timing.Equals("Immediately", StringComparison.OrdinalIgnoreCase))
+            {
+                allow = true;
+            }
+            else if (timing.Equals("ContentEnd", StringComparison.OrdinalIgnoreCase) && isContentBoundary)
+            {
+                allow = true;
+            }
+            else if (timing.Equals("PageEnd", StringComparison.OrdinalIgnoreCase) && isPageBoundary)
+            {
+                allow = true;
+            }
+
+            if (!allow)
+            {
+                return false;
+            }
+
+            var playerInfo = g_PlayerInfoManager?.g_PlayerInfo;
+            if (playerInfo == null)
+            {
+                return false;
+            }
+
+            string current = playerInfo.PIF_CurrentPlayList ?? string.Empty;
+            if (!string.Equals(current, pendingPlaylistReload, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            pendingPlaylistReload = string.Empty;
+            pendingPlaylistReloadReason = string.Empty;
+
+            g_PageInfoManager.LoadData(current);
+            g_PageIndex = 0;
+            StopTickTimer();
+            PopPage();
+            ApplyScheduleTransition();
+            return true;
+        }
+
         private bool HasPlayableContent(string playlistName)
         {
             if (string.IsNullOrWhiteSpace(playlistName))
@@ -1465,10 +1536,18 @@ namespace HyOnPlayer
                             {
                                 return;
                             }
+                            if (TryApplyPendingPlaylistReload(isPageBoundary: true, isContentBoundary: true))
+                            {
+                                return;
+                            }
                         }
                         else if (switchTiming.Equals("ContentEnd", StringComparison.OrdinalIgnoreCase))
                         {
                             if (TryApplyScheduledSwitch(isPageBoundary: false, isContentBoundary: true))
+                            {
+                                return;
+                            }
+                            if (TryApplyPendingPlaylistReload(isPageBoundary: false, isContentBoundary: true))
                             {
                                 return;
                             }
@@ -1487,6 +1566,11 @@ namespace HyOnPlayer
                             StopTickTimer();
                             if (switchTiming.Equals("PageEnd", StringComparison.OrdinalIgnoreCase)
                                 && TryApplyScheduledSwitch(isPageBoundary: true, isContentBoundary: false))
+                            {
+                                return;
+                            }
+                            if (switchTiming.Equals("PageEnd", StringComparison.OrdinalIgnoreCase)
+                                && TryApplyPendingPlaylistReload(isPageBoundary: true, isContentBoundary: false))
                             {
                                 return;
                             }
