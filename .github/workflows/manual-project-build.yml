@@ -258,12 +258,18 @@ jobs:
           "name=$name" >> $env:GITHUB_OUTPUT
           "artifact_suffix=$artifactSuffix" >> $env:GITHUB_OUTPUT
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          accept-android-sdk-licenses: true
-          log-accepted-android-sdk-licenses: false
-          packages: platform-tools platforms;android-22 build-tools;29.0.2
+      - name: Setup Android SDK environment
+        run: |
+          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> $GITHUB_ENV
+          echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "/usr/local/lib/android/sdk/platform-tools" >> $GITHUB_PATH
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager --version
+          yes | sdkmanager --licenses || true
+          sdkmanager "platform-tools" "platforms;android-22" "build-tools;29.0.2"
 
       - name: Build Player Android (Release APK)
         working-directory: Player/Android
