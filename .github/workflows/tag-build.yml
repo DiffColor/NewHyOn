@@ -153,11 +153,10 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK packages
-        run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager "platform-tools" "platforms;android-22" "build-tools;29.0.2"
+        with:
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
+          packages: platform-tools platforms;android-22 build-tools;29.0.2
 
       - name: Build Player Android (Release APK)
         working-directory: Player/Android
