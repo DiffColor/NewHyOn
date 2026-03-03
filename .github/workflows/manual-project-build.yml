@@ -16,9 +16,24 @@ on:
         required: true
         default: main
         type: string
+      release_tag:
+        description: Release tag (비우면 자동 생성)
+        required: false
+        default: ""
+        type: string
+      release_name:
+        description: Release name (비우면 자동 생성)
+        required: false
+        default: ""
+        type: string
+      prerelease:
+        description: GitHub Release prerelease 여부
+        required: false
+        default: false
+        type: boolean
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-manager-windows:
@@ -48,7 +63,8 @@ jobs:
           $src = "Manager/Dependencies"
           $destinations = @(
             "Manager/dll",
-            "Manager/AndoW_Manager/bin/Release"
+            "Manager/AndoW_Manager/bin/Release",
+            "Manager/AndoW_Manager/bin/x64/Release"
           )
           foreach ($dst in $destinations) {
             New-Item -ItemType Directory -Force -Path $dst | Out-Null
@@ -69,6 +85,37 @@ jobs:
           name: manager-windows-manual-${{ github.run_number }}
           path: Manager/AndoW_Manager/**/bin/**/Release/**
           if-no-files-found: warn
+
+      - name: Resolve release metadata
+        id: release_meta
+        shell: pwsh
+        run: |
+          $tag = "${{ inputs.release_tag }}"
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            $tag = "manual-${{ inputs.project }}-run-${{ github.run_number }}"
+          }
+          $name = "${{ inputs.release_name }}"
+          if ([string]::IsNullOrWhiteSpace($name)) {
+            $name = "Manual ${{ inputs.project }} build #${{ github.run_number }}"
+          }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "name=$name" >> $env:GITHUB_OUTPUT
+
+      - name: Package Manager binaries for release
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
+          tar -a -c -f "release-assets/manager-windows-manual-${{ github.run_number }}.zip" "Manager/AndoW_Manager/bin"
+
+      - name: Attach Manager binaries to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_meta.outputs.tag }}
+          name: ${{ steps.release_meta.outputs.name }}
+          target_commitish: ${{ inputs.source_ref }}
+          prerelease: ${{ inputs.prerelease }}
+          files: release-assets/manager-windows-manual-${{ github.run_number }}.zip
+          overwrite_files: true
 
   build-player-windows:
     if: ${{ inputs.project == 'player-windows' }}
@@ -119,6 +166,37 @@ jobs:
           path: Player/Windows/**/bin/**/Release/**
           if-no-files-found: warn
 
+      - name: Resolve release metadata
+        id: release_meta
+        shell: pwsh
+        run: |
+          $tag = "${{ inputs.release_tag }}"
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            $tag = "manual-${{ inputs.project }}-run-${{ github.run_number }}"
+          }
+          $name = "${{ inputs.release_name }}"
+          if ([string]::IsNullOrWhiteSpace($name)) {
+            $name = "Manual ${{ inputs.project }} build #${{ github.run_number }}"
+          }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "name=$name" >> $env:GITHUB_OUTPUT
+
+      - name: Package Player Windows binaries for release
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
+          tar -a -c -f "release-assets/player-windows-manual-${{ github.run_number }}.zip" "Player/Windows/AndoW_Player/bin" "Player/Windows/ConfigPlayer/bin"
+
+      - name: Attach Player Windows binaries to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_meta.outputs.tag }}
+          name: ${{ steps.release_meta.outputs.name }}
+          target_commitish: ${{ inputs.source_ref }}
+          prerelease: ${{ inputs.prerelease }}
+          files: release-assets/player-windows-manual-${{ github.run_number }}.zip
+          overwrite_files: true
+
   build-player-android:
     if: ${{ inputs.project == 'player-android' }}
     runs-on: ubuntu-latest
@@ -155,3 +233,28 @@ jobs:
           name: player-android-manual-${{ github.run_number }}
           path: Player/Android/app/build/outputs/apk/release/*.apk
           if-no-files-found: warn
+
+      - name: Resolve release metadata
+        id: release_meta
+        shell: pwsh
+        run: |
+          $tag = "${{ inputs.release_tag }}"
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            $tag = "manual-${{ inputs.project }}-run-${{ github.run_number }}"
+          }
+          $name = "${{ inputs.release_name }}"
+          if ([string]::IsNullOrWhiteSpace($name)) {
+            $name = "Manual ${{ inputs.project }} build #${{ github.run_number }}"
+          }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "name=$name" >> $env:GITHUB_OUTPUT
+
+      - name: Attach Player Android APK to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_meta.outputs.tag }}
+          name: ${{ steps.release_meta.outputs.name }}
+          target_commitish: ${{ inputs.source_ref }}
+          prerelease: ${{ inputs.prerelease }}
+          files: Player/Android/app/build/outputs/apk/release/*.apk
+          overwrite_files: true

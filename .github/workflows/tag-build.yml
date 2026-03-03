@@ -8,7 +8,7 @@ on:
       - 'player-android-v*'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-manager-windows:
@@ -37,7 +37,8 @@ jobs:
           $src = "Manager/Dependencies"
           $destinations = @(
             "Manager/dll",
-            "Manager/AndoW_Manager/bin/Release"
+            "Manager/AndoW_Manager/bin/Release",
+            "Manager/AndoW_Manager/bin/x64/Release"
           )
           foreach ($dst in $destinations) {
             New-Item -ItemType Directory -Force -Path $dst | Out-Null
@@ -58,6 +59,20 @@ jobs:
           name: manager-windows-${{ github.ref_name }}
           path: Manager/AndoW_Manager/**/bin/**/Release/**
           if-no-files-found: warn
+
+      - name: Package Manager binaries for release
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
+          tar -a -c -f "release-assets/manager-windows-${{ github.ref_name }}.zip" "Manager/AndoW_Manager/bin"
+
+      - name: Attach Manager binaries to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          files: release-assets/manager-windows-${{ github.ref_name }}.zip
+          overwrite_files: true
 
   build-player-windows:
     if: startsWith(github.ref_name, 'player-windows-v')
@@ -107,6 +122,20 @@ jobs:
           path: Player/Windows/**/bin/**/Release/**
           if-no-files-found: warn
 
+      - name: Package Player Windows binaries for release
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
+          tar -a -c -f "release-assets/player-windows-${{ github.ref_name }}.zip" "Player/Windows/AndoW_Player/bin" "Player/Windows/ConfigPlayer/bin"
+
+      - name: Attach Player Windows binaries to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          files: release-assets/player-windows-${{ github.ref_name }}.zip
+          overwrite_files: true
+
   build-player-android:
     if: startsWith(github.ref_name, 'player-android-v')
     runs-on: ubuntu-latest
@@ -142,3 +171,11 @@ jobs:
           name: player-android-${{ github.ref_name }}
           path: Player/Android/app/build/outputs/apk/release/*.apk
           if-no-files-found: warn
+
+      - name: Attach Player Android APK to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          files: Player/Android/app/build/outputs/apk/release/*.apk
+          overwrite_files: true
