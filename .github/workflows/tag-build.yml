@@ -27,8 +27,16 @@ jobs:
       - name: Restore NuGet packages
         run: nuget restore "Manager/AndoW_Manager/AndoW_Manager.sln"
 
+      - name: Prepare Manager dependencies in build directory
+        shell: pwsh
+        run: |
+          $src = "Manager/Dependencies"
+          $dst = "Manager/AndoW_Manager/bin/Release"
+          New-Item -ItemType Directory -Force -Path $dst | Out-Null
+          Copy-Item -Path "$src/*" -Destination $dst -Recurse -Force
+
       - name: Build Manager (Release)
-        run: msbuild "Manager/AndoW_Manager/AndoW_Manager.sln" /t:Build /p:Configuration=Release /p:Platform=AnyCPU /m
+        run: msbuild "Manager/AndoW_Manager/AndoW_Manager.sln" /t:Build /p:Configuration=Release /p:Platform=x64 /m
 
       - name: Upload Manager artifact
         uses: actions/upload-artifact@v4
@@ -53,8 +61,21 @@ jobs:
       - name: Restore NuGet packages
         run: nuget restore "Player/Windows/AndoW Player.sln"
 
+      - name: Prepare Player dependencies in build directories
+        shell: pwsh
+        run: |
+          $src = "Player/Windows/Dependencies"
+          $destinations = @(
+            "Player/Windows/AndoW_Player/bin/x64/Release",
+            "Player/Windows/ConfigPlayer/bin/x64/Release"
+          )
+          foreach ($dst in $destinations) {
+            New-Item -ItemType Directory -Force -Path $dst | Out-Null
+            Copy-Item -Path "$src/*" -Destination $dst -Recurse -Force
+          }
+
       - name: Build Player Windows (Release)
-        run: msbuild "Player/Windows/AndoW Player.sln" /t:Build /p:Configuration=Release /p:Platform=AnyCPU /m
+        run: msbuild "Player/Windows/AndoW Player.sln" /t:Build /p:Configuration=Release /p:Platform=x64 /m
 
       - name: Upload Player Windows artifact
         uses: actions/upload-artifact@v4
