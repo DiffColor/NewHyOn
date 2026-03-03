@@ -227,11 +227,11 @@ jobs:
           ref: ${{ inputs.source_ref }}
           lfs: true
 
-      - name: Setup JDK 11
+      - name: Setup JDK 17 for sdkmanager
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '11'
+          java-version: '17'
 
       - name: Resolve release metadata
         id: release_meta
@@ -270,6 +270,12 @@ jobs:
           sdkmanager --version
           yes | sdkmanager --licenses || true
           sdkmanager "platform-tools" "platforms;android-22" "build-tools;29.0.2"
+
+      - name: Setup JDK 11 for Gradle
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
 
       - name: Build Player Android (Release APK)
         working-directory: Player/Android
