@@ -1,0 +1,135 @@
+name: Manual Build by Project
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: Build target project
+        required: true
+        type: choice
+        options:
+          - manager-windows
+          - player-windows
+          - player-android
+      source_ref:
+        description: Branch / tag / commit to build
+        required: true
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-manager-windows:
+    if: ${{ inputs.project == 'manager-windows' }}
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Restore NuGet packages
+        run: nuget restore "Manager/AndoW_Manager/AndoW_Manager.sln" -PackagesDirectory "Manager/packages" -NonInteractive
+
+      - name: Prepare Manager dependencies in build directory
+        shell: pwsh
+        run: |
+          $src = "Manager/Dependencies"
+          $dst = "Manager/AndoW_Manager/bin/Release"
+          New-Item -ItemType Directory -Force -Path $dst | Out-Null
+          Copy-Item -Path "$src/*" -Destination $dst -Recurse -Force
+
+      - name: Build Manager (Release x64)
+        run: msbuild "Manager/AndoW_Manager/AndoW_Manager.sln" /t:Build /p:Configuration=Release /p:Platform=x64 /m
+
+      - name: Upload Manager artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: manager-windows-manual-${{ github.run_number }}
+          path: Manager/AndoW_Manager/**/bin/**/Release/**
+          if-no-files-found: warn
+
+  build-player-windows:
+    if: ${{ inputs.project == 'player-windows' }}
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Restore NuGet packages
+        run: nuget restore "Player/Windows/AndoW Player.sln" -PackagesDirectory "Player/Windows/packages" -NonInteractive
+
+      - name: Prepare Player dependencies in build directories
+        shell: pwsh
+        run: |
+          $src = "Player/Windows/Dependencies"
+          $destinations = @(
+            "Player/Windows/AndoW_Player/bin/x64/Release",
+            "Player/Windows/ConfigPlayer/bin/x64/Release"
+          )
+          foreach ($dst in $destinations) {
+            New-Item -ItemType Directory -Force -Path $dst | Out-Null
+            Copy-Item -Path "$src/*" -Destination $dst -Recurse -Force
+          }
+
+      - name: Build Player Windows (Release x64)
+        run: msbuild "Player/Windows/AndoW Player.sln" /t:Build /p:Configuration=Release /p:Platform=x64 /m
+
+      - name: Upload Player Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: player-windows-manual-${{ github.run_number }}
+          path: Player/Windows/**/bin/**/Release/**
+          if-no-files-found: warn
+
+  build-player-android:
+    if: ${{ inputs.project == 'player-android' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+
+      - name: Setup JDK 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager "platform-tools" "platforms;android-22" "build-tools;29.0.2"
+
+      - name: Build Player Android (Release APK)
+        working-directory: Player/Android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon clean :app:assembleRelease
+
+      - name: Upload Player Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: player-android-manual-${{ github.run_number }}
+          path: Player/Android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: warn
