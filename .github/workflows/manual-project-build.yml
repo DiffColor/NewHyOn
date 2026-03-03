@@ -35,6 +35,8 @@ jobs:
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x86
 
       - name: Restore NuGet packages
         run: nuget restore "Manager/AndoW_Manager/AndoW_Manager.sln" -PackagesDirectory "Manager/packages" -NonInteractive
@@ -43,9 +45,14 @@ jobs:
         shell: pwsh
         run: |
           $src = "Manager/Dependencies"
-          $dst = "Manager/AndoW_Manager/bin/Release"
-          New-Item -ItemType Directory -Force -Path $dst | Out-Null
-          Copy-Item -Path "$src/*" -Destination $dst -Recurse -Force
+          $destinations = @(
+            "Manager/dll",
+            "Manager/AndoW_Manager/bin/Release"
+          )
+          foreach ($dst in $destinations) {
+            New-Item -ItemType Directory -Force -Path $dst | Out-Null
+            Copy-Item -Path "$src/*" -Destination $dst -Recurse -Force
+          }
 
       - name: Build Manager (Release x64)
         run: msbuild "Manager/AndoW_Manager/AndoW_Manager.sln" /t:Build /p:Configuration=Release /p:Platform=x64 /m
@@ -71,6 +78,8 @@ jobs:
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x86
 
       - name: Restore NuGet packages
         run: nuget restore "Player/Windows/AndoW Player.sln" -PackagesDirectory "Player/Windows/packages" -NonInteractive
