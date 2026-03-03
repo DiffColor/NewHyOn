@@ -17,6 +17,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: Setup NuGet
         uses: NuGet/setup-nuget@v2
@@ -39,7 +41,7 @@ jobs:
           )
           foreach ($dst in $destinations) {
             New-Item -ItemType Directory -Force -Path $dst | Out-Null
-            Copy-Item -Path "$src/*" -Destination $dst -Recurse -Force
+            Copy-Item -Path "$src/*.dll" -Destination $dst -Force
           }
 
       - name: Build Manager (Release)
@@ -63,6 +65,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: Setup NuGet
         uses: NuGet/setup-nuget@v2
@@ -85,7 +89,7 @@ jobs:
           )
           foreach ($dst in $destinations) {
             New-Item -ItemType Directory -Force -Path $dst | Out-Null
-            Copy-Item -Path "$src/*" -Destination $dst -Recurse -Force
+            Copy-Item -Path "$src/*.dll" -Destination $dst -Force
           }
 
       - name: Build Player Windows (Release)
@@ -109,6 +113,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: Setup JDK 11
         uses: actions/setup-java@v4
