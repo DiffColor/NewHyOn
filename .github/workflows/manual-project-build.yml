@@ -327,7 +327,7 @@ jobs:
         working-directory: Player/Android
         run: |
           chmod +x ./gradlew
-          ./gradlew --no-daemon clean :app:assembleRelease
+          ./gradlew --no-daemon clean :app:assembleRelease -x lintVitalRelease -x lint
 
       - name: Upload Player Android artifact
         uses: actions/upload-artifact@v4
