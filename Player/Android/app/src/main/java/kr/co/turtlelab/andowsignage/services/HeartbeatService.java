@@ -199,7 +199,7 @@ public class HeartbeatService extends Service {
         lastDbCheckAt = now;
         lastDbReachable = RethinkDbClient.getInstance().canAccessDatabase();
         if (!lastDbReachable) {
-            Log.w(TAG, "RethinkDB connection unavailable.");
+            Log.w(TAG, "RethinkDB connection unavailable. heartbeat send skipped.");
         }
         return lastDbReachable;
     }

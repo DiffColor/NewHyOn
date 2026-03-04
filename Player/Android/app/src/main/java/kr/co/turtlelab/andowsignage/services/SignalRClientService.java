@@ -1,7 +1,6 @@
 package kr.co.turtlelab.andowsignage.services;
 
 import android.text.TextUtils;
-import android.util.Log;
 
 import com.google.gson.Gson;
 
@@ -26,9 +25,9 @@ import microsoft.aspnet.signalr.client.hubs.HubConnection;
 import microsoft.aspnet.signalr.client.hubs.HubProxy;
 import microsoft.aspnet.signalr.client.hubs.SubscriptionHandler1;
 import microsoft.aspnet.signalr.client.http.android.AndroidPlatformComponent;
+import microsoft.aspnet.signalr.client.transport.LongPollingTransport;
 
 public class SignalRClientService {
-    private static final String TAG = "SignalRClientService";
 
     public interface Listener {
         void onCommand(String command);
@@ -137,10 +136,9 @@ public class SignalRClientService {
         }
 
         try {
-            SignalRFuture<Void> future = local.start();
+            SignalRFuture<Void> future = local.start(new LongPollingTransport(new NullLogger()));
             future.get();
         } catch (Exception ex) {
-            Log.w(TAG, "SignalR start failed: " + ex.getMessage());
             scheduleReconnect();
         }
     }
@@ -182,12 +180,10 @@ public class SignalRClientService {
                         return;
                     }
                     try {
-                        SignalRFuture<Void> future = local.start();
+                        SignalRFuture<Void> future = local.start(new LongPollingTransport(new NullLogger()));
                         future.get();
-                        Log.i(TAG, "SignalR reconnected.");
                         return;
                     } catch (Exception ignore) {
-                        Log.w(TAG, "SignalR reconnect failed: " + ignore.getMessage());
                     }
                 }
             } finally {
@@ -315,8 +311,14 @@ public class SignalRClientService {
 
     private String buildQueryString() {
         try {
-            String playerName = AndoWSignageApp.PLAYER_ID;
-            String playerGuid = RethinkDbClient.getInstance().ensurePlayerGuid(playerName);
+            String playerName = RethinkDbClient.getInstance().getStoredPlayerName();
+            if (TextUtils.isEmpty(playerName)) {
+                playerName = AndoWSignageApp.PLAYER_ID;
+            }
+            String playerGuid = RethinkDbClient.getInstance().ensurePlayerGuid();
+            if (TextUtils.isEmpty(playerGuid) && !TextUtils.isEmpty(playerName)) {
+                playerGuid = RethinkDbClient.getInstance().ensurePlayerGuid(playerName);
+            }
             StringBuilder sb = new StringBuilder();
             if (!TextUtils.isEmpty(playerName)) {
                 sb.append("playerName=").append(URLEncoder.encode(playerName, "UTF-8"));
