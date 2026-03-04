@@ -126,6 +126,17 @@ public class RethinkDbClient {
         }
     }
 
+    private RethinkModels.PlayerInfoRecord fetchPlayerByNameOrGuid(String playerKey) {
+        if (TextUtils.isEmpty(playerKey)) {
+            return null;
+        }
+        RethinkModels.PlayerInfoRecord record = fetchPlayer(playerKey);
+        if (record != null && !TextUtils.isEmpty(record.getGuid())) {
+            return record;
+        }
+        return fetchPlayerByGuid(playerKey);
+    }
+
     public RethinkModels.PlayerInfoRecord fetchPlayer(String playerName) {
         if (playerName == null || playerName.isEmpty()) {
             return null;
@@ -319,6 +330,7 @@ public class RethinkDbClient {
                     .optArg("conflict", "replace")
                     .runNoReply(getConnection());
         } catch (Exception ignored) {
+            String ee = ignored.toString();
         }
     }
 
@@ -608,21 +620,22 @@ public class RethinkDbClient {
             }
             deviceInfoSyncInProgress = true;
         }
+        String syncedPlayerId = null;
         String playerId = getStoredPlayerGuid();
         if (TextUtils.isEmpty(playerId)) {
             playerId = ensurePlayerGuid(AndoWSignageApp.PLAYER_ID);
         }
-        if (TextUtils.isEmpty(playerId)) {
-            return;
+        if (!TextUtils.isEmpty(playerId)) {
+            String ip = resolveLocalIpAddress();
+            String mac = NetworkUtils.getMACAddress();
+            String os = "Android " + Build.VERSION.RELEASE;
+            updatePlayerDeviceInfo(playerId, ip, mac, os);
+            syncedPlayerId = playerId;
         }
-        String ip = resolveLocalIpAddress();
-        String mac = NetworkUtils.getMACAddress();
-        String os = "Android " + Build.VERSION.RELEASE;
-        updatePlayerDeviceInfo(playerId, ip, mac, os);
         synchronized (deviceInfoLock) {
-            deviceInfoSynced = true;
+            deviceInfoSynced = !TextUtils.isEmpty(syncedPlayerId);
             deviceInfoSyncInProgress = false;
-            lastSyncedPlayerGuid = playerId;
+            lastSyncedPlayerGuid = syncedPlayerId;
         }
     }
     public boolean isDeviceInfoSynced() {
@@ -635,17 +648,23 @@ public class RethinkDbClient {
         return ensurePlayerGuid(AndoWSignageApp.PLAYER_ID);
     }
 
-    public String ensurePlayerGuid(String playerName) {
+    public String ensurePlayerGuid(String playerKey) {
         String guid = getStoredPlayerGuid();
         if (!guidVerified) {
-            RethinkModels.PlayerInfoRecord playerRecord = fetchPlayer(playerName);
+            RethinkModels.PlayerInfoRecord playerRecord = fetchPlayerByNameOrGuid(playerKey);
             if (playerRecord != null) {
                 guid = playerRecord.getGuid();
                 guidVerified = true;
             }
         }
         if (TextUtils.isEmpty(guid)) {
-            RethinkModels.PlayerInfoRecord playerRecord = fetchPlayer(playerName);
+            RethinkModels.PlayerInfoRecord playerRecord = fetchPlayerByNameOrGuid(playerKey);
+            if (playerRecord == null) {
+                String storedName = getStoredPlayerName();
+                if (!TextUtils.isEmpty(storedName)) {
+                    playerRecord = fetchPlayer(storedName);
+                }
+            }
             if (playerRecord != null) {
                 guid = playerRecord.getGuid();
                 guidVerified = true;
@@ -666,6 +685,19 @@ public class RethinkDbClient {
             RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
             if (player != null) {
                 return player.getPlayerId();
+            }
+        } finally {
+            realm.close();
+        }
+        return null;
+    }
+
+    public String getStoredPlayerName() {
+        Realm realm = Realm.getDefaultInstance();
+        try {
+            RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
+            if (player != null) {
+                return player.getPlayerName();
             }
         } finally {
             realm.close();
@@ -858,7 +890,11 @@ public class RethinkDbClient {
     }
 
     public void fetchInitialWeeklySchedule() {
-        RethinkModels.PlayerInfoRecord player = fetchPlayer(AndoWSignageApp.PLAYER_ID);
+        String guid = ensurePlayerGuid(AndoWSignageApp.PLAYER_ID);
+        RethinkModels.PlayerInfoRecord player = fetchPlayerByGuid(guid);
+        if (player == null) {
+            player = fetchPlayerByNameOrGuid(AndoWSignageApp.PLAYER_ID);
+        }
         if (player == null) {
             return;
         }
