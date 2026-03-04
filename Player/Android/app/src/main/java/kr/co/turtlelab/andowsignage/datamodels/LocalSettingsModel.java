@@ -14,6 +14,7 @@ public class LocalSettingsModel {
     int ftpPort = 0;
     int ftpPasvMinPort = 0;
     int ftpPasvMaxPort = 0;
+    String ftpRootPath = "/NewHyOnEnt";
     int signalrPort = 0;
     String signalrHubPath = "";
 
@@ -67,6 +68,10 @@ public class LocalSettingsModel {
 
     public void setFtpPasvMaxPort(int port) {
         ftpPasvMaxPort = port;
+    }
+
+    public void setFtpRootPath(String rootPath) {
+        ftpRootPath = rootPath == null ? "" : rootPath;
     }
 
     public void setSignalrPort(int port) {
@@ -126,6 +131,10 @@ public class LocalSettingsModel {
 
     public int getFtpPasvMaxPort() {
         return ftpPasvMaxPort;
+    }
+
+    public String getFtpRootPath() {
+        return ftpRootPath;
     }
 
     public int getSignalrPort() {

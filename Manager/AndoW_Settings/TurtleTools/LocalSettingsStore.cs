@@ -8,6 +8,7 @@ namespace TurtleTools
 {
     internal static class LocalSettingsStore
     {
+        private const string DefaultFtpRootPath = "/NewHyOnEnt";
         private const string ConnectionId = "singleton";
         private const string CollectionConnection = "local_connection";
         private const string CollectionFtp = "local_ftp";
@@ -89,6 +90,7 @@ namespace TurtleTools
             {
                 var collection = db.GetCollection<LocalFtpSettings>(CollectionFtp);
                 var settings = collection.FindById(ConnectionId) ?? BuildFtpSeed();
+                settings.RootPath = NormalizeRootPath(settings.RootPath);
                 collection.Upsert(settings);
                 return settings;
             }
@@ -102,6 +104,7 @@ namespace TurtleTools
             }
 
             settings.Id = ConnectionId;
+            settings.RootPath = NormalizeRootPath(settings.RootPath);
             using (var db = LocalDbContext.OpenDatabase())
             {
                 db.GetCollection<LocalFtpSettings>(CollectionFtp).Upsert(settings);
@@ -183,7 +186,7 @@ namespace TurtleTools
                 PasvMaxPort = serverSettings?.FTP_PasvMaxPort > 0 ? serverSettings.FTP_PasvMaxPort : NetworkTools.FTP_PASV_MAX_PORT,
                 User = "asdf",
                 Password = "Emfndhk!",
-                RootPath = "/NewHyOnEnt"
+                RootPath = NormalizeRootPath(serverSettings?.FTP_RootPath)
             };
         }
 
@@ -233,6 +236,23 @@ namespace TurtleTools
             }
 
             return fallback;
+        }
+
+        private static string NormalizeRootPath(string rootPath)
+        {
+            if (string.IsNullOrWhiteSpace(rootPath))
+            {
+                return DefaultFtpRootPath;
+            }
+
+            string normalized = rootPath.Replace("\\", "/").Trim();
+            if (!normalized.StartsWith("/"))
+            {
+                normalized = "/" + normalized;
+            }
+
+            normalized = normalized.TrimEnd('/');
+            return string.IsNullOrWhiteSpace(normalized) ? "/" : normalized;
         }
     }
 

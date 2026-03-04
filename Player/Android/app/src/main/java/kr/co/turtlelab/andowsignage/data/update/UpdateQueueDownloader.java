@@ -120,7 +120,7 @@ public class UpdateQueueDownloader {
                 ftpPort,
                 AndoWSignageApp.FTP_LOGIN_ID,
                 AndoWSignageApp.FTP_LOGIN_PW);
-        String remotePath = entry.remotePath;
+        String remotePath = buildRemotePath(resolveFtpRootPath(), entry.remotePath);
         UpdateQueueLogger.log("Downloading " + entry.fileName + " from " + remotePath + " via FTP " + ftpHost + ":" + ftpPort);
         FTP4JUtil.DownloadResult result = ftp.downloadWithResume(remotePath, stagingFile, resumeFrom);
         if (result.missing) {
@@ -236,6 +236,37 @@ public class UpdateQueueDownloader {
             return port;
         }
         return AndoWSignageApp.FTP_PORT;
+    }
+
+    private String resolveFtpRootPath() {
+        return LocalSettingsProvider.getFtpRootPath();
+    }
+
+    private String buildRemotePath(String rootPath, String relativePath) {
+        String normalizedRoot = normalizeRemotePath(rootPath, "/NewHyOnEnt");
+        String normalizedRelative = normalizeRemotePath(relativePath, "/");
+        if (TextUtils.isEmpty(normalizedRelative) || "/".equals(normalizedRelative)) {
+            return normalizedRoot;
+        }
+        if (normalizedRelative.equalsIgnoreCase(normalizedRoot)
+                || normalizedRelative.toLowerCase(Locale.US).startsWith((normalizedRoot + "/").toLowerCase(Locale.US))) {
+            return normalizedRelative;
+        }
+        return normalizedRoot + "/" + normalizedRelative.substring(1);
+    }
+
+    private String normalizeRemotePath(String path, String fallback) {
+        if (TextUtils.isEmpty(path)) {
+            return fallback;
+        }
+        String normalized = path.replace("\\", "/").trim();
+        if (!normalized.startsWith("/")) {
+            normalized = "/" + normalized;
+        }
+        while (normalized.length() > 1 && normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
     }
 
     private void cleanupTempFile(String relativeFilePath) {

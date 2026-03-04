@@ -1883,8 +1883,9 @@ namespace HyOnPlayer
                     client.Connect();
                     long offset = chunk.Offset;
                     long length = chunk.Length > 0 ? chunk.Length : Math.Max(0, entry.SizeBytes - offset);
+                    string remotePath = BuildRemotePath(ftp.RootPath, entry.RemotePath);
 
-                    using (var remote = client.OpenRead(entry.RemotePath, FtpDataType.Binary, offset))
+                    using (var remote = client.OpenRead(remotePath, FtpDataType.Binary, offset))
                     using (var local = new FileStream(tempFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read))
                     {
                         if (entry.SizeBytes > 0 && local.Length < entry.SizeBytes)
@@ -1979,20 +1980,58 @@ namespace HyOnPlayer
                 return false;
             }
 
-            endpoint = new FtpEndpoint(host.Trim(), port);
+            endpoint = new FtpEndpoint(host.Trim(), port, settings?.FTP_RootPath);
             reason = null;
             return true;
+        }
+
+        private static string BuildRemotePath(string rootPath, string relativePath)
+        {
+            string normalizedRoot = NormalizeRemotePath(rootPath, "/NewHyOnEnt");
+            string normalizedRelative = NormalizeRemotePath(relativePath, "/");
+
+            if (string.IsNullOrWhiteSpace(normalizedRelative) || normalizedRelative == "/")
+            {
+                return normalizedRoot;
+            }
+
+            if (string.Equals(normalizedRelative, normalizedRoot, StringComparison.OrdinalIgnoreCase)
+                || normalizedRelative.StartsWith(normalizedRoot + "/", StringComparison.OrdinalIgnoreCase))
+            {
+                return normalizedRelative;
+            }
+
+            return normalizedRoot.TrimEnd('/') + "/" + normalizedRelative.TrimStart('/');
+        }
+
+        private static string NormalizeRemotePath(string path, string fallback)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return fallback;
+            }
+
+            string normalized = path.Replace("\\", "/").Trim();
+            if (!normalized.StartsWith("/"))
+            {
+                normalized = "/" + normalized;
+            }
+
+            normalized = normalized.TrimEnd('/');
+            return string.IsNullOrWhiteSpace(normalized) ? "/" : normalized;
         }
 
         private readonly struct FtpEndpoint
         {
             public string Host { get; }
             public int Port { get; }
+            public string RootPath { get; }
 
-            public FtpEndpoint(string host, int port)
+            public FtpEndpoint(string host, int port, string rootPath)
             {
                 Host = string.IsNullOrWhiteSpace(host) ? "127.0.0.1" : host;
                 Port = port > 0 ? port : FTP_PORT;
+                RootPath = NormalizeRemotePath(rootPath, "/NewHyOnEnt");
             }
         }
 

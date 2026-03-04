@@ -33,6 +33,7 @@ namespace AndoW_Manager
                 sData.FTP_Port = ftp.Port > 0 ? ftp.Port : NetworkTools.FTP_PORT;
                 sData.FTP_PasvMinPort = ftp.PasvMinPort > 0 ? ftp.PasvMinPort : NetworkTools.FTP_PASV_MIN_PORT;
                 sData.FTP_PasvMaxPort = ftp.PasvMaxPort > 0 ? ftp.PasvMaxPort : NetworkTools.FTP_PASV_MAX_PORT;
+                sData.FTP_RootPath = NormalizeFtpRootPath(ftp.RootPath);
             }
 
             if (ui != null)
@@ -60,6 +61,8 @@ namespace AndoW_Manager
             {
                 sData.MessageServerIp = "127.0.0.1";
             }
+
+            sData.FTP_RootPath = NormalizeFtpRootPath(sData.FTP_RootPath);
 
             return sData;
         }
@@ -96,6 +99,7 @@ namespace AndoW_Manager
                 ftp.Port = settings.FTP_Port;
                 ftp.PasvMinPort = settings.FTP_PasvMinPort;
                 ftp.PasvMaxPort = settings.FTP_PasvMaxPort;
+                ftp.RootPath = NormalizeFtpRootPath(settings.FTP_RootPath);
                 if (!string.IsNullOrWhiteSpace(settings.DataServerIp))
                 {
                     ftp.Host = settings.DataServerIp.Trim();
@@ -123,6 +127,24 @@ namespace AndoW_Manager
             }
 
             sData = settings;
+            sData.FTP_RootPath = NormalizeFtpRootPath(sData.FTP_RootPath);
+        }
+
+        private static string NormalizeFtpRootPath(string rootPath)
+        {
+            if (string.IsNullOrWhiteSpace(rootPath))
+            {
+                return "/NewHyOnEnt";
+            }
+
+            string normalized = rootPath.Replace("\\", "/").Trim();
+            if (!normalized.StartsWith("/"))
+            {
+                normalized = "/" + normalized;
+            }
+
+            normalized = normalized.TrimEnd('/');
+            return string.IsNullOrWhiteSpace(normalized) ? "/" : normalized;
         }
     }
 
@@ -134,6 +156,7 @@ namespace AndoW_Manager
         public int FTP_Port { get; set; } = NetworkTools.FTP_PORT;
         public int FTP_PasvMinPort { get; set; } = NetworkTools.FTP_PASV_MIN_PORT;
         public int FTP_PasvMaxPort { get; set; } = NetworkTools.FTP_PASV_MAX_PORT;
+        public string FTP_RootPath { get; set; } = "/NewHyOnEnt";
         public bool PreserveAspectRatio { get; set; } = false;
         public string DataServerIp { get; set; } = "127.0.0.1";
         public string MessageServerIp { get; set; } = "127.0.0.1";

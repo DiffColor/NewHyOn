@@ -27,6 +27,7 @@ public class LocalSettingsProvider {
     public static final String KEY_FTP_PORT = "ftp_port";
     public static final String KEY_FTP_PASV_MIN_PORT = "ftp_pasv_min_port";
     public static final String KEY_FTP_PASV_MAX_PORT = "ftp_pasv_max_port";
+    public static final String KEY_FTP_ROOT_PATH = "ftp_root_path";
     public static final String KEY_SIGNALR_PORT = "signalr_port";
     public static final String KEY_SIGNALR_HUB_PATH = "signalr_hub_path";
 
@@ -69,6 +70,7 @@ public class LocalSettingsProvider {
                 model.setFtpPort(settings.getFtpPort());
                 model.setFtpPasvMinPort(settings.getFtpPasvMinPort());
                 model.setFtpPasvMaxPort(settings.getFtpPasvMaxPort());
+                model.setFtpRootPath(normalizeFtpRootPath(settings.getFtpRootPath()));
                 model.setSignalrPort(settings.getSignalrPort());
                 model.setSignalrHubPath(settings.getSignalrHubPath());
             }
@@ -126,6 +128,7 @@ public class LocalSettingsProvider {
             settings.setFtpPort(ftpPort > 0 ? ftpPort : 21);
             settings.setFtpPasvMinPort(55536);
             settings.setFtpPasvMaxPort(55636);
+            settings.setFtpRootPath("/NewHyOnEnt");
             settings.setSignalrPort(5000);
             settings.setSignalrHubPath("/Data");
         });
@@ -302,6 +305,20 @@ public class LocalSettingsProvider {
         realm.close();
     }
 
+    public static void updateFtpRootPath(String ftpRootPath) {
+        Realm realm = Realm.getDefaultInstance();
+        realm.executeTransaction(r -> {
+            RealmLocalSettings settings = r.where(RealmLocalSettings.class)
+                    .equalTo("id", LOCAL_SETTINGS_ID)
+                    .findFirst();
+            if (settings == null) {
+                settings = r.createObject(RealmLocalSettings.class, LOCAL_SETTINGS_ID);
+            }
+            settings.setFtpRootPath(normalizeFtpRootPath(ftpRootPath));
+        });
+        realm.close();
+    }
+
     public static void updateSignalrPort(int port) {
         Realm realm = Realm.getDefaultInstance();
         realm.executeTransaction(r -> {
@@ -334,7 +351,8 @@ public class LocalSettingsProvider {
                                            String messageServerIp,
                                            int ftpPort,
                                            int ftpPasvMinPort,
-                                           int ftpPasvMaxPort) {
+                                           int ftpPasvMaxPort,
+                                           String ftpRootPath) {
         Realm realm = Realm.getDefaultInstance();
         realm.executeTransaction(r -> {
             RealmLocalSettings settings = r.where(RealmLocalSettings.class)
@@ -358,6 +376,9 @@ public class LocalSettingsProvider {
             }
             if (ftpPasvMaxPort > 0) {
                 settings.setFtpPasvMaxPort(ftpPasvMaxPort);
+            }
+            if (!TextUtils.isEmpty(ftpRootPath)) {
+                settings.setFtpRootPath(normalizeFtpRootPath(ftpRootPath));
             }
         });
         realm.close();
@@ -427,6 +448,19 @@ public class LocalSettingsProvider {
         }
     }
 
+    public static String getFtpRootPath() {
+        Realm realm = Realm.getDefaultInstance();
+        try {
+            RealmLocalSettings settings = rWhere(realm);
+            if (settings == null) {
+                return "/NewHyOnEnt";
+            }
+            return normalizeFtpRootPath(settings.getFtpRootPath());
+        } finally {
+            realm.close();
+        }
+    }
+
     public static int getSignalrPort() {
         Realm realm = Realm.getDefaultInstance();
         try {
@@ -461,6 +495,18 @@ public class LocalSettingsProvider {
         return realm.where(RealmLocalSettings.class)
                 .equalTo("id", LOCAL_SETTINGS_ID)
                 .findFirst();
+    }
+
+    private static String normalizeFtpRootPath(String rootPath) {
+        if (TextUtils.isEmpty(rootPath)) {
+            return "/NewHyOnEnt";
+        }
+        String normalized = rootPath.replace("\\", "/").trim();
+        if (!normalized.startsWith("/")) {
+            normalized = "/" + normalized;
+        }
+        normalized = normalized.replaceAll("/+$", "");
+        return TextUtils.isEmpty(normalized) ? "/" : normalized;
     }
 
     public static boolean hasStoredUsbKeyForDevice() {

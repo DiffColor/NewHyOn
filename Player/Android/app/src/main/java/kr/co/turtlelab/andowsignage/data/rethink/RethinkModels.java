@@ -397,6 +397,8 @@ public final class RethinkModels {
         private int ftpPasvMinPort;
         @SerializedName("FTP_PasvMaxPort")
         private int ftpPasvMaxPort;
+        @SerializedName("FTP_RootPath")
+        private String ftpRootPath;
         @SerializedName("DataServerIp")
         private String dataServerIp;
         @SerializedName("MessageServerIp")
@@ -416,6 +418,10 @@ public final class RethinkModels {
 
         public int getFtpPasvMaxPort() {
             return ftpPasvMaxPort;
+        }
+
+        public String getFtpRootPath() {
+            return ftpRootPath;
         }
 
         public String getDataServerIp() {

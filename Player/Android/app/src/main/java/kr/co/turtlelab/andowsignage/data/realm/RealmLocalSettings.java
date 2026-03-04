@@ -19,6 +19,7 @@ public class RealmLocalSettings extends RealmObject {
     private int ftpPort;
     private int ftpPasvMinPort;
     private int ftpPasvMaxPort;
+    private String ftpRootPath = "/NewHyOnEnt";
     private int signalrPort;
     private String signalrHubPath = "";
 
@@ -124,6 +125,14 @@ public class RealmLocalSettings extends RealmObject {
 
     public void setFtpPasvMaxPort(int ftpPasvMaxPort) {
         this.ftpPasvMaxPort = ftpPasvMaxPort;
+    }
+
+    public String getFtpRootPath() {
+        return ftpRootPath;
+    }
+
+    public void setFtpRootPath(String ftpRootPath) {
+        this.ftpRootPath = ftpRootPath;
     }
 
     public int getSignalrPort() {

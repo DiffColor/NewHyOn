@@ -153,6 +153,7 @@ namespace HyOnPlayer
         public int FTP_Port { get; set; }
         public int FTP_PasvMinPort { get; set; }
         public int FTP_PasvMaxPort { get; set; }
+        public string FTP_RootPath { get; set; }
         public string DataServerIp { get; set; }
         public string MessageServerIp { get; set; }
     }

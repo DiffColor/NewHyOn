@@ -140,7 +140,8 @@ public class RethinkDbClient {
                     settings.getMessageServerIp(),
                     settings.getFtpPort(),
                     settings.getFtpPasvMinPort(),
-                    settings.getFtpPasvMaxPort());
+                    settings.getFtpPasvMaxPort(),
+                    settings.getFtpRootPath());
         } catch (Exception ignored) {
         }
     }

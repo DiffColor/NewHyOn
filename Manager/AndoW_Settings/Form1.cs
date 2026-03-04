@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Drawing;
 using System.Windows.Forms;
 using TurtleTools;
 
@@ -12,6 +13,8 @@ namespace AndoWSettings
         private LocalConnectionSettings _connectionSettings;
         private LocalFtpSettings _ftpSettings;
         private LocalUiSettings _uiSettings;
+        private Label _ftpRootPathLabel;
+        private TextBox _ftpRootPathTextBox;
 
         public Form1()
         {
@@ -20,6 +23,7 @@ namespace AndoWSettings
             try
             {
                 InitializeComponent();
+                EnsureFtpRootPathControls();
                 InitEventHandler();
                 LoadLocalSettings();
             }
@@ -105,6 +109,7 @@ namespace AndoWSettings
                 _ftpSettings.Port = ftpPortNum;
                 _ftpSettings.PasvMinPort = ftpPasvMinPortNum;
                 _ftpSettings.PasvMaxPort = ftpPasvMaxPortNum;
+                _ftpSettings.RootPath = NormalizeFtpRootPath(_ftpRootPathTextBox?.Text);
                 _uiSettings.PreserveAspectRatio = aspect_ratio_chbox.Checked;
 
                 LocalSettingsStore.SaveConnectionSettings(_connectionSettings);
@@ -118,6 +123,7 @@ namespace AndoWSettings
                     FTP_Port = _ftpSettings.Port,
                     FTP_PasvMinPort = _ftpSettings.PasvMinPort,
                     FTP_PasvMaxPort = _ftpSettings.PasvMaxPort,
+                    FTP_RootPath = _ftpSettings.RootPath,
                     PreserveAspectRatio = _uiSettings.PreserveAspectRatio
                 };
 
@@ -149,9 +155,12 @@ namespace AndoWSettings
                 LoadLocalSettings();
             }
 
+            EnsureFtpRootPathControls();
+
             FTPPort.Text = (_ftpSettings?.Port ?? NetworkTools.FTP_PORT).ToString();
             PasvMinPort.Text = (_ftpSettings?.PasvMinPort ?? NetworkTools.FTP_PASV_MIN_PORT).ToString();
             PasvMaxPort.Text = (_ftpSettings?.PasvMaxPort ?? NetworkTools.FTP_PASV_MAX_PORT).ToString();
+            _ftpRootPathTextBox.Text = NormalizeFtpRootPath(_ftpSettings?.RootPath);
 
             aspect_ratio_chbox.Checked = _uiSettings?.PreserveAspectRatio ?? false;
             if (dataServerIpTextBox != null)
@@ -175,6 +184,60 @@ namespace AndoWSettings
         private void showipbtn_Click(object sender, EventArgs e)
         {
             Process.Start("CMD.exe", "/K ipconfig");
+        }
+
+        private void EnsureFtpRootPathControls()
+        {
+            if (_ftpRootPathLabel != null && _ftpRootPathTextBox != null)
+            {
+                return;
+            }
+
+            _ftpRootPathLabel = new Label
+            {
+                Name = "ftpRootPathLabel",
+                Text = "FTP Root Path :",
+                ForeColor = Color.Black,
+                Size = new Size(124, 26),
+                Location = new Point(37, 185),
+                TextAlign = ContentAlignment.MiddleRight,
+                TabStop = false
+            };
+
+            _ftpRootPathTextBox = new TextBox
+            {
+                Name = "ftpRootPathTextBox",
+                Size = new Size(190, 26),
+                Location = new Point(167, 185),
+                TabStop = false
+            };
+
+            Controls.Add(_ftpRootPathLabel);
+            Controls.Add(_ftpRootPathTextBox);
+            _ftpRootPathLabel.BringToFront();
+            _ftpRootPathTextBox.BringToFront();
+
+            if (ClientSize.Height < 230)
+            {
+                ClientSize = new Size(ClientSize.Width, 230);
+            }
+        }
+
+        private static string NormalizeFtpRootPath(string rootPath)
+        {
+            if (string.IsNullOrWhiteSpace(rootPath))
+            {
+                return "/NewHyOnEnt";
+            }
+
+            string normalized = rootPath.Replace("\\", "/").Trim();
+            if (!normalized.StartsWith("/"))
+            {
+                normalized = "/" + normalized;
+            }
+
+            normalized = normalized.TrimEnd('/');
+            return string.IsNullOrWhiteSpace(normalized) ? "/" : normalized;
         }
     }
 }
