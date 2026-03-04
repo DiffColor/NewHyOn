@@ -315,23 +315,20 @@ public class RethinkDbClient {
             return;
         }
         ensureHeartbeatTable();
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("id", clientId);
-        payload.put("status", TextUtils.isEmpty(status) ? "" : status);
-        payload.put("process", process);
-        payload.put("version", TextUtils.isEmpty(version) ? "" : version);
-        payload.put("currentPage", TextUtils.isEmpty(currentPage) ? "" : currentPage);
-        payload.put("hdmiState", TextUtils.isEmpty(hdmiState) ? "" : hdmiState);
-        payload.put("heartbeatTs", getCurrentTimestamp());
+        ReqlExpr payload = R.hashMap("id", clientId)
+                .with("status", TextUtils.isEmpty(status) ? "" : status)
+                .with("process", process)
+                .with("version", TextUtils.isEmpty(version) ? "" : version)
+                .with("currentPage", TextUtils.isEmpty(currentPage) ? "" : currentPage)
+                .with("hdmiState", TextUtils.isEmpty(hdmiState) ? "" : hdmiState)
+                .with("heartbeatTs", R.now());
         try {
             R.db(DATABASE)
                     .table(TABLE_HEARTBEAT)
                     .insert(payload)
                     .optArg("conflict", "replace")
                     .runNoReply(getConnection());
-        } catch (Exception ignored) {
-            String ee = ignored.toString();
-        }
+        } catch (Exception ignored) { }
     }
 
     public void sendHeartbeatStopped(String clientId, String version) {
@@ -339,14 +336,13 @@ public class RethinkDbClient {
             return;
         }
         ensureHeartbeatTable();
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("id", clientId);
-        payload.put("status", "stopped");
-        payload.put("process", 0);
-        payload.put("version", TextUtils.isEmpty(version) ? "" : version);
-        payload.put("currentPage", "");
-        payload.put("hdmiState", false);
-        payload.put("heartbeatTs", "");
+        ReqlExpr payload = R.hashMap("id", clientId)
+                .with("status", "stopped")
+                .with("process", 0)
+                .with("version", TextUtils.isEmpty(version) ? "" : version)
+                .with("currentPage", "")
+                .with("hdmiState", false)
+                .with("heartbeatTs", R.now());
         try {
             R.db(DATABASE)
                     .table(TABLE_HEARTBEAT)
