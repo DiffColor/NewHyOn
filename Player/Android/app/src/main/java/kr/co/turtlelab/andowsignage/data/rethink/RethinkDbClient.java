@@ -315,7 +315,7 @@ public class RethinkDbClient {
             return;
         }
         ensureHeartbeatTable();
-        ReqlExpr payload = R.hashMap("id", clientId)
+        MapObject<Object, Object> payload = R.hashMap("id", clientId)
                 .with("status", TextUtils.isEmpty(status) ? "" : status)
                 .with("process", process)
                 .with("version", TextUtils.isEmpty(version) ? "" : version)
@@ -336,7 +336,7 @@ public class RethinkDbClient {
             return;
         }
         ensureHeartbeatTable();
-        ReqlExpr payload = R.hashMap("id", clientId)
+        MapObject<Object, Object> payload = R.hashMap("id", clientId)
                 .with("status", "stopped")
                 .with("process", 0)
                 .with("version", TextUtils.isEmpty(version) ? "" : version)
