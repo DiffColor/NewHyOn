@@ -107,13 +107,7 @@ public class HeartbeatService extends Service {
     }
 
     public void publishHeartbeat() {
-        String clientId = RethinkDbClient.getInstance().getCachedPlayerGuid();
-        if (TextUtils.isEmpty(clientId)) {
-            clientId = RethinkDbClient.getInstance().ensurePlayerGuid(AndoWSignageApp.PLAYER_ID);
-        }
-        if (TextUtils.isEmpty(clientId)) {
-            clientId = AndoWSignageApp.PLAYER_ID;
-        }
+        String clientId = resolveClientGuid();
         if (TextUtils.isEmpty(clientId)) {
             return;
         }
@@ -151,18 +145,20 @@ public class HeartbeatService extends Service {
     }
 
     public void publishHeartbeatStopped() {
-        String clientId = RethinkDbClient.getInstance().getCachedPlayerGuid();
-        if (TextUtils.isEmpty(clientId)) {
-            clientId = RethinkDbClient.getInstance().ensurePlayerGuid(AndoWSignageApp.PLAYER_ID);
-        }
-        if (TextUtils.isEmpty(clientId)) {
-            clientId = AndoWSignageApp.PLAYER_ID;
-        }
+        String clientId = resolveClientGuid();
         if (TextUtils.isEmpty(clientId)) {
             return;
         }
 
         RethinkDbClient.getInstance().sendHeartbeatStopped(clientId, AndoWSignageApp.version);
+    }
+
+    private String resolveClientGuid() {
+        String clientId = RethinkDbClient.getInstance().getCachedPlayerGuid();
+        if (TextUtils.isEmpty(clientId)) {
+            clientId = RethinkDbClient.getInstance().ensurePlayerGuid(AndoWSignageApp.PLAYER_ID);
+        }
+        return clientId;
     }
 
 
