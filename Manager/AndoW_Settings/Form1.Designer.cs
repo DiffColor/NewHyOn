@@ -42,6 +42,8 @@
             this.dataServerIpTextBox = new System.Windows.Forms.TextBox();
             this.messageServerIpTextBox = new System.Windows.Forms.TextBox();
             this.messageServerIpLabel = new System.Windows.Forms.Label();
+            this.ftpRootPathLabel = new System.Windows.Forms.Label();
+            this.ftpRootPathTextBox = new System.Windows.Forms.TextBox();
             this.SuspendLayout();
             // 
             // SaveBtn
@@ -123,10 +125,33 @@
             this.messageServerIpLabel.Name = "messageServerIpLabel";
             this.messageServerIpLabel.TabStop = false;
             // 
+            // ftpRootPathLabel
+            // 
+            this.ftpRootPathLabel.Font = new System.Drawing.Font("굴림", 9F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(129)));
+            this.ftpRootPathLabel.ForeColor = System.Drawing.Color.Black;
+            this.ftpRootPathLabel.Location = new System.Drawing.Point(37, 185);
+            this.ftpRootPathLabel.Name = "ftpRootPathLabel";
+            this.ftpRootPathLabel.Size = new System.Drawing.Size(124, 26);
+            this.ftpRootPathLabel.TabIndex = 120;
+            this.ftpRootPathLabel.Text = "FTP Root Path :";
+            this.ftpRootPathLabel.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
+            // 
+            // ftpRootPathTextBox
+            // 
+            this.ftpRootPathTextBox.Font = new System.Drawing.Font("굴림", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(129)));
+            this.ftpRootPathTextBox.Location = new System.Drawing.Point(167, 185);
+            this.ftpRootPathTextBox.Name = "ftpRootPathTextBox";
+            this.ftpRootPathTextBox.Size = new System.Drawing.Size(190, 26);
+            this.ftpRootPathTextBox.TabIndex = 121;
+            this.ftpRootPathTextBox.TabStop = false;
+            // 
             // Form1
             // 
             resources.ApplyResources(this, "$this");
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.ClientSize = new System.Drawing.Size(494, 230);
+            this.Controls.Add(this.ftpRootPathTextBox);
+            this.Controls.Add(this.ftpRootPathLabel);
             this.Controls.Add(this.messageServerIpTextBox);
             this.Controls.Add(this.messageServerIpLabel);
             this.Controls.Add(this.dataServerIpTextBox);
@@ -164,6 +189,7 @@
         private System.Windows.Forms.TextBox dataServerIpTextBox;
         private System.Windows.Forms.TextBox messageServerIpTextBox;
         private System.Windows.Forms.Label messageServerIpLabel;
+        private System.Windows.Forms.Label ftpRootPathLabel;
+        private System.Windows.Forms.TextBox ftpRootPathTextBox;
     }
 }
-
