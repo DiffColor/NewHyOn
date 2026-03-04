@@ -25,7 +25,6 @@ import microsoft.aspnet.signalr.client.hubs.HubConnection;
 import microsoft.aspnet.signalr.client.hubs.HubProxy;
 import microsoft.aspnet.signalr.client.hubs.SubscriptionHandler1;
 import microsoft.aspnet.signalr.client.http.android.AndroidPlatformComponent;
-import microsoft.aspnet.signalr.client.transport.LongPollingTransport;
 
 public class SignalRClientService {
 
@@ -136,7 +135,7 @@ public class SignalRClientService {
         }
 
         try {
-            SignalRFuture<Void> future = local.start(new LongPollingTransport(new NullLogger()));
+            SignalRFuture<Void> future = local.start();
             future.get();
         } catch (Exception ex) {
             scheduleReconnect();
@@ -180,7 +179,7 @@ public class SignalRClientService {
                         return;
                     }
                     try {
-                        SignalRFuture<Void> future = local.start(new LongPollingTransport(new NullLogger()));
+                        SignalRFuture<Void> future = local.start();
                         future.get();
                         return;
                     } catch (Exception ignore) {
@@ -311,14 +310,8 @@ public class SignalRClientService {
 
     private String buildQueryString() {
         try {
-            String playerName = RethinkDbClient.getInstance().getStoredPlayerName();
-            if (TextUtils.isEmpty(playerName)) {
-                playerName = AndoWSignageApp.PLAYER_ID;
-            }
-            String playerGuid = RethinkDbClient.getInstance().ensurePlayerGuid();
-            if (TextUtils.isEmpty(playerGuid) && !TextUtils.isEmpty(playerName)) {
-                playerGuid = RethinkDbClient.getInstance().ensurePlayerGuid(playerName);
-            }
+            String playerName = AndoWSignageApp.PLAYER_ID;
+            String playerGuid = RethinkDbClient.getInstance().ensurePlayerGuid(playerName);
             StringBuilder sb = new StringBuilder();
             if (!TextUtils.isEmpty(playerName)) {
                 sb.append("playerName=").append(URLEncoder.encode(playerName, "UTF-8"));
