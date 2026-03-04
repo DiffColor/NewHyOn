@@ -224,13 +224,13 @@ public class UpdateManagerService extends Service {
     private String resolvePlayerGuid() {
         RethinkDbClient client = RethinkDbClient.getInstance();
         if (!client.isDeviceInfoSynced()) {
-            client.ensurePlayerGuid(AndoWSignageApp.PLAYER_ID);
+            client.ensurePlayerGuid();
             if (!client.isDeviceInfoSynced()) {
                 return null;
             }
         }
         if (TextUtils.isEmpty(cachedPlayerGuid)) {
-            cachedPlayerGuid = client.ensurePlayerGuid(AndoWSignageApp.PLAYER_ID);
+            cachedPlayerGuid = client.ensurePlayerGuid();
         }
         return cachedPlayerGuid;
     }

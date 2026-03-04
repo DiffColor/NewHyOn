@@ -597,7 +597,7 @@ public class RethinkDbClient {
         if (TextUtils.isEmpty(owner)) {
             owner = getStoredPlayerGuid();
             if (TextUtils.isEmpty(owner)) {
-                owner = ensurePlayerGuid(AndoWSignageApp.PLAYER_ID);
+                owner = ensurePlayerGuid();
             }
         }
         if (TextUtils.isEmpty(owner)) {
@@ -619,7 +619,7 @@ public class RethinkDbClient {
         String syncedPlayerId = null;
         String playerId = getStoredPlayerGuid();
         if (TextUtils.isEmpty(playerId)) {
-            playerId = ensurePlayerGuid(AndoWSignageApp.PLAYER_ID);
+            playerId = ensurePlayerGuid();
         }
         if (!TextUtils.isEmpty(playerId)) {
             String ip = resolveLocalIpAddress();
@@ -641,7 +641,15 @@ public class RethinkDbClient {
     }
 
     public String ensurePlayerGuid() {
-        return ensurePlayerGuid(AndoWSignageApp.PLAYER_ID);
+        return ensurePlayerGuid(resolvePlayerLookupKey());
+    }
+
+    private String resolvePlayerLookupKey() {
+        String storedPlayerName = getStoredPlayerName();
+        if (!TextUtils.isEmpty(storedPlayerName)) {
+            return storedPlayerName;
+        }
+        return AndoWSignageApp.PLAYER_ID;
     }
 
     public String ensurePlayerGuid(String playerKey) {
@@ -886,7 +894,7 @@ public class RethinkDbClient {
     }
 
     public void fetchInitialWeeklySchedule() {
-        String guid = ensurePlayerGuid(AndoWSignageApp.PLAYER_ID);
+        String guid = ensurePlayerGuid();
         RethinkModels.PlayerInfoRecord player = fetchPlayerByGuid(guid);
         if (player == null) {
             player = fetchPlayerByNameOrGuid(AndoWSignageApp.PLAYER_ID);
@@ -1035,7 +1043,7 @@ public class RethinkDbClient {
     }
 
     private String buildCommandHistoryId(String playerId, String command) {
-        String owner = TextUtils.isEmpty(playerId) ? ensurePlayerGuid(AndoWSignageApp.PLAYER_ID) : playerId;
+        String owner = TextUtils.isEmpty(playerId) ? ensurePlayerGuid() : playerId;
         String cmd = TextUtils.isEmpty(command) ? "" : command.trim().toLowerCase(Locale.US);
         if (TextUtils.isEmpty(owner) || TextUtils.isEmpty(cmd)) {
             return java.util.UUID.randomUUID().toString();
@@ -1223,7 +1231,7 @@ public class RethinkDbClient {
     private String resolveOwnerPlayerId(String playerId) {
         String owner = TextUtils.isEmpty(playerId) ? getStoredPlayerGuid() : playerId;
         if (TextUtils.isEmpty(owner)) {
-            owner = ensurePlayerGuid(AndoWSignageApp.PLAYER_ID);
+            owner = ensurePlayerGuid();
         }
         return owner;
     }

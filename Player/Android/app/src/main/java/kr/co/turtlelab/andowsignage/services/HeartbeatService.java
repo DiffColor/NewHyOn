@@ -154,9 +154,16 @@ public class HeartbeatService extends Service {
     }
 
     private String resolveClientGuid() {
-        String clientId = RethinkDbClient.getInstance().getCachedPlayerGuid();
+        RethinkDbClient client = RethinkDbClient.getInstance();
+        String clientId = client.getCachedPlayerGuid();
         if (TextUtils.isEmpty(clientId)) {
-            clientId = RethinkDbClient.getInstance().ensurePlayerGuid(AndoWSignageApp.PLAYER_ID);
+            String storedPlayerName = client.getStoredPlayerName();
+            if (!TextUtils.isEmpty(storedPlayerName)) {
+                clientId = client.ensurePlayerGuid(storedPlayerName);
+            }
+        }
+        if (TextUtils.isEmpty(clientId)) {
+            clientId = client.ensurePlayerGuid();
         }
         return clientId;
     }
