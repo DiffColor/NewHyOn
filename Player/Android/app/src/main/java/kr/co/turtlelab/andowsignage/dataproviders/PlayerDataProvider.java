@@ -54,7 +54,10 @@ public class PlayerDataProvider {
         boolean manual = local.getManualIPState();
         String manualIp = local.getManualIp();
         playerData.setPlayerIP(manual ? manualIp : "");
-        String managerIp = local.getManagerIp();
+        String managerIp = local.getDataServerIp();
+        if (TextUtils.isEmpty(managerIp)) {
+            managerIp = local.getManagerIp();
+        }
         if (TextUtils.isEmpty(managerIp)) {
             managerIp = AndoWSignageApp.MANAGER_IP;
         }

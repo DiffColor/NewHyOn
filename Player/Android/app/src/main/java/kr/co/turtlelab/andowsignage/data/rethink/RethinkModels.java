@@ -387,4 +387,43 @@ public final class RethinkModels {
             return onAir == null || onAir;
         }
     }
+
+    public static class ServerSettingsRecord {
+        @SerializedName("id")
+        private int id;
+        @SerializedName("FTP_Port")
+        private int ftpPort;
+        @SerializedName("FTP_PasvMinPort")
+        private int ftpPasvMinPort;
+        @SerializedName("FTP_PasvMaxPort")
+        private int ftpPasvMaxPort;
+        @SerializedName("DataServerIp")
+        private String dataServerIp;
+        @SerializedName("MessageServerIp")
+        private String messageServerIp;
+
+        public int getId() {
+            return id;
+        }
+
+        public int getFtpPort() {
+            return ftpPort;
+        }
+
+        public int getFtpPasvMinPort() {
+            return ftpPasvMinPort;
+        }
+
+        public int getFtpPasvMaxPort() {
+            return ftpPasvMaxPort;
+        }
+
+        public String getDataServerIp() {
+            return dataServerIp;
+        }
+
+        public String getMessageServerIp() {
+            return messageServerIp;
+        }
+    }
 }

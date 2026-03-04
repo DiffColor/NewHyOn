@@ -36,6 +36,7 @@ import kr.co.turtlelab.andowsignage.AndoWSignageApp;
 import kr.co.turtlelab.andowsignage.data.DataSyncManager;
 import kr.co.turtlelab.andowsignage.data.realm.RealmPlayer;
 import kr.co.turtlelab.andowsignage.data.update.UpdateQueueContract;
+import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
 import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
 
 /**
@@ -50,6 +51,7 @@ public class RethinkDbClient {
     private static final String TABLE_PAGE = "PageInfoManager";
     private static final String TABLE_TEXT_INFO = "TextInfoManager";
     private static final String TABLE_WEEKLY = "WeeklyInfoManagerClass";
+    private static final String TABLE_SERVER_SETTINGS = "ServerSettings";
     private static final String TABLE_HEARTBEAT = "ClientHeartbeat";
     private static final String TABLE_UPDATE_QUEUE = "UpdateQueue";
     private static final String TABLE_COMMAND_HISTORY = "CommandHistory";
@@ -103,6 +105,7 @@ public class RethinkDbClient {
                     lastSyncedPlayerGuid = null;
                 }
                 guidVerified = false;
+                refreshServerSettings();
                 updateDeviceInfoIfNeeded();
                 fetchInitialWeeklySchedule();
             }
@@ -124,6 +127,38 @@ public class RethinkDbClient {
                 connection = null;
             }
         }
+    }
+
+    private void refreshServerSettings() {
+        try {
+            RethinkModels.ServerSettingsRecord settings = fetchServerSettings();
+            if (settings == null) {
+                return;
+            }
+            LocalSettingsProvider.applyServerSettings(
+                    settings.getDataServerIp(),
+                    settings.getMessageServerIp(),
+                    settings.getFtpPort(),
+                    settings.getFtpPasvMinPort(),
+                    settings.getFtpPasvMaxPort());
+        } catch (Exception ignored) {
+        }
+    }
+
+    public RethinkModels.ServerSettingsRecord fetchServerSettings() {
+        Map settingsMap = runSingle(R.db(DATABASE)
+                .table(TABLE_SERVER_SETTINGS)
+                .get(0));
+        if (settingsMap == null || settingsMap.isEmpty()) {
+            List<Map> rows = runList(R.db(DATABASE)
+                    .table(TABLE_SERVER_SETTINGS)
+                    .limit(1));
+            if (rows.isEmpty()) {
+                return null;
+            }
+            settingsMap = rows.get(0);
+        }
+        return convert(settingsMap, RethinkModels.ServerSettingsRecord.class);
     }
 
     private RethinkModels.PlayerInfoRecord fetchPlayerByNameOrGuid(String playerKey) {
@@ -315,13 +350,14 @@ public class RethinkDbClient {
             return;
         }
         ensureHeartbeatTable();
-        MapObject<Object, Object> payload = R.hashMap("id", clientId)
-                .with("status", TextUtils.isEmpty(status) ? "" : status)
-                .with("process", process)
-                .with("version", TextUtils.isEmpty(version) ? "" : version)
-                .with("currentPage", TextUtils.isEmpty(currentPage) ? "" : currentPage)
-                .with("hdmiState", TextUtils.isEmpty(hdmiState) ? "" : hdmiState)
-                .with("heartbeatTs", R.now());
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("id", clientId);
+        payload.put("status", TextUtils.isEmpty(status) ? "" : status);
+        payload.put("process", process);
+        payload.put("version", TextUtils.isEmpty(version) ? "" : version);
+        payload.put("currentPage", TextUtils.isEmpty(currentPage) ? "" : currentPage);
+        payload.put("hdmiState", TextUtils.isEmpty(hdmiState) ? "" : hdmiState);
+        payload.put("heartbeatTs", getCurrentTimestamp());
         try {
             R.db(DATABASE)
                     .table(TABLE_HEARTBEAT)
@@ -336,13 +372,14 @@ public class RethinkDbClient {
             return;
         }
         ensureHeartbeatTable();
-        MapObject<Object, Object> payload = R.hashMap("id", clientId)
-                .with("status", "stopped")
-                .with("process", 0)
-                .with("version", TextUtils.isEmpty(version) ? "" : version)
-                .with("currentPage", "")
-                .with("hdmiState", false)
-                .with("heartbeatTs", R.now());
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("id", clientId);
+        payload.put("status", "stopped");
+        payload.put("process", 0);
+        payload.put("version", TextUtils.isEmpty(version) ? "" : version);
+        payload.put("currentPage", "");
+        payload.put("hdmiState", false);
+        payload.put("heartbeatTs", getCurrentTimestamp());
         try {
             R.db(DATABASE)
                     .table(TABLE_HEARTBEAT)

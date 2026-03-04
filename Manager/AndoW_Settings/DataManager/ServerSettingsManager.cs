@@ -57,6 +57,8 @@ namespace AndoWSettings
                 return;
             }
 
+            settings.Id = 0;
+
             using (var db = LocalDbContext.OpenDatabase())
             {
                 var collection = db.GetCollection<ServerSettings>(CollectionName);

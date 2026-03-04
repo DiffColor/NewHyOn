@@ -11,6 +11,7 @@ import kr.co.turtlelab.andowsignage.AndoWSignage;
 import kr.co.turtlelab.andowsignage.AndoWSignageApp;
 import kr.co.turtlelab.andowsignage.data.realm.RealmUpdateQueue;
 import kr.co.turtlelab.andowsignage.data.rethink.RethinkDbClient;
+import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
 import kr.co.turtlelab.andowsignage.tools.FTP4JUtil;
 import kr.co.turtlelab.andowsignage.tools.LocalPathUtils;
 import io.realm.Realm;
@@ -112,13 +113,15 @@ public class UpdateQueueDownloader {
         entry.downloadedBytes = resumeFrom;
         entry.lastUpdatedAt = System.currentTimeMillis();
 
+        String ftpHost = resolveDataServerHost();
+        int ftpPort = resolveFtpPort();
         FTP4JUtil ftp = new FTP4JUtil(ctx,
-                AndoWSignageApp.MANAGER_IP,
-                AndoWSignageApp.FTP_PORT,
+                ftpHost,
+                ftpPort,
                 AndoWSignageApp.FTP_LOGIN_ID,
                 AndoWSignageApp.FTP_LOGIN_PW);
         String remotePath = entry.remotePath;
-        UpdateQueueLogger.log("Downloading " + entry.fileName + " from " + remotePath + " via FTP " + AndoWSignageApp.MANAGER_IP + ":" + AndoWSignageApp.FTP_PORT);
+        UpdateQueueLogger.log("Downloading " + entry.fileName + " from " + remotePath + " via FTP " + ftpHost + ":" + ftpPort);
         FTP4JUtil.DownloadResult result = ftp.downloadWithResume(remotePath, stagingFile, resumeFrom);
         if (result.missing) {
             entry.status = UpdateQueueContract.DownloadStatus.FAILED;
@@ -214,6 +217,25 @@ public class UpdateQueueDownloader {
             }
         } catch (Exception ignore) {
         }
+    }
+
+    private String resolveDataServerHost() {
+        if (AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)) {
+            return AndoWSignageApp.MANUAL_IP;
+        }
+        String host = LocalSettingsProvider.getDataServerIp();
+        if (TextUtils.isEmpty(host)) {
+            host = AndoWSignageApp.MANAGER_IP;
+        }
+        return TextUtils.isEmpty(host) ? "127.0.0.1" : host;
+    }
+
+    private int resolveFtpPort() {
+        int port = LocalSettingsProvider.getFtpPort();
+        if (port > 0) {
+            return port;
+        }
+        return AndoWSignageApp.FTP_PORT;
     }
 
     private void cleanupTempFile(String relativeFilePath) {

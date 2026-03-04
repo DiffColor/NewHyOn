@@ -40,6 +40,12 @@ android {
     }
 }
 
+repositories {
+    flatDir {
+        dirs 'libs'
+    }
+}
+
 dependencies {
     implementation 'com.android.support:support-v4:22.0.0'
     implementation 'com.google.code.gson:gson:2.2.4'
@@ -47,4 +53,6 @@ dependencies {
     implementation files('libs/universal-image-loader-1.9.3.jar')
     implementation files('libs/commons-io-2.6.jar')
     implementation 'com.rethinkdb:rethinkdb-driver:2.4.4'
+    implementation files('libs/signalr-client-sdk.jar')
+    implementation(name: 'signalr-client-sdk-android-debug', ext: 'aar')
 }
