@@ -55,4 +55,5 @@ dependencies {
     implementation 'com.rethinkdb:rethinkdb-driver:2.4.4'
     implementation files('libs/signalr-client-sdk.jar')
     implementation(name: 'signalr-client-sdk-android-debug', ext: 'aar')
+    implementation 'org.java-websocket:Java-WebSocket:1.5.2'
 }

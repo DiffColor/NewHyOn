@@ -2,6 +2,7 @@ package kr.co.turtlelab.andowsignage.data.rethink;
 
 import android.os.Build;
 import android.text.TextUtils;
+import android.util.Log;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -45,6 +46,7 @@ import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
  */
 public class RethinkDbClient {
 
+    private static final String TAG = "RethinkDbClient";
     private static final String DATABASE = "NewHyOn";
     private static final String TABLE_PLAYER = "PlayerInfoManager";
     private static final String TABLE_PAGE_LIST = "PageListInfoManager";
@@ -79,6 +81,7 @@ public class RethinkDbClient {
     private volatile boolean updateQueueTableReady = false;
     private final Object commandHistoryTableLock = new Object();
     private volatile boolean commandHistoryTableReady = false;
+    private volatile long lastConnectionErrorLoggedAt = 0L;
 
     public static RethinkDbClient getInstance() {
         if (sInstance == null) {
@@ -110,6 +113,19 @@ public class RethinkDbClient {
                 fetchInitialWeeklySchedule();
             }
             return connection;
+        }
+    }
+
+    public boolean canAccessDatabase() {
+        Object probe = null;
+        try {
+            probe = R.now().run(getConnection());
+            return true;
+        } catch (Exception ex) {
+            logConnectionError("canAccessDatabase", ex);
+            return false;
+        } finally {
+            closeIfNeeded(probe);
         }
     }
 
@@ -816,7 +832,8 @@ public class RethinkDbClient {
                 return null;
             }
             return asMap(obj);
-        } catch (Exception ignored) {
+        } catch (Exception ex) {
+            logConnectionError("runSingle", ex);
             return null;
         } finally {
             closeIfNeeded(obj);
@@ -839,11 +856,22 @@ public class RethinkDbClient {
             } else if (obj != null) {
                 list.add(asMap(obj));
             }
-        } catch (Exception ignored) {
+        } catch (Exception ex) {
+            logConnectionError("runList", ex);
         } finally {
             closeIfNeeded(obj);
         }
         return list;
+    }
+
+    private void logConnectionError(String operation, Exception ex) {
+        long now = System.currentTimeMillis();
+        if (now - lastConnectionErrorLoggedAt < 10000L) {
+            return;
+        }
+        lastConnectionErrorLoggedAt = now;
+        String message = ex == null ? "" : ex.getMessage();
+        Log.w(TAG, operation + " failed. host=" + host + ":" + port + ", message=" + message);
     }
 
     private <T> T convert(Object obj, Class<T> clazz) {

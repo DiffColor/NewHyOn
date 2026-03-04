@@ -311,8 +311,14 @@ public class SignalRClientService {
 
     private String buildQueryString() {
         try {
-            String playerName = AndoWSignageApp.PLAYER_ID;
-            String playerGuid = RethinkDbClient.getInstance().ensurePlayerGuid(playerName);
+            String playerName = RethinkDbClient.getInstance().getStoredPlayerName();
+            if (TextUtils.isEmpty(playerName)) {
+                playerName = AndoWSignageApp.PLAYER_ID;
+            }
+            String playerGuid = RethinkDbClient.getInstance().ensurePlayerGuid();
+            if (TextUtils.isEmpty(playerGuid) && !TextUtils.isEmpty(playerName)) {
+                playerGuid = RethinkDbClient.getInstance().ensurePlayerGuid(playerName);
+            }
             StringBuilder sb = new StringBuilder();
             if (!TextUtils.isEmpty(playerName)) {
                 sb.append("playerName=").append(URLEncoder.encode(playerName, "UTF-8"));

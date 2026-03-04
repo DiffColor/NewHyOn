@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.os.Binder;
 import android.os.IBinder;
 import android.text.TextUtils;
+import android.util.Log;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -18,16 +19,20 @@ import kr.co.turtlelab.andowsignage.tools.PowerApi;
 
 public class HeartbeatService extends Service {
 
+    private static final String TAG = "HeartbeatService";
     public static final String EXTRA_INTERVAL_MS = "kr.co.turtlelab.andowsignage.services.EXTRA_HEARTBEAT_INTERVAL";
     public static final String ACTION_SEND_STOPPED = "kr.co.turtlelab.andowsignage.services.action.SEND_HEARTBEAT_STOPPED";
     private static final long DEFAULT_INTERVAL_MS = 5000L;
     private static final long MIN_INTERVAL_MS = 1000L;
+    private static final long DB_CHECK_INTERVAL_MS = 10000L;
 
     private final IBinder binder = new LocalBinder();
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private LightestTimer heartbeatTimer;
     private long intervalMs = DEFAULT_INTERVAL_MS;
     private SignalRClientService signalRClient;
+    private long lastDbCheckAt = 0L;
+    private boolean lastDbReachable = false;
 
     @Override
     public void onCreate() {
@@ -116,7 +121,8 @@ public class HeartbeatService extends Service {
     }
 
     public void publishHeartbeat() {
-        String clientId = RethinkDbClient.getInstance().ensurePlayerGuid(AndoWSignageApp.PLAYER_ID);
+        checkDbConnection();
+        String clientId = resolveClientGuid();
         if (TextUtils.isEmpty(clientId)) {
             return;
         }
@@ -157,7 +163,7 @@ public class HeartbeatService extends Service {
     }
 
     public void publishHeartbeatStopped() {
-        String clientId = RethinkDbClient.getInstance().ensurePlayerGuid(AndoWSignageApp.PLAYER_ID);
+        String clientId = resolveClientGuid();
         if (TextUtils.isEmpty(clientId)) {
             return;
         }
@@ -183,6 +189,33 @@ public class HeartbeatService extends Service {
         } catch (NumberFormatException ignore) {
             return 0;
         }
+    }
+
+    private boolean checkDbConnection() {
+        long now = System.currentTimeMillis();
+        if (now - lastDbCheckAt < DB_CHECK_INTERVAL_MS) {
+            return lastDbReachable;
+        }
+        lastDbCheckAt = now;
+        lastDbReachable = RethinkDbClient.getInstance().canAccessDatabase();
+        if (!lastDbReachable) {
+            Log.w(TAG, "RethinkDB connection unavailable. heartbeat send skipped.");
+        }
+        return lastDbReachable;
+    }
+
+    private String resolveClientGuid() {
+        RethinkDbClient client = RethinkDbClient.getInstance();
+        String guid = client.ensurePlayerGuid(AndoWSignageApp.PLAYER_ID);
+        if (!TextUtils.isEmpty(guid)) {
+            return guid;
+        }
+        updateEndpointFromSettings();
+        guid = client.ensurePlayerGuid();
+        if (TextUtils.isEmpty(guid)) {
+            Log.w(TAG, "Player GUID lookup failed. playerName=" + AndoWSignageApp.PLAYER_ID);
+        }
+        return guid;
     }
 
     public class LocalBinder extends Binder {

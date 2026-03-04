@@ -74,10 +74,10 @@ public class DataSyncManager {
         if (player == null)
             return false;
 
-        String realmPlayerKey = player.getPlayerName();
+        String realmPlayerKey = player.getGuid();
         RethinkModels.WeeklyScheduleRecord weekly = rethinkClient.fetchWeeklySchedule(player.getGuid());
         if (TextUtils.isEmpty(realmPlayerKey)) {
-            realmPlayerKey = player.getGuid();
+            realmPlayerKey = player.getPlayerName();
         }
 
         storeWeeklySchedule(realmPlayerKey, weekly);
@@ -365,6 +365,9 @@ public class DataSyncManager {
     }
 
     private void storeWeeklySchedule(String playerId, RethinkModels.WeeklyScheduleRecord record) {
+        if (TextUtils.isEmpty(playerId)) {
+            return;
+        }
         Realm realm = Realm.getDefaultInstance();
         realm.executeTransaction(r -> {
             RealmWeeklySchedule schedule = r.where(RealmWeeklySchedule.class)
