@@ -119,9 +119,9 @@ namespace AndoW_Manager
             return path;
         }
 
-        public static string GetAnyDeskFilePath()
+        public static string GetRustDeskFilePath()
         {
-            return System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "AnyDesk.exe");
+            return System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "rustdesk.exe");
         }
         #endregion
 

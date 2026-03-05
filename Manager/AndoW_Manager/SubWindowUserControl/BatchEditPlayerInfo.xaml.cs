@@ -77,6 +77,7 @@ namespace AndoW_Manager
         {
             PlayerNameText.Text = this.g_PlayerInfoClass.PIF_PlayerName;
             IpAddressText.Text = this.g_PlayerInfoClass.PIF_IPAddress;
+            RemoteIdText.Text = this.g_PlayerInfoClass.PIF_RemoteID;
             PageListCombo.SelectedItem = this.g_PlayerInfoClass.PIF_CurrentPlayList;
 
             if (this.g_PlayerInfoClass.PIF_IsLandScape == true)
@@ -120,6 +121,7 @@ namespace AndoW_Manager
         {
              this.g_PlayerInfoClass.PIF_PlayerName = PlayerNameText.Text.Trim();
              this.g_PlayerInfoClass.PIF_IPAddress = IpAddressText.Text.Trim();
+             this.g_PlayerInfoClass.PIF_RemoteID = (RemoteIdText.Text ?? string.Empty).Trim().Replace(" ", "");
 
              if (PageListCombo.SelectedItem != null)
              {

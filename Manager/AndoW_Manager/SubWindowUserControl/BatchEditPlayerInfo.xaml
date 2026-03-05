@@ -19,8 +19,9 @@
         </Grid>
         <Grid Grid.Column="1" Margin="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="300"/>
+                <ColumnDefinition Width="260"/>
                 <ColumnDefinition Width="120"/>
+                <ColumnDefinition Width="170"/>
                 <ColumnDefinition Width="90"/>
                 <ColumnDefinition Width="140"/>
                 <ColumnDefinition Width="70"/>
@@ -28,11 +29,13 @@
             </Grid.ColumnDefinitions>
             <Rectangle Stroke="#70333B67" Margin="3,5,3,5" Fill="#CCFFFFFF" RadiusX="3" RadiusY="3"/>
             <Rectangle Stroke="#70333B67" Margin="3,5,3,5" Fill="#CCFFFFFF" RadiusX="3" RadiusY="3" Grid.Column="1"/>
-            <Rectangle Stroke="#70333B67" Margin="3,5,3,5" Fill="#CCFFFFFF" RadiusX="3" RadiusY="3" Grid.Column="3"/>
+            <Rectangle Stroke="#70333B67" Margin="3,5,3,5" Fill="#CCFFFFFF" RadiusX="3" RadiusY="3" Grid.Column="2"/>
             <Rectangle Stroke="#70333B67" Margin="3,5,3,5" Fill="#CCFFFFFF" RadiusX="3" RadiusY="3" Grid.Column="4"/>
+            <Rectangle Stroke="#70333B67" Margin="3,5,3,5" Fill="#CCFFFFFF" RadiusX="3" RadiusY="3" Grid.Column="5"/>
             <TextBox x:Name="PlayerNameText" VerticalContentAlignment="Center" TextWrapping="NoWrap" FontFamily="Malgun Gothic" Background="{x:Null}" Foreground="#FF181642" Margin="12,2,12,2" BorderThickness="0" BorderBrush="{x:Null}" VerticalAlignment="Center"/>
             <TextBox x:Name="IpAddressText" Text="" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" TextWrapping="NoWrap" FontFamily="Malgun Gothic" Background="{x:Null}" Foreground="#FF181642" Grid.Column="1" Margin="12,2,12,2" BorderThickness="0" VerticalAlignment="Center"/>
-            <ComboBox x:Name="PageListCombo" Visibility="Collapsed" Grid.Column="2" Margin="2,0,0,0" Foreground="White">
+            <TextBox x:Name="RemoteIdText" Text="" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" TextWrapping="NoWrap" FontFamily="Malgun Gothic" Background="{x:Null}" Foreground="#FF181642" Grid.Column="2" Margin="12,2,12,2" BorderThickness="0" VerticalAlignment="Center"/>
+            <ComboBox x:Name="PageListCombo" Visibility="Collapsed" Grid.Column="3" Margin="2,0,0,0" Foreground="White">
                 <ComboBox.Background>
                     <LinearGradientBrush EndPoint="0,1" StartPoint="0,0">
                         <GradientStop Color="#FFF0F0F0" Offset="0"/>
@@ -40,7 +43,7 @@
                     </LinearGradientBrush>
                 </ComboBox.Background>
             </ComboBox>
-            <ComboBox x:Name="DisplayTypeCombo" Grid.Column="2" VerticalAlignment="Center" Foreground="Black">
+            <ComboBox x:Name="DisplayTypeCombo" Grid.Column="3" VerticalAlignment="Center" Foreground="Black">
                 <ComboBox.Background>
                     <LinearGradientBrush EndPoint="0,1" StartPoint="0,0">
                         <GradientStop Color="#FFF0F0F0" Offset="0"/>
@@ -48,9 +51,9 @@
                     </LinearGradientBrush>
                 </ComboBox.Background>
             </ComboBox>
-            <TextBox Grid.Column="3" IsReadOnly="True" x:Name="SourceKeyTBox" Text="" TextWrapping="NoWrap" FontFamily="Malgun Gothic" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Foreground="#FF181642" Margin="12,2,12,2" BorderThickness="0" VerticalAlignment="Center" Background="{x:Null}"/>
-            <PasswordBox Grid.Column="4" x:Name="PWKeyTBox" FontFamily="Malgun Gothic" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Foreground="#FF181642" BorderBrush="{x:Null}" Margin="8,1,8,1" VerticalAlignment="Center" Background="{x:Null}"/>
-            <Button Grid.Column="5" x:Name="AuthBtn" Click="AuthBtn_Click" Content="인증 필요" Background="#FFB95454" FontFamily="Malgun Gothic" FontSize="11" Style="{DynamicResource ChangeOrderStyle}" Height="26" FontWeight="Bold" Foreground="White" />
+            <TextBox Grid.Column="4" IsReadOnly="True" x:Name="SourceKeyTBox" Text="" TextWrapping="NoWrap" FontFamily="Malgun Gothic" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Foreground="#FF181642" Margin="12,2,12,2" BorderThickness="0" VerticalAlignment="Center" Background="{x:Null}"/>
+            <PasswordBox Grid.Column="5" x:Name="PWKeyTBox" FontFamily="Malgun Gothic" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Foreground="#FF181642" BorderBrush="{x:Null}" Margin="8,1,8,1" VerticalAlignment="Center" Background="{x:Null}"/>
+            <Button Grid.Column="6" x:Name="AuthBtn" Click="AuthBtn_Click" Content="인증 필요" Background="#FFB95454" FontFamily="Malgun Gothic" FontSize="11" Style="{DynamicResource ChangeOrderStyle}" Height="26" FontWeight="Bold" Foreground="White" />
         </Grid>
     </Grid>
 </UserControl>

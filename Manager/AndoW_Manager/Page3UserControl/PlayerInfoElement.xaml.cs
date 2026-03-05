@@ -109,13 +109,26 @@ namespace AndoW_Manager
 
         public void LaunchingRemoteControl()
         {
-            if (string.IsNullOrEmpty(this.g_PlayerInfoClass.PIF_IPAddress))
+            string ipAddress = (this.g_PlayerInfoClass.PIF_IPAddress ?? string.Empty).Trim();
+            string rustDeskId = (this.g_PlayerInfoClass.PIF_RemoteID ?? string.Empty).Trim().Replace(" ", "");
+
+            string target = string.IsNullOrWhiteSpace(rustDeskId) ? ipAddress : rustDeskId;
+
+            if (string.IsNullOrWhiteSpace(target))
             {
-                MessageTools.ShowMessageBox("플레이어 IP주소를 입력해주세요.", "확인");
+                MessageTools.ShowMessageBox("Remote ID 또는 플레이어 IP주소를 입력해주세요.", "확인");
                 return;
             }
 
-            ProcessTools.LaunchProcess(FNDTools.GetAnyDeskFilePath(), false, this.g_PlayerInfoClass.PIF_IPAddress);
+            string rustDeskExePath = FNDTools.GetRustDeskFilePath();
+            if (File.Exists(rustDeskExePath) == false)
+            {
+                MessageBox.Show($"실행 폴더에 원격뷰어가 없습니다.");
+                Logger.WriteLog($"[원격접속 실패] rustdesk.exe 없음: {rustDeskExePath}", Logger.GetLogFileName());
+                return;
+            }
+
+            ProcessTools.LaunchProcess(rustDeskExePath, false, $"--connect {target} --password 123qwe");
         }
 
         void MC_Auth_Click(object sender, RoutedEventArgs e)

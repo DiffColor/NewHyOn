@@ -299,8 +299,9 @@
                     <Grid Background="#FFB5B8CE">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="26"/>
-                            <ColumnDefinition Width="317"/>
+                            <ColumnDefinition Width="260"/>
                             <ColumnDefinition Width="120"/>
+                            <ColumnDefinition Width="170"/>
                             <ColumnDefinition Width="90"/>
                             <ColumnDefinition Width="140"/>
                             <ColumnDefinition Width="70"/>
@@ -308,9 +309,10 @@
                         </Grid.ColumnDefinitions>
                         <Label Grid.Column="1" Content="플레이어 이름" FontFamily="Malgun Gothic" FontSize="13" Foreground="#FF454B9A" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
                         <Label Grid.Column="2" Content="IP주소" FontFamily="Malgun Gothic" FontSize="13"  Foreground="#FF454B9A" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
-                        <Label Grid.Column="3" Content="화면타입" FontFamily="Malgun Gothic" FontSize="13"  Foreground="#FF454B9A" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
-                        <Label Grid.Column="4" Content="소스키" FontFamily="Malgun Gothic" FontSize="13"  Foreground="#FF454B9A" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
-                        <Label Grid.Column="5" Content="비밀번호" FontFamily="Malgun Gothic" FontSize="13"  Foreground="#FF454B9A" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
+                        <Label Grid.Column="3" Content="Remote ID" FontFamily="Malgun Gothic" FontSize="13"  Foreground="#FF454B9A" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
+                        <Label Grid.Column="4" Content="화면타입" FontFamily="Malgun Gothic" FontSize="13"  Foreground="#FF454B9A" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
+                        <Label Grid.Column="5" Content="소스키" FontFamily="Malgun Gothic" FontSize="13"  Foreground="#FF454B9A" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
+                        <Label Grid.Column="6" Content="비밀번호" FontFamily="Malgun Gothic" FontSize="13"  Foreground="#FF454B9A" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
                     </Grid>
                     <ScrollViewer x:Name="ContentsListScrollViewer1" Style="{StaticResource ModernScrollViewer}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" ScrollViewer.VerticalScrollBarVisibility="Auto" Grid.Row="1">
                         <StackPanel x:Name="ContentsElementsStackPannel1" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True"/>

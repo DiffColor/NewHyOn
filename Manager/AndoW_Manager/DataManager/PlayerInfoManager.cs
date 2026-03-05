@@ -570,6 +570,8 @@ namespace AndoW_Manager
     {
         public string PIF_PlayerName = string.Empty;
         public string PIF_IPAddress = string.Empty;
+        [JsonProperty("TTInfo_Data03")]
+        public string PIF_RemoteID = string.Empty;
         public string PIF_CurrentPlayList = string.Empty;
         public string PIF_DefaultPlayList = string.Empty;
         public bool PIF_IsLandScape = true;
@@ -608,6 +610,7 @@ namespace AndoW_Manager
         {
             this.PIF_PlayerName = pinfo.PIF_PlayerName;
             this.PIF_IPAddress = pinfo.PIF_IPAddress;
+            this.PIF_RemoteID = pinfo.PIF_RemoteID;
             this.PIF_CurrentPlayList = pinfo.PIF_CurrentPlayList;
             this.PIF_DefaultPlayList = pinfo.PIF_DefaultPlayList;
             this.PIF_IsLandScape = pinfo.PIF_IsLandScape;
@@ -628,6 +631,7 @@ namespace AndoW_Manager
         {
             PIF_PlayerName = string.Empty;
             PIF_IPAddress = string.Empty;
+            PIF_RemoteID = string.Empty;
             PIF_CurrentPlayList = string.Empty;
             PIF_DefaultPlayList = string.Empty;
             PIF_IsLandScape = true;
