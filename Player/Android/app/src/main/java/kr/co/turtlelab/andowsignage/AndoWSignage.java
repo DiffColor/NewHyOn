@@ -160,6 +160,23 @@ public class AndoWSignage extends Activity {
 	});
 	
 	Handler mPostRunHandler = new Handler();
+	private static final String WATCHDOG_PACKAGE = "kr.co.turtlelab.startnow.watchdog";
+	private static final String WATCHDOG_PING_ACTION = "kr.co.turtlelab.watchdog.ping";
+	private static final int WATCHDOG_PING_INTERVAL_MS = 5000;
+	private static final String TURTLE_LAUNCHER_PACKAGE = "com.github.postapczuk.lalauncher";
+	private static final String TURTLE_LAUNCHER_MAIN_ACTIVITY = "com.github.postapczuk.lalauncher.FavoriteAppsActivity";
+	private static final String TURTLE_LAUNCHER_ACTION_LAUNCH_COMPONENT = "kr.co.turtlelab.turtlelauncher.action.LAUNCH_COMPONENT";
+	private static final String EXTRA_TARGET_PACKAGE = "target_package";
+	private static final String EXTRA_TARGET_CLASS = "target_class";
+	private static final String EXTRA_CLEAR_TASK = "clear_task";
+	private final Handler watchdogPingHandler = new Handler();
+	private final Runnable watchdogPingRunnable = new Runnable() {
+		@Override
+		public void run() {
+			sendWatchdogPing();
+			watchdogPingHandler.postDelayed(this, WATCHDOG_PING_INTERVAL_MS);
+		}
+	};
 	GifMovieView gifView;
 		
 	private float mLastMotionX = 0;
@@ -435,6 +452,8 @@ public class AndoWSignage extends Activity {
 		settingsForPlaying();
 
 		registerRcv();
+		enableWatchDog();
+		startWatchdogPing();
 
 		AndoWSignageApp.isRunning = true;
 //		AndoWSignageApp.isSleeping = false;
@@ -457,6 +476,7 @@ public class AndoWSignage extends Activity {
 	}
 
 	boolean isClosing = false;
+	private boolean manualStopRequested = false;
 	public void stopServices() {
 		unbindMgrServices();
 		stopService(new Intent(AndoWSignage.this, ConfigLinkService.class));
@@ -650,6 +670,10 @@ public class AndoWSignage extends Activity {
 		
 		releaseSettings();
 		stopAllElement();
+		stopWatchdogPing();
+		if (manualStopRequested) {
+			disableWatchDog();
+		}
 		
 		releaseImageLoader();
 		
@@ -678,6 +702,7 @@ public class AndoWSignage extends Activity {
 		
 	@Override
 	protected void onDestroy() {
+		stopWatchdogPing();
 		super.onDestroy();
 	}
 
@@ -1131,8 +1156,11 @@ public class AndoWSignage extends Activity {
 
 			case KeyEvent.KEYCODE_D:
 				if(event.isCtrlPressed()) {
+					manualStopRequested = true;
 					disableWatchDog();
+					stopWatchdogPing();
 					finish();
+					return true;
 				}
 				break;
 
@@ -1188,12 +1216,76 @@ public class AndoWSignage extends Activity {
 	}
 
 	public void disableWatchDog() {
-		Intent intent = new Intent("kr.co.turtlelab.watchdog.disable");
-		sendBroadcast(intent);
+		sendWatchdogBroadcast("kr.co.turtlelab.watchdog.disable");
 	}
+
+	public void enableWatchDog() {
+		sendWatchdogBroadcast("kr.co.turtlelab.watchdog.enable");
+	}
+
 	public void enable7waitWatchDog() {
-		Intent intent = new Intent("kr.co.turtlelab.watchdog.enable7wait");
-		sendBroadcast(intent);
+		sendWatchdogBroadcast("kr.co.turtlelab.watchdog.enable7wait");
+	}
+
+	private void startWatchdogPing() {
+		watchdogPingHandler.removeCallbacks(watchdogPingRunnable);
+		watchdogPingHandler.post(watchdogPingRunnable);
+	}
+
+	private void stopWatchdogPing() {
+		watchdogPingHandler.removeCallbacks(watchdogPingRunnable);
+	}
+
+	private void sendWatchdogPing() {
+		sendWatchdogBroadcast(WATCHDOG_PING_ACTION);
+	}
+
+	private void sendWatchdogBroadcast(String action) {
+		try {
+			Intent explicitIntent = new Intent(action);
+			explicitIntent.setPackage(WATCHDOG_PACKAGE);
+			sendBroadcast(explicitIntent);
+		} catch (Exception e) {
+		}
+		try {
+			sendBroadcast(new Intent(action));
+		} catch (Exception e) {
+		}
+	}
+
+	private void launchTurtleLauncher() {
+		if (requestTurtleLauncherLaunch(TURTLE_LAUNCHER_PACKAGE, TURTLE_LAUNCHER_MAIN_ACTIVITY, true)) {
+			return;
+		}
+		try {
+			Intent launcherIntent = new Intent();
+			launcherIntent.setComponent(new ComponentName(TURTLE_LAUNCHER_PACKAGE, TURTLE_LAUNCHER_MAIN_ACTIVITY));
+			launcherIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+			launcherIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+			launcherIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK);
+			startActivity(launcherIntent);
+			return;
+		} catch (Exception ignored) {
+		}
+
+		Intent homeIntent = new Intent(Intent.ACTION_MAIN);
+		homeIntent.addCategory(Intent.CATEGORY_HOME);
+		homeIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+		startActivity(homeIntent);
+	}
+
+	private boolean requestTurtleLauncherLaunch(String packageName, String className, boolean clearTask) {
+		try {
+			Intent request = new Intent(TURTLE_LAUNCHER_ACTION_LAUNCH_COMPONENT);
+			request.setPackage(TURTLE_LAUNCHER_PACKAGE);
+			request.putExtra(EXTRA_TARGET_PACKAGE, packageName);
+			request.putExtra(EXTRA_TARGET_CLASS, className);
+			request.putExtra(EXTRA_CLEAR_TASK, clearTask);
+			sendBroadcast(request);
+			return true;
+		} catch (Exception e) {
+			return false;
+		}
 	}
 
 	@Override
