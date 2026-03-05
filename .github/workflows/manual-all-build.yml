@@ -225,16 +225,22 @@ jobs:
 
       - name: Setup Android SDK environment
         run: |
-          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> $GITHUB_ENV
-          echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "/usr/local/lib/android/sdk/platform-tools" >> $GITHUB_PATH
+          echo "ANDROID_HOME=$RUNNER_TEMP/android-sdk-player" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$RUNNER_TEMP/android-sdk-player" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=" >> $GITHUB_ENV
+          echo "NDK_HOME=" >> $GITHUB_ENV
+          echo "NDK_ROOT=" >> $GITHUB_ENV
+          mkdir -p "$RUNNER_TEMP/android-sdk-player"
 
       - name: Install Android SDK packages
         run: |
-          sdkmanager --version
-          yes | sdkmanager --licenses || true
-          sdkmanager "platform-tools" "platforms;android-22" "build-tools;29.0.2" "ndk;26.1.10909125"
+          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --version
+          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses || true
+          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" \
+            "cmdline-tools;latest" "platform-tools" "platforms;android-22" "build-tools;29.0.2"
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
 
       - name: Setup JDK 11 for Gradle
         uses: actions/setup-java@v4
@@ -242,9 +248,15 @@ jobs:
           distribution: temurin
           java-version: '11'
 
+      - name: Prepare local.properties for CI
+        working-directory: Player/Android
+        run: |
+          printf "sdk.dir=%s\n" "$ANDROID_SDK_ROOT" > local.properties
+
       - name: Build Player Android (Release APK)
         working-directory: Player/Android
         run: |
+          unset ANDROID_NDK_HOME ANDROID_NDK_ROOT NDK_HOME NDK_ROOT
           chmod +x ./gradlew
           ./gradlew --no-daemon clean :app:assembleRelease -x lintVitalRelease -x lint
 
@@ -292,16 +304,22 @@ jobs:
 
       - name: Setup Android SDK environment
         run: |
-          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> $GITHUB_ENV
-          echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "/usr/local/lib/android/sdk/platform-tools" >> $GITHUB_PATH
+          echo "ANDROID_HOME=$RUNNER_TEMP/android-sdk-launcher" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$RUNNER_TEMP/android-sdk-launcher" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=" >> $GITHUB_ENV
+          echo "NDK_HOME=" >> $GITHUB_ENV
+          echo "NDK_ROOT=" >> $GITHUB_ENV
+          mkdir -p "$RUNNER_TEMP/android-sdk-launcher"
 
       - name: Install Android SDK packages
         run: |
-          sdkmanager --version
-          yes | sdkmanager --licenses || true
-          sdkmanager "platform-tools" "platforms;android-22" "build-tools;29.0.2" "ndk;26.1.10909125"
+          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --version
+          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses || true
+          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" \
+            "cmdline-tools;latest" "platform-tools" "platforms;android-22" "build-tools;29.0.2"
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
 
       - name: Setup JDK 11 for Gradle
         uses: actions/setup-java@v4
@@ -309,9 +327,15 @@ jobs:
           distribution: temurin
           java-version: '11'
 
+      - name: Prepare local.properties for CI
+        working-directory: Player/TurtleLauncher
+        run: |
+          printf "sdk.dir=%s\n" "$ANDROID_SDK_ROOT" > local.properties
+
       - name: Build TurtleLauncher Android (Release APK)
         working-directory: Player/TurtleLauncher
         run: |
+          unset ANDROID_NDK_HOME ANDROID_NDK_ROOT NDK_HOME NDK_ROOT
           chmod +x ./gradlew
           ./gradlew --no-daemon clean :LaLauncher:assembleRelease -x lintVitalRelease -x lint
 
@@ -360,16 +384,22 @@ jobs:
 
       - name: Setup Android SDK environment
         run: |
-          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> $GITHUB_ENV
-          echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "/usr/local/lib/android/sdk/platform-tools" >> $GITHUB_PATH
+          echo "ANDROID_HOME=$RUNNER_TEMP/android-sdk-watchdog" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$RUNNER_TEMP/android-sdk-watchdog" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=" >> $GITHUB_ENV
+          echo "NDK_HOME=" >> $GITHUB_ENV
+          echo "NDK_ROOT=" >> $GITHUB_ENV
+          mkdir -p "$RUNNER_TEMP/android-sdk-watchdog"
 
       - name: Install Android SDK packages
         run: |
-          sdkmanager --version
-          yes | sdkmanager --licenses || true
-          sdkmanager "platform-tools" "platforms;android-22" "build-tools;29.0.2" "ndk;26.1.10909125"
+          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --version
+          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses || true
+          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" \
+            "cmdline-tools;latest" "platform-tools" "platforms;android-22" "build-tools;29.0.2"
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
 
       - name: Setup JDK 11 for Gradle
         uses: actions/setup-java@v4
@@ -377,9 +407,15 @@ jobs:
           distribution: temurin
           java-version: '11'
 
+      - name: Prepare local.properties for CI
+        working-directory: Player/WatchDog_4launcher
+        run: |
+          printf "sdk.dir=%s\n" "$ANDROID_SDK_ROOT" > local.properties
+
       - name: Build WatchDog Android (Release APK)
         working-directory: Player/WatchDog_4launcher
         run: |
+          unset ANDROID_NDK_HOME ANDROID_NDK_ROOT NDK_HOME NDK_ROOT
           chmod +x ./gradlew
           ./gradlew --no-daemon clean :app:assembleRelease -x lintVitalRelease -x lint
 
