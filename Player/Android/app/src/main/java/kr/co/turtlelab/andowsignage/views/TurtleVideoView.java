@@ -4,8 +4,11 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.media.MediaMetadataRetriever;
 import android.net.Uri;
+import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.widget.VideoView;
+
+import java.io.File;
 
 import kr.co.turtlelab.andowsignage.AndoWSignage;
 
@@ -41,9 +44,22 @@ public class TurtleVideoView extends VideoView {
 	
 	@Override
 	public void setVideoPath(String path) {
-		super.setVideoPath(path);
-		onMediaPlayerChanged(null, path);
 		fpath = path;
+		Uri uri = null;
+		try {
+			Uri parsed = TextUtils.isEmpty(path) ? null : Uri.parse(path);
+			String scheme = parsed == null ? null : parsed.getScheme();
+			if (TextUtils.isEmpty(scheme) && !TextUtils.isEmpty(path) && path.startsWith("/")) {
+				uri = Uri.fromFile(new File(path));
+				super.setVideoURI(uri);
+			} else {
+				super.setVideoPath(path);
+			}
+		} catch (Exception ex) {
+			super.setVideoPath(path);
+		}
+		fUri = uri;
+		onMediaPlayerChanged(uri, path);
 	}
 	
 	@Override

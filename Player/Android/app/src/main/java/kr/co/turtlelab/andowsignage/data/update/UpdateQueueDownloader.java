@@ -416,12 +416,12 @@ public class UpdateQueueDownloader {
     }
 
     private String resolveFtpHost() {
-        if (AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)) {
-            return AndoWSignageApp.MANUAL_IP;
-        }
         String dataServerIp = LocalSettingsProvider.getDataServerIp();
         if (!TextUtils.isEmpty(dataServerIp)) {
             return dataServerIp;
+        }
+        if (AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)) {
+            return AndoWSignageApp.MANUAL_IP;
         }
         return AndoWSignageApp.MANAGER_IP;
     }

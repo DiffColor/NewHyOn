@@ -71,9 +71,7 @@ public class UpdateManagerService extends Service implements SignalRClientServic
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String host = resolveBootstrapHost();
-        String managerHost = TextUtils.isEmpty(AndoWSignageApp.MANAGER_IP)
-                ? host
-                : AndoWSignageApp.MANAGER_IP;
+        String managerHost = host;
         LocalSettingsProvider.applyStoredCommunicationSettings();
         String rethinkHost = resolveRethinkHost(host);
         activeRethinkHost = rethinkHost;
@@ -141,12 +139,12 @@ public class UpdateManagerService extends Service implements SignalRClientServic
     }
 
     private String resolveRethinkHost(String fallbackHost) {
-        if (AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)) {
-            return AndoWSignageApp.MANUAL_IP;
-        }
         String dataServerIp = LocalSettingsProvider.getDataServerIp();
         if (!TextUtils.isEmpty(dataServerIp)) {
             return dataServerIp;
+        }
+        if (AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)) {
+            return AndoWSignageApp.MANUAL_IP;
         }
         return fallbackHost;
     }
@@ -155,14 +153,22 @@ public class UpdateManagerService extends Service implements SignalRClientServic
         if (AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)) {
             return AndoWSignageApp.MANUAL_IP;
         }
-        if (!TextUtils.isEmpty(AndoWSignageApp.MANAGER_IP)) {
-            return AndoWSignageApp.MANAGER_IP;
-        }
         String localManual = LocalSettingsProvider.getManualIp();
         if (!TextUtils.isEmpty(localManual)) {
             return localManual;
         }
-        return LocalSettingsProvider.getManagerIp();
+        if (!TextUtils.isEmpty(AndoWSignageApp.MANAGER_IP)) {
+            return AndoWSignageApp.MANAGER_IP;
+        }
+        String localManager = LocalSettingsProvider.getManagerIp();
+        if (!TextUtils.isEmpty(localManager)) {
+            return localManager;
+        }
+        String dataServerIp = LocalSettingsProvider.getDataServerIp();
+        if (!TextUtils.isEmpty(dataServerIp)) {
+            return dataServerIp;
+        }
+        return "";
     }
 
     @Override
@@ -358,12 +364,12 @@ public class UpdateManagerService extends Service implements SignalRClientServic
             int cancelled = UpdateQueueHelper.cancelActiveQueues("Cancelled due to new command");
             UpdateQueueHelper.requeueFailedQueuesIfDue();
             syncManager.releaseActiveLease();
-            SystemUtils.runOnUiThread(() -> Toast.makeText(AndoWSignage.getCtx(),
-                    "Cancelling active queue (" + cancelled + ") and executing " + command,
-                    Toast.LENGTH_SHORT).show());
+//            SystemUtils.runOnUiThread(() -> Toast.makeText(AndoWSignage.getCtx(),
+//                    "Cancelling active queue (" + cancelled + ") and executing " + command,
+//                    Toast.LENGTH_SHORT).show());
         }
         client.clearCommand(playerGuid);
-        SystemUtils.runOnUiThread(() -> Toast.makeText(AndoWSignage.getCtx(), command, Toast.LENGTH_SHORT).show());
+//        SystemUtils.runOnUiThread(() -> Toast.makeText(AndoWSignage.getCtx(), command, Toast.LENGTH_SHORT).show());
         boolean handled = true;
         switch (command) {
             case "updatelist":
@@ -477,7 +483,7 @@ public class UpdateManagerService extends Service implements SignalRClientServic
                     String msg = cancelled > 0
                             ? "Update queue cancelled"
                             : "No active update queue";
-                    Toast.makeText(AndoWSignage.getCtx(), msg, Toast.LENGTH_SHORT).show();
+                    //Toast.makeText(AndoWSignage.getCtx(), msg, Toast.LENGTH_SHORT).show();
                 });
                 String metadata = "cancelled=" + cancelled;
                 client.updateCommandHistory(historyId,

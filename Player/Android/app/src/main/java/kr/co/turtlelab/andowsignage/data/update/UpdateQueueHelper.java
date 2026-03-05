@@ -18,6 +18,7 @@ import io.realm.RealmResults;
 import kr.co.turtlelab.andowsignage.AndoWSignageApp;
 import kr.co.turtlelab.andowsignage.data.realm.RealmUpdateQueue;
 import kr.co.turtlelab.andowsignage.data.rethink.RethinkDbClient;
+import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
 import kr.co.turtlelab.andowsignage.tools.LocalPathUtils;
 
 /**
@@ -450,9 +451,12 @@ public final class UpdateQueueHelper {
                 }
             });
             if (!releasePlayers.isEmpty()) {
-                String host = AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)
+                String dataServerIp = LocalSettingsProvider.getDataServerIp();
+                String host = !TextUtils.isEmpty(dataServerIp)
+                        ? dataServerIp
+                        : (AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)
                         ? AndoWSignageApp.MANUAL_IP
-                        : AndoWSignageApp.MANAGER_IP;
+                        : AndoWSignageApp.MANAGER_IP);
                 UpdateLeaseClient leaseClient = new UpdateLeaseClient(host);
                 for (String playerId : releasePlayers) {
                     leaseClient.releaseByPlayer(playerId);

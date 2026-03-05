@@ -1,9 +1,15 @@
 package kr.co.turtlelab.andowsignage.dataproviders;
 
+import android.os.Environment;
 import android.text.TextUtils;
+import android.util.Log;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
 
 import io.realm.Realm;
 import kr.co.turtlelab.andowsignage.AndoWSignageApp;
@@ -14,7 +20,15 @@ import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
 
 public class LocalSettingsProvider {
 
+    private static final String TAG = "LocalSettingsProvider";
     private static final String LOCAL_SETTINGS_ID = "local_settings";
+    private static final String BACKUP_FILE_NAME = "local_settings.properties";
+    private static final String KEY_DATA_SERVER_IP = "data_server_ip";
+    private static final String KEY_MESSAGE_SERVER_IP = "message_server_ip";
+    private static final String KEY_FTP_PORT = "ftp_port";
+    private static final String KEY_FTP_PASV_MIN_PORT = "ftp_pasv_min_port";
+    private static final String KEY_FTP_PASV_MAX_PORT = "ftp_pasv_max_port";
+    private static final String KEY_FTP_ROOT_PATH = "ftp_root_path";
     public static final String KEY_ENABLE_MANUAL_IP = "is_manual";
     public static final String KEY_KEEP_RATIO = "keepratio";
     public static final String KEY_SWITCH_ON_CONTENT_END = "switch_on_content_end";
@@ -66,6 +80,7 @@ public class LocalSettingsProvider {
                 model.setFtpPasvMinPort(settings.getFtpPasvMinPort());
                 model.setFtpPasvMaxPort(settings.getFtpPasvMaxPort());
                 model.setFtpRootPath(settings.getFtpRootPath());
+                ensureBackupFromRealmSettings(settings);
             }
         } finally {
             if (realm != null && !realm.isClosed()) {
@@ -79,6 +94,7 @@ public class LocalSettingsProvider {
         final boolean enableManualIp = AndoWSignageApp.IS_MANUAL;
         final boolean keepRatio = AndoWSignageApp.KEEP_ASPECT_RATIO;
         final boolean switchOnContentEnd = AndoWSignageApp.SWITCH_ON_CONTENT_END;
+        final Properties backupProperties = readBackupProperties();
         String resolvedPlayerId = AndoWSignageApp.PLAYER_ID;
         String resolvedManagerIp = AndoWSignageApp.MANAGER_IP;
         String resolvedManualIp = AndoWSignageApp.MANUAL_IP;
@@ -121,8 +137,10 @@ public class LocalSettingsProvider {
             settings.setFtpPasvMinPort(0);
             settings.setFtpPasvMaxPort(0);
             settings.setFtpRootPath("/NewHyOnEnt");
+            applyBackupToSettings(settings, backupProperties);
         });
         realm.close();
+        persistCurrentSettings();
     }
 
     public static void updateManualIPState(boolean state) {
@@ -137,6 +155,7 @@ public class LocalSettingsProvider {
             settings.setManualIpEnabled(state);
         });
         realm.close();
+        persistCurrentSettings();
     }
 
     public static void updateKeepRatioState(boolean state) {
@@ -151,6 +170,7 @@ public class LocalSettingsProvider {
             settings.setKeepRatioEnabled(state);
         });
         realm.close();
+        persistCurrentSettings();
     }
 
     public static void updateSwitchOnContentEndState(boolean state) {
@@ -165,6 +185,7 @@ public class LocalSettingsProvider {
             settings.setSwitchOnContentEnd(state);
         });
         realm.close();
+        persistCurrentSettings();
     }
 
     public static void updateUsbAuthKey(String encodedKey) {
@@ -179,6 +200,7 @@ public class LocalSettingsProvider {
             settings.setUsbAuthKey(encodedKey == null ? "" : encodedKey);
         });
         realm.close();
+        persistCurrentSettings();
     }
 
     public static void updatePlayerId(String playerId) {
@@ -193,6 +215,7 @@ public class LocalSettingsProvider {
             settings.setPlayerId(playerId == null ? "" : playerId);
         });
         realm.close();
+        persistCurrentSettings();
     }
 
     public static void updateManagerIp(String managerIp) {
@@ -207,6 +230,7 @@ public class LocalSettingsProvider {
             settings.setManagerIp(managerIp == null ? "" : managerIp);
         });
         realm.close();
+        persistCurrentSettings();
     }
 
     public static void updateManualIp(String manualIp) {
@@ -221,6 +245,7 @@ public class LocalSettingsProvider {
             settings.setManualIp(manualIp == null ? "" : manualIp);
         });
         realm.close();
+        persistCurrentSettings();
     }
 
     public static void updateSignalrPort(int port) {
@@ -235,6 +260,7 @@ public class LocalSettingsProvider {
             settings.setSignalrPort(port);
         });
         realm.close();
+        persistCurrentSettings();
     }
 
     public static void updateSignalrHubPath(String hubPath) {
@@ -249,6 +275,7 @@ public class LocalSettingsProvider {
             settings.setSignalrHubPath(hubPath == null ? "" : hubPath);
         });
         realm.close();
+        persistCurrentSettings();
     }
 
     public static int getSignalrPort() {
@@ -324,8 +351,10 @@ public class LocalSettingsProvider {
             }
             if (!TextUtils.isEmpty(messageServerIp)) {
                 settings.setMessageServerIp(messageServerIp.trim());
-            } else if (!TextUtils.isEmpty(dataServerIp)) {
-                settings.setMessageServerIp(dataServerIp.trim());
+            } else {
+                // Windows 플레이어와 동일하게 MessageServerIp가 없으면 비워둔다.
+                // SignalR은 DataServerIp를 대체로 사용하지 않는다.
+                settings.setMessageServerIp("");
             }
             if (ftpPort > 0 && ftpPort <= 65535) {
                 settings.setFtpPort(ftpPort);
@@ -341,6 +370,7 @@ public class LocalSettingsProvider {
             }
         });
         realm.close();
+        persistCurrentSettings();
     }
 
     public static String getDataServerIp() {
@@ -365,9 +395,6 @@ public class LocalSettingsProvider {
             }
             if (!TextUtils.isEmpty(settings.getMessageServerIp())) {
                 return settings.getMessageServerIp();
-            }
-            if (!TextUtils.isEmpty(settings.getDataServerIp())) {
-                return settings.getDataServerIp();
             }
             return "";
         } finally {
@@ -410,6 +437,141 @@ public class LocalSettingsProvider {
         if (ftpPort > 0 && ftpPort <= 65535) {
             AndoWSignageApp.FTP_PORT = ftpPort;
         }
+    }
+
+    private static void ensureBackupFromRealmSettings(RealmLocalSettings settings) {
+        File backupFile = getBackupFile();
+        if (backupFile.exists()) {
+            return;
+        }
+        writeBackupProperties(settings);
+    }
+
+    private static void persistCurrentSettings() {
+        Realm realm = Realm.getDefaultInstance();
+        try {
+            RealmLocalSettings settings = rWhere(realm);
+            if (settings != null) {
+                writeBackupProperties(settings);
+            }
+        } finally {
+            realm.close();
+        }
+    }
+
+    private static File getBackupFile() {
+        File rootDir = new File(Environment.getExternalStorageDirectory().getPath(), "AndoWSignage");
+        if (!rootDir.exists() && !rootDir.mkdirs()) {
+            Log.w(TAG, "getBackupFile: failed to create backup dir=" + rootDir.getAbsolutePath());
+        }
+        return new File(rootDir, BACKUP_FILE_NAME);
+    }
+
+    private static Properties readBackupProperties() {
+        Properties properties = new Properties();
+        File backupFile = getBackupFile();
+        if (!backupFile.exists()) {
+            return properties;
+        }
+        try (FileInputStream input = new FileInputStream(backupFile)) {
+            properties.load(input);
+        } catch (Exception ex) {
+            Log.w(TAG, "readBackupProperties: failed to load backup file", ex);
+        }
+        return properties;
+    }
+
+    private static void writeBackupProperties(RealmLocalSettings settings) {
+        if (settings == null) {
+            return;
+        }
+        Properties properties = new Properties();
+        properties.setProperty(KEY_ENABLE_MANUAL_IP, Boolean.toString(settings.isManualIpEnabled()));
+        properties.setProperty(KEY_KEEP_RATIO, Boolean.toString(settings.isKeepRatioEnabled()));
+        properties.setProperty(KEY_SWITCH_ON_CONTENT_END, Boolean.toString(settings.isSwitchOnContentEndEnabled()));
+        properties.setProperty(KEY_PLAYER_ID, settings.getPlayerId() == null ? "" : settings.getPlayerId());
+        properties.setProperty(KEY_MANAGER_IP, settings.getManagerIp() == null ? "" : settings.getManagerIp());
+        properties.setProperty(KEY_MANUAL_IP, settings.getManualIp() == null ? "" : settings.getManualIp());
+        properties.setProperty(KEY_SIGNALR_PORT, Integer.toString(settings.getSignalrPort()));
+        properties.setProperty(KEY_SIGNALR_HUB_PATH, settings.getSignalrHubPath() == null ? "" : settings.getSignalrHubPath());
+        properties.setProperty(KEY_DATA_SERVER_IP, settings.getDataServerIp() == null ? "" : settings.getDataServerIp());
+        properties.setProperty(KEY_MESSAGE_SERVER_IP, settings.getMessageServerIp() == null ? "" : settings.getMessageServerIp());
+        properties.setProperty(KEY_FTP_PORT, Integer.toString(settings.getFtpPort()));
+        properties.setProperty(KEY_FTP_PASV_MIN_PORT, Integer.toString(settings.getFtpPasvMinPort()));
+        properties.setProperty(KEY_FTP_PASV_MAX_PORT, Integer.toString(settings.getFtpPasvMaxPort()));
+        properties.setProperty(KEY_FTP_ROOT_PATH, settings.getFtpRootPath() == null ? "" : settings.getFtpRootPath());
+        properties.setProperty("usb_auth_key", settings.getUsbAuthKey() == null ? "" : settings.getUsbAuthKey());
+
+        File backupFile = getBackupFile();
+        try (FileOutputStream output = new FileOutputStream(backupFile)) {
+            properties.store(output, "AndoW local settings backup");
+        } catch (Exception ex) {
+            Log.w(TAG, "writeBackupProperties: failed to write backup file", ex);
+        }
+    }
+
+    private static void applyBackupToSettings(RealmLocalSettings settings, Properties properties) {
+        if (settings == null || properties == null || properties.isEmpty()) {
+            return;
+        }
+        settings.setManualIpEnabled(parseBoolean(properties, KEY_ENABLE_MANUAL_IP, settings.isManualIpEnabled()));
+        settings.setKeepRatioEnabled(parseBoolean(properties, KEY_KEEP_RATIO, settings.isKeepRatioEnabled()));
+        settings.setSwitchOnContentEnd(parseBoolean(properties, KEY_SWITCH_ON_CONTENT_END, settings.isSwitchOnContentEndEnabled()));
+        settings.setPlayerId(getString(properties, KEY_PLAYER_ID, settings.getPlayerId()));
+        settings.setManagerIp(getString(properties, KEY_MANAGER_IP, settings.getManagerIp()));
+        settings.setManualIp(getString(properties, KEY_MANUAL_IP, settings.getManualIp()));
+        settings.setUsbAuthKey(getString(properties, "usb_auth_key", settings.getUsbAuthKey()));
+        int signalrPort = parseInt(properties, KEY_SIGNALR_PORT, settings.getSignalrPort());
+        if (signalrPort > 0 && signalrPort <= 65535) {
+            settings.setSignalrPort(signalrPort);
+        }
+        settings.setSignalrHubPath(getString(properties, KEY_SIGNALR_HUB_PATH, settings.getSignalrHubPath()));
+        settings.setDataServerIp(getString(properties, KEY_DATA_SERVER_IP, settings.getDataServerIp()));
+        settings.setMessageServerIp(getString(properties, KEY_MESSAGE_SERVER_IP, settings.getMessageServerIp()));
+        int ftpPort = parseInt(properties, KEY_FTP_PORT, settings.getFtpPort());
+        if (ftpPort > 0 && ftpPort <= 65535) {
+            settings.setFtpPort(ftpPort);
+        }
+        int ftpPasvMin = parseInt(properties, KEY_FTP_PASV_MIN_PORT, settings.getFtpPasvMinPort());
+        if (ftpPasvMin >= 0 && ftpPasvMin <= 65535) {
+            settings.setFtpPasvMinPort(ftpPasvMin);
+        }
+        int ftpPasvMax = parseInt(properties, KEY_FTP_PASV_MAX_PORT, settings.getFtpPasvMaxPort());
+        if (ftpPasvMax >= 0 && ftpPasvMax <= 65535) {
+            settings.setFtpPasvMaxPort(ftpPasvMax);
+        }
+        String ftpRootPath = getString(properties, KEY_FTP_ROOT_PATH, settings.getFtpRootPath());
+        if (!TextUtils.isEmpty(ftpRootPath)) {
+            settings.setFtpRootPath(normalizeFtpRootPath(ftpRootPath));
+        }
+    }
+
+    private static boolean parseBoolean(Properties properties, String key, boolean fallback) {
+        String value = properties.getProperty(key);
+        if (value == null) {
+            return fallback;
+        }
+        return Boolean.parseBoolean(value.trim());
+    }
+
+    private static int parseInt(Properties properties, String key, int fallback) {
+        String value = properties.getProperty(key);
+        if (TextUtils.isEmpty(value)) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException ex) {
+            return fallback;
+        }
+    }
+
+    private static String getString(Properties properties, String key, String fallback) {
+        String value = properties.getProperty(key);
+        if (value == null) {
+            return fallback == null ? "" : fallback;
+        }
+        return value.trim();
     }
 
     private static String normalizeFtpRootPath(String rootPath) {

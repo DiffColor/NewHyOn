@@ -199,9 +199,7 @@ public class MediaView extends RelativeLayout {
 				popContent();
 			tick = 0;
 		}
-
-        Log.d("jazzlife", tick + " / " + playTime);
-	}
+    }
 
 	public void nextContent() {
 		popContent();

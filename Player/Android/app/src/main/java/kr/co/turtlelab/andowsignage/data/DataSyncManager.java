@@ -304,12 +304,12 @@ public class DataSyncManager {
     }
 
     private String resolveRethinkHostForRemote() {
-        if (AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)) {
-            return AndoWSignageApp.MANUAL_IP;
-        }
         String dataServerIp = kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider.getDataServerIp();
         if (!TextUtils.isEmpty(dataServerIp)) {
             return dataServerIp;
+        }
+        if (AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)) {
+            return AndoWSignageApp.MANUAL_IP;
         }
         return AndoWSignageApp.MANAGER_IP;
     }

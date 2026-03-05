@@ -43,8 +43,15 @@ public class CommandQueueClient {
         if (TextUtils.isEmpty(managerHost)) {
             return;
         }
+        String normalized = managerHost.trim();
+        if (TextUtils.isEmpty(normalized)) {
+            return;
+        }
         synchronized (syncRoot) {
-            host = managerHost;
+            if (!TextUtils.isEmpty(host) && host.equalsIgnoreCase(normalized)) {
+                return;
+            }
+            host = normalized;
             resetConnection();
         }
     }

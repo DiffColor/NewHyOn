@@ -132,11 +132,13 @@ public class HeartbeatService extends Service {
 
     private void updateEndpointFromSettings() {
         String host;
-        if (AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)) {
+        String dataServerIp = LocalSettingsProvider.getDataServerIp();
+        if (!TextUtils.isEmpty(dataServerIp)) {
+            host = dataServerIp;
+        } else if (AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)) {
             host = AndoWSignageApp.MANUAL_IP;
         } else {
-            String dataServerIp = LocalSettingsProvider.getDataServerIp();
-            host = TextUtils.isEmpty(dataServerIp) ? AndoWSignageApp.MANAGER_IP : dataServerIp;
+            host = AndoWSignageApp.MANAGER_IP;
         }
         activeRethinkHost = host == null ? "" : host;
         if (!TextUtils.isEmpty(host)) {

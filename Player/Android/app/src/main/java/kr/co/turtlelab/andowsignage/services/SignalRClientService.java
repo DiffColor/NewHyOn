@@ -431,12 +431,16 @@ public class SignalRClientService {
     }
 
     private String resolveHost() {
-        if (AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)) {
-            return AndoWSignageApp.MANUAL_IP;
-        }
         String messageServerIp = LocalSettingsProvider.getMessageServerIp();
         if (!TextUtils.isEmpty(messageServerIp)) {
             return messageServerIp;
+        }
+        if (AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)) {
+            return AndoWSignageApp.MANUAL_IP;
+        }
+        String managerIp = LocalSettingsProvider.getManagerIp();
+        if (!TextUtils.isEmpty(managerIp)) {
+            return managerIp;
         }
         return AndoWSignageApp.MANAGER_IP;
     }
