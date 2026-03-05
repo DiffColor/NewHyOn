@@ -171,8 +171,8 @@ public class WelcomeView extends RelativeLayout {
 
 							final String fpath = Uri.decode(uri);
 							
-							imgView.setVisibility(View.VISIBLE);		
-							ImageLoader.getInstance().displayImage(fpath, imgView, imgOpt);
+							imgView.setVisibility(View.VISIBLE);
+							ImageLoader.getInstance().displayImage(fpath, new SafeImageViewAware(imgView), imgOpt);
 						} catch (Exception e) {
 							Log.e(TAG, "Failed to display welcome content", e);
 						}
