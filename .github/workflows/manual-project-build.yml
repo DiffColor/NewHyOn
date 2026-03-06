@@ -124,20 +124,24 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($msbuild)) { throw "x86 MSBuild not found." }
           & $msbuild "Manager/AndoW_Manager/AndoW_Manager.sln" /t:Build /p:Configuration=Release /p:Platform=x64 /m
 
-      - name: Upload Manager artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: manager-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}
-          path: |
-            Manager/AndoW_Manager/**/bin/**/Release/**
-            Manager/AndoW_Settings/**/bin/**/Release/**
-          if-no-files-found: warn
-
       - name: Package Manager binaries for release
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release-assets | Out-Null
-          tar -a -c -f "release-assets/manager-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}.zip" "Manager/AndoW_Manager/bin" "Manager/AndoW_Settings/bin"
+          $packageRoot = "release-assets/manager-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}"
+          Remove-Item -Recurse -Force $packageRoot -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path "$packageRoot/AndoW_Manager" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$packageRoot/AndoW_Settings" | Out-Null
+          Copy-Item -Path "Manager/AndoW_Manager/bin/x64/Release/*" -Destination "$packageRoot/AndoW_Manager" -Recurse -Force
+          Copy-Item -Path "Manager/AndoW_Settings/bin/x64/Release/*" -Destination "$packageRoot/AndoW_Settings" -Recurse -Force
+          tar -a -c -f "release-assets/manager-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}.zip" -C release-assets "manager-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}"
+
+      - name: Upload Manager artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: manager-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}
+          path: release-assets/manager-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}.zip
+          if-no-files-found: error
 
       - name: Attach Manager binaries to GitHub Release
         uses: softprops/action-gh-release@v2
@@ -232,18 +236,24 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($msbuild)) { throw "x86 MSBuild not found." }
           & $msbuild "Player/Windows/AndoW Player.sln" /t:Build /p:Configuration=Release /p:Platform=x64 /m
 
-      - name: Upload Player Windows artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: player-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}
-          path: Player/Windows/**/bin/**/Release/**
-          if-no-files-found: warn
-
       - name: Package Player Windows binaries for release
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release-assets | Out-Null
-          tar -a -c -f "release-assets/player-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}.zip" "Player/Windows/AndoW_Player/bin" "Player/Windows/ConfigPlayer/bin"
+          $packageRoot = "release-assets/player-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}"
+          Remove-Item -Recurse -Force $packageRoot -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path "$packageRoot/AndoW_Player" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$packageRoot/ConfigPlayer" | Out-Null
+          Copy-Item -Path "Player/Windows/AndoW_Player/bin/x64/Release/*" -Destination "$packageRoot/AndoW_Player" -Recurse -Force
+          Copy-Item -Path "Player/Windows/ConfigPlayer/bin/x64/Release/*" -Destination "$packageRoot/ConfigPlayer" -Recurse -Force
+          tar -a -c -f "release-assets/player-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}.zip" -C release-assets "player-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}"
+
+      - name: Upload Player Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: player-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}
+          path: release-assets/player-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}.zip
+          if-no-files-found: error
 
       - name: Attach Player Windows binaries to GitHub Release
         uses: softprops/action-gh-release@v2
