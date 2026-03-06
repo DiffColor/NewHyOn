@@ -130,12 +130,11 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path release-assets | Out-Null
           $zip = "release-assets/manager-windows-${{ needs.prepare-release.outputs.artifact_suffix }}.zip"
-          $packageRoot = "release-assets/manager-windows-${{ needs.prepare-release.outputs.artifact_suffix }}"
+          $packageRoot = "release-assets/manager-windows-${{ needs.prepare-release.outputs.artifact_suffix }}-staging"
           Remove-Item -Recurse -Force $packageRoot -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Force -Path "$packageRoot/AndoW_Manager" | Out-Null
-          New-Item -ItemType Directory -Force -Path "$packageRoot/AndoW_Settings" | Out-Null
-          Copy-Item -Path "Manager/AndoW_Manager/bin/x64/Release/*" -Destination "$packageRoot/AndoW_Manager" -Recurse -Force
-          Copy-Item -Path "Manager/AndoW_Settings/bin/x64/Release/*" -Destination "$packageRoot/AndoW_Settings" -Recurse -Force
+          New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
+          Copy-Item -Path "Manager/AndoW_Manager/bin/x64/Release/*" -Destination $packageRoot -Recurse -Force
+          Copy-Item -Path "Manager/AndoW_Settings/bin/x64/Release/*" -Destination $packageRoot -Recurse -Force
           Compress-Archive -Path "$packageRoot/*" -DestinationPath $zip -Force
 
       - name: Upload Manager artifact
@@ -199,12 +198,11 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path release-assets | Out-Null
           $zip = "release-assets/player-windows-${{ needs.prepare-release.outputs.artifact_suffix }}.zip"
-          $packageRoot = "release-assets/player-windows-${{ needs.prepare-release.outputs.artifact_suffix }}"
+          $packageRoot = "release-assets/player-windows-${{ needs.prepare-release.outputs.artifact_suffix }}-staging"
           Remove-Item -Recurse -Force $packageRoot -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Force -Path "$packageRoot/AndoW_Player" | Out-Null
-          New-Item -ItemType Directory -Force -Path "$packageRoot/ConfigPlayer" | Out-Null
-          Copy-Item -Path "Player/Windows/AndoW_Player/bin/x64/Release/*" -Destination "$packageRoot/AndoW_Player" -Recurse -Force
-          Copy-Item -Path "Player/Windows/ConfigPlayer/bin/x64/Release/*" -Destination "$packageRoot/ConfigPlayer" -Recurse -Force
+          New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
+          Copy-Item -Path "Player/Windows/AndoW_Player/bin/x64/Release/*" -Destination $packageRoot -Recurse -Force
+          Copy-Item -Path "Player/Windows/ConfigPlayer/bin/x64/Release/*" -Destination $packageRoot -Recurse -Force
           Compress-Archive -Path "$packageRoot/*" -DestinationPath $zip -Force
 
       - name: Upload Player Windows artifact

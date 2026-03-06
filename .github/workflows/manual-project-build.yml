@@ -128,13 +128,12 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release-assets | Out-Null
-          $packageRoot = "release-assets/manager-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}"
+          $packageRoot = "release-assets/manager-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}-staging"
           Remove-Item -Recurse -Force $packageRoot -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Force -Path "$packageRoot/AndoW_Manager" | Out-Null
-          New-Item -ItemType Directory -Force -Path "$packageRoot/AndoW_Settings" | Out-Null
-          Copy-Item -Path "Manager/AndoW_Manager/bin/x64/Release/*" -Destination "$packageRoot/AndoW_Manager" -Recurse -Force
-          Copy-Item -Path "Manager/AndoW_Settings/bin/x64/Release/*" -Destination "$packageRoot/AndoW_Settings" -Recurse -Force
-          tar -a -c -f "release-assets/manager-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}.zip" -C release-assets "manager-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}"
+          New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
+          Copy-Item -Path "Manager/AndoW_Manager/bin/x64/Release/*" -Destination $packageRoot -Recurse -Force
+          Copy-Item -Path "Manager/AndoW_Settings/bin/x64/Release/*" -Destination $packageRoot -Recurse -Force
+          Compress-Archive -Path "$packageRoot/*" -DestinationPath "release-assets/manager-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}.zip" -Force
 
       - name: Upload Manager artifact
         uses: actions/upload-artifact@v4
@@ -240,13 +239,12 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release-assets | Out-Null
-          $packageRoot = "release-assets/player-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}"
+          $packageRoot = "release-assets/player-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}-staging"
           Remove-Item -Recurse -Force $packageRoot -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Force -Path "$packageRoot/AndoW_Player" | Out-Null
-          New-Item -ItemType Directory -Force -Path "$packageRoot/ConfigPlayer" | Out-Null
-          Copy-Item -Path "Player/Windows/AndoW_Player/bin/x64/Release/*" -Destination "$packageRoot/AndoW_Player" -Recurse -Force
-          Copy-Item -Path "Player/Windows/ConfigPlayer/bin/x64/Release/*" -Destination "$packageRoot/ConfigPlayer" -Recurse -Force
-          tar -a -c -f "release-assets/player-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}.zip" -C release-assets "player-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}"
+          New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
+          Copy-Item -Path "Player/Windows/AndoW_Player/bin/x64/Release/*" -Destination $packageRoot -Recurse -Force
+          Copy-Item -Path "Player/Windows/ConfigPlayer/bin/x64/Release/*" -Destination $packageRoot -Recurse -Force
+          Compress-Archive -Path "$packageRoot/*" -DestinationPath "release-assets/player-windows-manual-${{ steps.release_meta.outputs.artifact_suffix }}.zip" -Force
 
       - name: Upload Player Windows artifact
         uses: actions/upload-artifact@v4
