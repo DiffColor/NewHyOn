@@ -41,7 +41,9 @@ jobs:
           $destinations = @(
             "Manager/dll",
             "Manager/AndoW_Manager/bin/Release",
-            "Manager/AndoW_Manager/bin/x64/Release"
+            "Manager/AndoW_Manager/bin/x64/Release",
+            "Manager/AndoW_Settings/bin/Release",
+            "Manager/AndoW_Settings/bin/x64/Release"
           )
           foreach ($dst in $destinations) {
             New-Item -ItemType Directory -Force -Path $dst | Out-Null
@@ -60,14 +62,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: manager-windows-${{ github.ref_name }}
-          path: Manager/AndoW_Manager/**/bin/**/Release/**
+          path: |
+            Manager/AndoW_Manager/**/bin/**/Release/**
+            Manager/AndoW_Settings/**/bin/**/Release/**
           if-no-files-found: warn
 
       - name: Package Manager binaries for release
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release-assets | Out-Null
-          tar -a -c -f "release-assets/manager-windows-${{ github.ref_name }}.zip" "Manager/AndoW_Manager/bin"
+          tar -a -c -f "release-assets/manager-windows-${{ github.ref_name }}.zip" "Manager/AndoW_Manager/bin" "Manager/AndoW_Settings/bin"
 
       - name: Attach Manager binaries to GitHub Release
         uses: softprops/action-gh-release@v2
