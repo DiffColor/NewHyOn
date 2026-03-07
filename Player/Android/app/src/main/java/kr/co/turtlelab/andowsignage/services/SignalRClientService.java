@@ -9,6 +9,12 @@ import java.net.URLEncoder;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import kr.co.turtlelab.andowsignage.AndoWSignageApp;
@@ -38,17 +44,36 @@ public class SignalRClientService {
     private static final String DEFAULT_HUB_PATH = "/Data";
     private static final String HUB_NAME = "MsgHub";
     private static final long RECONNECT_DELAY_MS = 5000L;
+    private static final long CONNECT_TIMEOUT_MS = 15000L;
+    private static final long HEARTBEAT_TIMEOUT_MS = 5000L;
+    private static final int MAX_SIGNALR_ACTION_QUEUE = 10;
     private static final NullLogger SIGNALR_NULL_LOGGER = new NullLogger();
 
     private Listener listener;
     private final Gson gson;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ThreadPoolExecutor actionExecutor = new ThreadPoolExecutor(
+            1,
+            1,
+            0L,
+            TimeUnit.MILLISECONDS,
+            new LinkedBlockingDeque<>(MAX_SIGNALR_ACTION_QUEUE),
+            runnable -> {
+                Thread thread = new Thread(runnable, "SignalRActionQueue");
+                thread.setDaemon(true);
+                return thread;
+            });
+    private final ScheduledExecutorService reconnectScheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "SignalRReconnectScheduler");
+        thread.setDaemon(true);
+        return thread;
+    });
     private final Object syncRoot = new Object();
     private final AtomicBoolean stopping = new AtomicBoolean(false);
-    private final AtomicBoolean reconnecting = new AtomicBoolean(false);
+    private final AtomicBoolean reconnectScheduled = new AtomicBoolean(false);
 
     private HubConnection connection;
     private HubProxy hubProxy;
+    private ScheduledFuture<?> reconnectFuture;
 
     private static SignalRClientService shared;
 
@@ -56,6 +81,14 @@ public class SignalRClientService {
         this.listener = listener;
         this.gson = gson == null ? new Gson() : gson;
         Platform.loadPlatformComponent(new AndroidPlatformComponent());
+        actionExecutor.setRejectedExecutionHandler((runnable, executor) -> {
+            if (executor.isShutdown()) {
+                throw new RejectedExecutionException("SignalR action queue is shut down");
+            }
+            Runnable dropped = executor.getQueue().poll();
+            Log.w(TAG, "SignalR action queue full. dropped oldest action=" + describeAction(dropped));
+            executor.execute(runnable);
+        });
     }
 
     public static synchronized SignalRClientService getShared(Gson gson) {
@@ -71,84 +104,61 @@ public class SignalRClientService {
 
     public void start() {
         stopping.set(false);
-        executor.execute(this::startInternal);
+        enqueueAction("start", this::ensureConnectedInternal);
     }
 
     public void stop() {
         stopping.set(true);
-        HubConnection local;
-        synchronized (syncRoot) {
-            local = connection;
-            hubProxy = null;
-            connection = null;
-        }
-        if (local != null) {
-            try {
-                local.stop();
-            } catch (Exception ex) {
-                Log.w(TAG, "stop: failed to stop hub connection", ex);
-            }
-        }
+        cancelReconnectSchedule();
+        enqueueAction("stop", this::stopInternal);
     }
 
     public void reconnect() {
-        stop();
-        reconnecting.set(false);
-        start();
+        stopping.set(false);
+        cancelReconnectSchedule();
+        enqueueAction("reconnect", () -> {
+            stopInternal();
+            ensureConnectedInternal();
+        });
     }
 
     public void sendHeartbeat(HeartbeatPayload payload) {
         if (payload == null) {
             return;
         }
-        HubConnection localConn;
-        HubProxy localProxy;
-        synchronized (syncRoot) {
-            localConn = connection;
-            localProxy = hubProxy;
-        }
-        if (localConn == null || localProxy == null) {
-            start();
-            return;
-        }
-        if (localConn.getState() != ConnectionState.Connected) {
-            scheduleReconnect();
-            return;
-        }
-        executor.execute(() -> {
-            try {
-                SignalRFuture<Void> future = localProxy.invoke("ReportHeartbeat", payload);
-                future.get();
-            } catch (Exception ex) {
-                Log.e(TAG, "sendHeartbeat: ReportHeartbeat invoke failed", ex);
-                scheduleReconnect();
-            }
-        });
+        enqueueAction("heartbeat", () -> sendHeartbeatInternal(payload));
     }
 
-    private void startInternal() {
+    private void ensureConnectedInternal() {
+        if (stopping.get()) {
+            return;
+        }
         String url = buildUrl();
         if (TextUtils.isEmpty(url)) {
+            Log.w(TAG, "ensureConnectedInternal: empty SignalR url");
             return;
+        }
+
+        HubConnection existingConnection;
+        synchronized (syncRoot) {
+            existingConnection = connection;
+            if (shouldKeepCurrentConnection(existingConnection)) {
+                return;
+            }
         }
 
         ConnectionBundle bundle = buildConnection(url);
-        HubConnection local = null;
+        HubConnection previous;
         synchronized (syncRoot) {
-            if (connection != null) {
-                safeStopConnection(bundle.connection);
-                return;
-            }
+            previous = connection;
             connection = bundle.connection;
             hubProxy = bundle.proxy;
-            local = connection;
         }
+        safeStopConnection(previous);
 
         try {
-            if (!shouldAttemptStart(local)) {
-                return;
-            }
-            startConnection(local);
+            startConnection(bundle.connection);
+            reconnectScheduled.set(false);
         } catch (Exception ex) {
             if (isOperationCancelled(ex)) {
                 Log.w(TAG, "startInternal: startConnection cancelled. url=" + url, ex);
@@ -156,12 +166,12 @@ public class SignalRClientService {
                 Log.e(TAG, "startInternal: startConnection failed, scheduling reconnect. url=" + url, ex);
             }
             synchronized (syncRoot) {
-                if (connection == local) {
+                if (connection == bundle.connection) {
                     connection = null;
                     hubProxy = null;
                 }
             }
-            safeStopConnection(local);
+            safeStopConnection(bundle.connection);
             if (!stopping.get()) {
                 scheduleReconnect();
             }
@@ -179,6 +189,12 @@ public class SignalRClientService {
         }, SignalRMessage.class);
         hubConnection.closed(() -> {
             if (!stopping.get()) {
+                synchronized (syncRoot) {
+                    if (connection == hubConnection) {
+                        connection = null;
+                        hubProxy = null;
+                    }
+                }
                 scheduleReconnect();
             }
         });
@@ -186,54 +202,23 @@ public class SignalRClientService {
     }
 
     private void scheduleReconnect() {
-        if (reconnecting.getAndSet(true)) {
+        if (stopping.get()) {
             return;
         }
-        executor.execute(() -> {
-            try {
-                while (!stopping.get()) {
-                    try {
-                        Thread.sleep(RECONNECT_DELAY_MS);
-                    } catch (InterruptedException ex) {
-                        Log.w(TAG, "scheduleReconnect: interrupted during delay, continuing reconnect loop", ex);
-                        continue;
-                    }
-                    HubConnection local;
-                    synchronized (syncRoot) {
-                        local = connection;
-                    }
-                    if (local == null) {
-                        startInternal();
-                        continue;
-                    }
-                    if (!shouldAttemptStart(local)) {
-                        if (local.getState() == ConnectionState.Connected) {
-                            return;
-                        }
-                        continue;
-                    }
-                    try {
-                        startConnection(local);
-                        return;
-                    } catch (Exception ex) {
-                        if (isOperationCancelled(ex)) {
-                            Log.w(TAG, "scheduleReconnect: startConnection cancelled", ex);
-                        } else {
-                            Log.e(TAG, "scheduleReconnect: startConnection failed", ex);
-                        }
-                        synchronized (syncRoot) {
-                            if (connection == local) {
-                                connection = null;
-                                hubProxy = null;
-                            }
-                        }
-                        safeStopConnection(local);
-                    }
-                }
-            } finally {
-                reconnecting.set(false);
+        if (reconnectScheduled.getAndSet(true)) {
+            return;
+        }
+        synchronized (syncRoot) {
+            if (reconnectFuture != null) {
+                reconnectFuture.cancel(false);
             }
-        });
+            reconnectFuture = reconnectScheduler.schedule(() -> {
+                reconnectScheduled.set(false);
+                if (!stopping.get()) {
+                    enqueueAction("scheduled-reconnect", this::ensureConnectedInternal);
+                }
+            }, RECONNECT_DELAY_MS, TimeUnit.MILLISECONDS);
+        }
     }
 
     private void safeStopConnection(HubConnection hubConnection) {
@@ -245,6 +230,16 @@ public class SignalRClientService {
         } catch (Exception ex) {
             Log.w(TAG, "safeStopConnection: failed to stop hub connection", ex);
         }
+    }
+
+    private void stopInternal() {
+        HubConnection local;
+        synchronized (syncRoot) {
+            local = connection;
+            connection = null;
+            hubProxy = null;
+        }
+        safeStopConnection(local);
     }
 
     private static final class ConnectionBundle {
@@ -263,15 +258,89 @@ public class SignalRClientService {
             Log.w(TAG, "startConnection: clearing stale interrupted flag before connect.");
         }
         SignalRFuture<Void> future = local.start(new LongPollingTransport(SIGNALR_NULL_LOGGER));
-        future.get();
+        future.get(CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
     }
 
-    private boolean shouldAttemptStart(HubConnection local) {
+    private boolean shouldKeepCurrentConnection(HubConnection local) {
         if (local == null) {
             return false;
         }
         ConnectionState state = local.getState();
-        return state != ConnectionState.Connected && state != ConnectionState.Connecting;
+        return state == ConnectionState.Connected || state == ConnectionState.Connecting;
+    }
+
+    private void sendHeartbeatInternal(HeartbeatPayload payload) {
+        if (stopping.get()) {
+            return;
+        }
+        HubConnection localConn;
+        HubProxy localProxy;
+        synchronized (syncRoot) {
+            localConn = connection;
+            localProxy = hubProxy;
+        }
+        if (localConn == null || localProxy == null) {
+            scheduleReconnect();
+            return;
+        }
+        if (localConn.getState() != ConnectionState.Connected) {
+            scheduleReconnect();
+            return;
+        }
+        try {
+            SignalRFuture<Void> future = localProxy.invoke("ReportHeartbeat", payload);
+            future.get(HEARTBEAT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        } catch (Exception ex) {
+            Log.e(TAG, "sendHeartbeat: ReportHeartbeat invoke failed", ex);
+            synchronized (syncRoot) {
+                if (connection == localConn) {
+                    connection = null;
+                    hubProxy = null;
+                }
+            }
+            safeStopConnection(localConn);
+            scheduleReconnect();
+        }
+    }
+
+    private void cancelReconnectSchedule() {
+        reconnectScheduled.set(false);
+        synchronized (syncRoot) {
+            if (reconnectFuture != null) {
+                reconnectFuture.cancel(false);
+                reconnectFuture = null;
+            }
+        }
+    }
+
+    private void enqueueAction(String label, Runnable action) {
+        try {
+            actionExecutor.execute(new NamedAction(label, action));
+        } catch (RejectedExecutionException ex) {
+            Log.e(TAG, "enqueueAction failed. label=" + label, ex);
+        }
+    }
+
+    private static String describeAction(Runnable runnable) {
+        if (runnable instanceof NamedAction) {
+            return ((NamedAction) runnable).label;
+        }
+        return runnable == null ? "none" : runnable.getClass().getSimpleName();
+    }
+
+    private static final class NamedAction implements Runnable {
+        private final String label;
+        private final Runnable delegate;
+
+        private NamedAction(String label, Runnable delegate) {
+            this.label = label;
+            this.delegate = delegate;
+        }
+
+        @Override
+        public void run() {
+            delegate.run();
+        }
     }
 
     private boolean isOperationCancelled(Throwable throwable) {

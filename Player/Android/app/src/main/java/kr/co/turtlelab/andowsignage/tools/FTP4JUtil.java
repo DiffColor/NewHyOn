@@ -19,6 +19,8 @@ import kr.co.turtlelab.andowsignage.data.update.UpdateQueueLogger;
  * 연결/로그인/수동 수명 관리를 한 곳에 모아둔다.
  */
 public class FTP4JUtil {
+    private static final int DEFAULT_BUFFER_SIZE = 2 * 1024 * 1024;
+    private static final int MIN_BUFFER_SIZE = 64 * 1024;
 
     private final String host;
     private final int port;
@@ -28,7 +30,7 @@ public class FTP4JUtil {
     private final int bufferSize;
 
     public FTP4JUtil(Context ctx, String host, int port, String id, String pw) {
-        this(ctx, host, port, id, pw, "UTF-8", 1024 * 512);
+        this(ctx, host, port, id, pw, "UTF-8", DEFAULT_BUFFER_SIZE);
     }
 
     public FTP4JUtil(Context ctx, String host, int port, String id, String pw, String charset, int bufferSize) {
@@ -37,7 +39,7 @@ public class FTP4JUtil {
         this.id = TextUtils.isEmpty(id) ? "" : id;
         this.pw = TextUtils.isEmpty(pw) ? "" : pw;
         this.charset = TextUtils.isEmpty(charset) ? "UTF-8" : charset;
-        this.bufferSize = Math.max(64 * 1024, bufferSize);
+        this.bufferSize = Math.max(MIN_BUFFER_SIZE, bufferSize);
     }
 
     public static final class DownloadResult {
@@ -59,16 +61,14 @@ public class FTP4JUtil {
                 parent.mkdirs();
             }
 
-            client.setPassive(true);
-            client.setCharset(charset);
-            client.setType(FTPClient.TYPE_BINARY);
-            client.setAutoNoopTimeout(30_000);
+            prepareClient(client);
             client.connect(host, port);
             client.login(id, pw);
 
             long localSize = targetFile.exists() ? targetFile.length() : 0L;
             long resumeAt = Math.max(0L, Math.max(resumeHint, localSize));
             resumeAt = clampResume(remotePath, client, resumeAt);
+            long remoteSize = queryRemoteSize(client, remotePath);
 
             FTPDataTransferListener listener = new FTPDataTransferListener() {
                 @Override
@@ -85,7 +85,9 @@ public class FTP4JUtil {
                 public void failed() { }
             };
 
-            client.download(remotePath, targetFile, resumeAt, listener);
+            try (RandomAccessBufferedOutputStream output = openBufferedOutput(targetFile, resumeAt, remoteSize, null, null)) {
+                client.download(remotePath, output, resumeAt, listener);
+            }
             result.success = true;
             result.downloadedBytes = targetFile.length();
         } catch (FTPException e) {
@@ -140,51 +142,17 @@ public class FTP4JUtil {
                 parent.mkdirs();
             }
 
-            client.setPassive(true);
-            client.setCharset(charset);
-            client.setType(FTPClient.TYPE_BINARY);
-            client.setAutoNoopTimeout(30_000);
+            prepareClient(client);
             client.connect(host, port);
             client.login(id, pw);
 
             long ensureSize = totalSize;
             if (ensureSize <= 0) {
-                try {
-                    long remoteSize = client.fileSize(remotePath);
-                    if (remoteSize > 0) {
-                        ensureSize = remoteSize;
-                    }
-                } catch (Exception ignore) { }
+                ensureSize = queryRemoteSize(client, remotePath);
             }
 
-            try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(targetFile, "rw")) {
-                if (ensureSize > 0 && raf.length() < ensureSize) {
-                    raf.setLength(ensureSize);
-                }
-                raf.seek(Math.max(0L, offset));
-
-                java.io.OutputStream output = new java.io.OutputStream() {
-                    @Override
-                    public void write(int b) throws java.io.IOException {
-                        byte[] single = new byte[] { (byte) b };
-                        write(single, 0, 1);
-                    }
-
-                    @Override
-                    public void write(byte[] b, int off, int len) throws java.io.IOException {
-                        if (stopFlag != null && stopFlag.get()) {
-                            abortedByStop.set(true);
-                            throw new java.io.IOException("LEASE_LOST");
-                        }
-                        long remaining = safeLength - written.get();
-                        if (remaining <= 0) {
-                            return;
-                        }
-                        int toWrite = (int) Math.min(len, remaining);
-                        raf.write(b, off, toWrite);
-                        written.addAndGet(toWrite);
-                    }
-                };
+            try (RandomAccessBufferedOutputStream output =
+                         openBufferedOutput(targetFile, offset, ensureSize, written, safeLength, stopFlag, abortedByStop)) {
 
                 FTPDataTransferListener listener = new FTPDataTransferListener() {
                     @Override
@@ -271,5 +239,169 @@ public class FTP4JUtil {
             // size 조회 실패 시 기존 resume 값을 그대로 사용한다.
         }
         return safeResume;
+    }
+
+    private void prepareClient(FTPClient client) {
+        client.setPassive(true);
+        client.setCharset(charset);
+        client.setType(FTPClient.TYPE_BINARY);
+        client.setAutoNoopTimeout(30_000);
+    }
+
+    private long queryRemoteSize(FTPClient client, String remotePath) {
+        try {
+            return client.fileSize(remotePath);
+        } catch (Exception ignore) {
+            return 0L;
+        }
+    }
+
+    private RandomAccessBufferedOutputStream openBufferedOutput(File targetFile,
+                                                                long offset,
+                                                                long ensureSize,
+                                                                java.util.concurrent.atomic.AtomicLong written,
+                                                                long maxBytes,
+                                                                java.util.concurrent.atomic.AtomicBoolean stopFlag,
+                                                                java.util.concurrent.atomic.AtomicBoolean abortedByStop) throws java.io.IOException {
+        return openBufferedOutput(targetFile, offset, ensureSize, written, maxBytes, stopFlag, abortedByStop, false);
+    }
+
+    private RandomAccessBufferedOutputStream openBufferedOutput(File targetFile,
+                                                                long offset,
+                                                                long ensureSize,
+                                                                java.util.concurrent.atomic.AtomicLong written,
+                                                                java.util.concurrent.atomic.AtomicBoolean abortedByStop) throws java.io.IOException {
+        return openBufferedOutput(targetFile, offset, ensureSize, written, Long.MAX_VALUE, null, abortedByStop, true);
+    }
+
+    private RandomAccessBufferedOutputStream openBufferedOutput(File targetFile,
+                                                                long offset,
+                                                                long ensureSize,
+                                                                java.util.concurrent.atomic.AtomicLong written,
+                                                                long maxBytes,
+                                                                java.util.concurrent.atomic.AtomicBoolean stopFlag,
+                                                                java.util.concurrent.atomic.AtomicBoolean abortedByStop,
+                                                                boolean useFileLengthOnClose) throws java.io.IOException {
+        return new RandomAccessBufferedOutputStream(targetFile,
+                Math.max(0L, offset),
+                ensureSize,
+                bufferSize,
+                written,
+                maxBytes,
+                stopFlag,
+                abortedByStop,
+                useFileLengthOnClose);
+    }
+
+    private static final class RandomAccessBufferedOutputStream extends java.io.OutputStream {
+        private final java.io.RandomAccessFile raf;
+        private final byte[] buffer;
+        private final java.util.concurrent.atomic.AtomicLong written;
+        private final long maxBytes;
+        private final java.util.concurrent.atomic.AtomicBoolean stopFlag;
+        private final java.util.concurrent.atomic.AtomicBoolean abortedByStop;
+        private final boolean useFileLengthOnClose;
+        private int bufferedCount = 0;
+
+        RandomAccessBufferedOutputStream(File targetFile,
+                                         long offset,
+                                         long ensureSize,
+                                         int bufferSize,
+                                         java.util.concurrent.atomic.AtomicLong written,
+                                         long maxBytes,
+                                         java.util.concurrent.atomic.AtomicBoolean stopFlag,
+                                         java.util.concurrent.atomic.AtomicBoolean abortedByStop,
+                                         boolean useFileLengthOnClose) throws java.io.IOException {
+            this.raf = new java.io.RandomAccessFile(targetFile, "rw");
+            if (ensureSize > 0 && raf.length() < ensureSize) {
+                raf.setLength(ensureSize);
+            }
+            raf.seek(Math.max(0L, offset));
+            this.buffer = new byte[Math.max(MIN_BUFFER_SIZE, bufferSize)];
+            this.written = written;
+            this.maxBytes = maxBytes <= 0 ? Long.MAX_VALUE : maxBytes;
+            this.stopFlag = stopFlag;
+            this.abortedByStop = abortedByStop;
+            this.useFileLengthOnClose = useFileLengthOnClose;
+        }
+
+        @Override
+        public void write(int b) throws java.io.IOException {
+            byte[] single = new byte[] { (byte) b };
+            write(single, 0, 1);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws java.io.IOException {
+            if (b == null) {
+                throw new NullPointerException("buffer");
+            }
+            if (off < 0 || len < 0 || off + len > b.length) {
+                throw new IndexOutOfBoundsException("Invalid write bounds");
+            }
+            checkStopRequested();
+            int remainingToCopy = len;
+            int cursor = off;
+            while (remainingToCopy > 0) {
+                long remaining = remainingCapacity();
+                if (remaining <= 0) {
+                    return;
+                }
+                if (bufferedCount == buffer.length) {
+                    flushBuffer();
+                }
+                int toCopy = (int) Math.min(Math.min((long) (buffer.length - bufferedCount), remaining), remainingToCopy);
+                System.arraycopy(b, cursor, buffer, bufferedCount, toCopy);
+                bufferedCount += toCopy;
+                cursor += toCopy;
+                remainingToCopy -= toCopy;
+                if (written != null) {
+                    written.addAndGet(toCopy);
+                }
+            }
+        }
+
+        @Override
+        public void flush() throws java.io.IOException {
+            flushBuffer();
+        }
+
+        @Override
+        public void close() throws java.io.IOException {
+            try {
+                flushBuffer();
+                if (useFileLengthOnClose && written != null) {
+                    written.set(Math.max(0L, raf.length()));
+                }
+            } finally {
+                raf.close();
+            }
+        }
+
+        private long remainingCapacity() {
+            if (maxBytes == Long.MAX_VALUE) {
+                return Long.MAX_VALUE;
+            }
+            long logicalWritten = written == null ? 0L : written.get();
+            return maxBytes - logicalWritten;
+        }
+
+        private void flushBuffer() throws java.io.IOException {
+            checkStopRequested();
+            if (bufferedCount <= 0) {
+                return;
+            }
+            raf.write(buffer, 0, bufferedCount);
+            bufferedCount = 0;
+        }
+
+        private void checkStopRequested() throws java.io.IOException {
+            if (stopFlag != null && stopFlag.get()) {
+                if (abortedByStop != null) {
+                    abortedByStop.set(true);
+                }
+                throw new java.io.IOException("LEASE_LOST");
+            }
+        }
     }
 }
