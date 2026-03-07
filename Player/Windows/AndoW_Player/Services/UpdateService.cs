@@ -1243,7 +1243,7 @@ namespace HyOnPlayer
             lastProgressReportPercent = percent;
             lastProgressReportTicks = nowTicks;
             queue.DownloadProgress = progress;
-            UpdateHeartbeatSnapshot(queue, progress, force);
+            UpdateHeartbeatSnapshot(queue, progress, force, true);
         }
 
         private static void ResetChunksToPending(DownloadEntry entry)
@@ -1518,7 +1518,8 @@ namespace HyOnPlayer
                 {
                     progress = validateProgress;
                 }
-                UpdateHeartbeatSnapshot(queue, progress, false);
+                bool sendNormalHeartbeatNow = ShouldSendNormalHeartbeatNow(queue);
+                UpdateHeartbeatSnapshot(queue, progress, false, sendNormalHeartbeatNow);
             }
             catch
             {
@@ -1526,11 +1527,11 @@ namespace HyOnPlayer
             }
         }  
 
-        private void UpdateHeartbeatSnapshot(UpdateQueue queue, double progress, bool forceImmediateReport)
+        private void UpdateHeartbeatSnapshot(UpdateQueue queue, double progress, bool forceImmediateReport, bool sendNormalHeartbeatNow)
         {
             if (queue == null)
             {
-                ClearHeartbeatSnapshot(true);
+                ClearHeartbeatSnapshot(sendNormalHeartbeatNow);
                 return;
             }
 
@@ -1542,7 +1543,7 @@ namespace HyOnPlayer
                           || queue.Status == UpdateQueueStatus.Applying;
             if (!active)
             {
-                ClearHeartbeatSnapshot(true);
+                ClearHeartbeatSnapshot(sendNormalHeartbeatNow);
                 return;
             }
 
@@ -1560,6 +1561,24 @@ namespace HyOnPlayer
             {
                 owner?.ReportUpdateHeartbeatNow(heartbeatStatus, percent, forceImmediateReport, sessionId);
             }
+        }
+
+        private static bool ShouldSendNormalHeartbeatNow(UpdateQueue queue)
+        {
+            if (queue == null)
+            {
+                return true;
+            }
+
+            // 플레이리스트 적용 완료 직후에는 재생 전환 heartbeat가 바로 뒤따르므로
+            // 중간에 idle/stopped heartbeat를 보내지 않는다.
+            if (!queue.IsScheduleQueue &&
+                string.Equals(queue.Status, UpdateQueueStatus.Done, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return true;
         }
 
         private void ClearHeartbeatSnapshot(bool sendNormalHeartbeatNow)
