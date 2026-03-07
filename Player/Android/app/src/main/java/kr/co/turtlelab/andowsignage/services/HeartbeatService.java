@@ -9,8 +9,10 @@ import android.util.Log;
 
 import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import kr.co.turtlelab.andowsignage.AndoWSignage;
 import kr.co.turtlelab.andowsignage.AndoWSignageApp;
@@ -37,7 +39,13 @@ public class HeartbeatService extends Service {
     private static boolean terminalStopRequested = false;
 
     private final IBinder binder = new LocalBinder();
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ThreadPoolExecutor executor = new ThreadPoolExecutor(
+            1,
+            1,
+            0L,
+            TimeUnit.MILLISECONDS,
+            new LinkedBlockingDeque<>());
+    private final AtomicLong dispatchGeneration = new AtomicLong(0L);
     private LightestTimer heartbeatTimer;
     private long intervalMs = DEFAULT_INTERVAL_MS;
     private SignalRClientService signalRClient;
@@ -56,8 +64,19 @@ public class HeartbeatService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_SEND_STOPPED.equals(intent.getAction())) {
+            long generation = beginTerminalStop();
+            stopTimerIfRunning();
+            clearPendingExecutorActions();
             executor.execute(() -> {
+                if (!canExecuteTerminalGeneration(generation)) {
+                    stopSelfResult(startId);
+                    return;
+                }
                 ensureSignalRReady();
+                if (!canExecuteTerminalGeneration(generation)) {
+                    stopSelfResult(startId);
+                    return;
+                }
                 publishHeartbeatStoppedAndStop();
                 stopSelfResult(startId);
             });
@@ -65,17 +84,26 @@ public class HeartbeatService extends Service {
         }
         if (intent != null && ACTION_SEND_NOW.equals(intent.getAction())) {
             long expectedRevision = intent.getLongExtra(EXTRA_UPDATE_REVISION, 0L);
+            long generation = currentDispatchGeneration();
             executor.execute(() -> {
-                if (isTerminalStopRequested()) {
+                if (!canExecuteNormalGeneration(generation)) {
                     return;
                 }
                 ensureSignalRReady();
-                publishHeartbeat(true, true, expectedRevision);
+                if (!canExecuteNormalGeneration(generation)) {
+                    return;
+                }
+                publishHeartbeat(true, true, expectedRevision, generation);
             });
             return START_NOT_STICKY;
         }
-        clearTerminalStopRequested();
-        executor.execute(this::ensureSignalRReady);
+        long generation = beginNormalDispatch();
+        executor.execute(() -> {
+            if (!canExecuteNormalGeneration(generation)) {
+                return;
+            }
+            ensureSignalRReady();
+        });
         if (intent != null && intent.hasExtra(EXTRA_INTERVAL_MS)) {
             long requested = intent.getLongExtra(EXTRA_INTERVAL_MS, intervalMs);
             updateIntervalInternal(requested);
@@ -100,7 +128,13 @@ public class HeartbeatService extends Service {
     }
 
     private void scheduleHeartbeat() {
-        executor.execute(this::publishHeartbeat);
+        long generation = currentDispatchGeneration();
+        executor.execute(() -> {
+            if (!canExecuteNormalGeneration(generation)) {
+                return;
+            }
+            publishHeartbeat(false, false, 0L, generation);
+        });
     }
 
     private void startTimerIfNeeded() {
@@ -130,7 +164,13 @@ public class HeartbeatService extends Service {
     }
 
     private void triggerHeartbeatNow() {
-        executor.execute(() -> publishHeartbeat(false, false, 0L));
+        long generation = currentDispatchGeneration();
+        executor.execute(() -> {
+            if (!canExecuteNormalGeneration(generation)) {
+                return;
+            }
+            publishHeartbeat(false, false, 0L, generation);
+        });
     }
 
     private void ensureSignalRReady() {
@@ -157,15 +197,18 @@ public class HeartbeatService extends Service {
     }
 
     public void publishHeartbeat() {
-        publishHeartbeat(false, false, 0L);
+        publishHeartbeat(false, false, 0L, currentDispatchGeneration());
     }
 
     private void publishHeartbeat(boolean forceGuidRefresh) {
-        publishHeartbeat(forceGuidRefresh, false, 0L);
+        publishHeartbeat(forceGuidRefresh, false, 0L, currentDispatchGeneration());
     }
 
-    private void publishHeartbeat(boolean forceGuidRefresh, boolean forceUpdateReport, long expectedRevision) {
-        if (isTerminalStopRequested()) {
+    private void publishHeartbeat(boolean forceGuidRefresh,
+                                  boolean forceUpdateReport,
+                                  long expectedRevision,
+                                  long expectedDispatchGeneration) {
+        if (!canExecuteNormalGeneration(expectedDispatchGeneration)) {
             return;
         }
         String clientId = resolveClientId(forceGuidRefresh);
@@ -178,13 +221,16 @@ public class HeartbeatService extends Service {
         SignalRClientService.HeartbeatGuard heartbeatGuard = null;
         UpdateHeartbeatState.Snapshot updateSnapshot = UpdateHeartbeatState.captureForPublish(forceUpdateReport, expectedRevision);
         if (updateSnapshot.hasUpdatePayload) {
-            heartbeatGuard = () -> !isTerminalStopRequested() && UpdateHeartbeatState.canSend(updateSnapshot.revision);
+            heartbeatGuard = () -> canExecuteNormalGeneration(expectedDispatchGeneration)
+                    && UpdateHeartbeatState.canSend(updateSnapshot.revision);
             status = updateSnapshot.status;
             process = updateSnapshot.progress;
         } else if (updateSnapshot.suppressNormalHeartbeat) {
             return;
         } else if (expectedRevision > 0L) {
             return;
+        } else {
+            heartbeatGuard = () -> canExecuteNormalGeneration(expectedDispatchGeneration);
         }
         String version = AndoWSignageApp.version;
         String currentPage = AndoWSignage.currentPageName;
@@ -283,6 +329,40 @@ public class HeartbeatService extends Service {
     private static boolean isTerminalStopRequested() {
         synchronized (UPDATE_REPORT_LOCK) {
             return terminalStopRequested;
+        }
+    }
+
+    private long beginNormalDispatch() {
+        clearTerminalStopRequested();
+        return dispatchGeneration.incrementAndGet();
+    }
+
+    private long beginTerminalStop() {
+        synchronized (UPDATE_REPORT_LOCK) {
+            terminalStopRequested = true;
+        }
+        return dispatchGeneration.incrementAndGet();
+    }
+
+    private long currentDispatchGeneration() {
+        return dispatchGeneration.get();
+    }
+
+    private boolean canExecuteNormalGeneration(long expectedGeneration) {
+        return !isTerminalStopRequested() && expectedGeneration == dispatchGeneration.get();
+    }
+
+    private boolean canExecuteTerminalGeneration(long expectedGeneration) {
+        return isTerminalStopRequested() && expectedGeneration == dispatchGeneration.get();
+    }
+
+    private void clearPendingExecutorActions() {
+        executor.getQueue().clear();
+    }
+
+    private void stopTimerIfRunning() {
+        if (heartbeatTimer != null && heartbeatTimer.getIsTicking()) {
+            heartbeatTimer.stop();
         }
     }
 
