@@ -104,9 +104,9 @@ public class MediaView extends RelativeLayout {
         webView = new TurtleWebView(ctx, getMinimumWidth(), getMinimumHeight());
         webView.setVisibility(View.GONE);
 
+        addView(videoView, params);
         addView(imgView1, params);
         addView(imgView2, params);
-        addView(videoView, params);
         addView(webView, params);
     }
 
@@ -428,9 +428,27 @@ public class MediaView extends RelativeLayout {
         return imgView1;
     }
 
+    private boolean isPreloadedImageView(ImageView view, String filePath) {
+        return view != null
+                && filePath != null
+                && filePath.equals(view.getTag())
+                && view.getDrawable() != null;
+    }
+
+    private ImageView findPreloadedImageView(String filePath, ImageView excludeView) {
+        if (isPreloadedImageView(imgView1, filePath) && imgView1 != excludeView) {
+            return imgView1;
+        }
+        if (isPreloadedImageView(imgView2, filePath) && imgView2 != excludeView) {
+            return imgView2;
+        }
+        return null;
+    }
+
     private void showImageWithCrossfade(final String filePath, boolean immediate, final CONTENT_TYPE nextType, final String nextPath, boolean fadeOverVideo, final Runnable endAction) {
         final ImageView currentView = getVisibleImageView();
-        final ImageView nextView = getHiddenImageView(currentView);
+        final ImageView preloadedView = findPreloadedImageView(filePath, currentView);
+        final ImageView nextView = preloadedView != null ? preloadedView : getHiddenImageView(currentView);
         final String uri = LocalPathUtils.getUriStringFromAbsPath(filePath);
 
         if (nextView == null) {
@@ -442,10 +460,23 @@ public class MediaView extends RelativeLayout {
 
         boolean shouldImmediate = immediate || (currentView == null && !fadeOverVideo);
 
-        if (currentView == null && fadeOverVideo) {
-            Object tag = nextView.getTag();
-            boolean alreadyLoaded = tag != null && filePath.equals(tag) && nextView.getDrawable() != null;
-            if (alreadyLoaded) {
+        boolean alreadyLoaded = isPreloadedImageView(nextView, filePath);
+
+        if (alreadyLoaded) {
+            if (shouldImmediate) {
+                nextView.setAlpha(1f);
+                nextView.setVisibility(View.VISIBLE);
+                if (currentView != null) {
+                    currentView.setVisibility(View.GONE);
+                }
+                preloadNextImageIfNeeded(nextType, nextPath, currentView);
+                if (endAction != null) {
+                    endAction.run();
+                }
+                return;
+            }
+
+            if (currentView == null && fadeOverVideo) {
                 nextView.setAlpha(0f);
                 nextView.setVisibility(View.VISIBLE);
                 crossfadeImages(null, nextView, IMAGE_CROSSFADE_DURATION_MS, new Runnable() {
@@ -459,6 +490,24 @@ public class MediaView extends RelativeLayout {
                 });
                 return;
             }
+
+            nextView.post(new Runnable() {
+                @Override
+                public void run() {
+                    nextView.setAlpha(0f);
+                    nextView.setVisibility(View.VISIBLE);
+                    crossfadeImages(currentView, nextView, IMAGE_CROSSFADE_DURATION_MS, new Runnable() {
+                        @Override
+                        public void run() {
+                            preloadNextImageIfNeeded(nextType, nextPath, currentView);
+                            if (endAction != null) {
+                                endAction.run();
+                            }
+                        }
+                    });
+                }
+            });
+            return;
         }
 
         if (shouldImmediate) {
@@ -470,6 +519,20 @@ public class MediaView extends RelativeLayout {
                     nextView.setVisibility(View.VISIBLE);
                     if (currentView != null) {
                         currentView.setVisibility(View.GONE);
+                    }
+                    preloadNextImageIfNeeded(nextType, nextPath, currentView);
+                    if (endAction != null) {
+                        endAction.run();
+                    }
+                }
+
+                @Override
+                public void onLoadingFailed(String imageUri, View view, FailReason failReason) {
+                    nextView.setAlpha(1f);
+                    nextView.setVisibility(View.VISIBLE);
+                    if (currentView != null) {
+                        currentView.setVisibility(View.GONE);
+                        currentView.setAlpha(1f);
                     }
                     preloadNextImageIfNeeded(nextType, nextPath, currentView);
                     if (endAction != null) {
@@ -620,6 +683,13 @@ public class MediaView extends RelativeLayout {
         }
 
         final ImageView overlayToFade = overlay != null ? overlay : fakeOverlay;
+
+        if (overlayToFade != null) {
+            overlayToFade.animate().cancel();
+            overlayToFade.setAlpha(1f);
+            overlayToFade.setVisibility(View.VISIBLE);
+            overlayToFade.bringToFront();
+        }
 
         videoView.setVisibility(View.VISIBLE);
         videoView.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
