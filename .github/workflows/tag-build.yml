@@ -32,7 +32,7 @@ jobs:
           msbuild-architecture: x86
 
       - name: Restore NuGet packages
-        run: nuget restore "Manager/AndoW_Manager/AndoW_Manager.sln" -PackagesDirectory "Manager/packages" -NonInteractive
+        run: nuget restore "Manager/AndoW_Manager.sln" -PackagesDirectory "Manager/packages" -NonInteractive
 
       - name: Prepare Manager dependencies in build directory
         shell: pwsh
@@ -56,7 +56,7 @@ jobs:
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $msbuild = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe" | Where-Object { $_ -notmatch "amd64" } | Select-Object -First 1
           if ([string]::IsNullOrWhiteSpace($msbuild)) { throw "x86 MSBuild not found." }
-          & $msbuild "Manager/AndoW_Manager/AndoW_Manager.sln" /t:Build /p:Configuration=Release /p:Platform=x64 /m
+          & $msbuild "Manager/AndoW_Manager.sln" /t:Build /p:Configuration=Release /p:Platform=x64 /m
 
       - name: Package Manager binaries for release
         shell: pwsh
