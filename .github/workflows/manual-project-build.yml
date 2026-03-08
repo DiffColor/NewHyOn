@@ -11,6 +11,8 @@ on:
           - manager-windows
           - player-windows
           - player-android
+          - player-notifier-android
+          - player-usbinstaller-android
           - player-launcher-android
           - player-watchdog-android
       source_ref:
@@ -268,6 +270,11 @@ jobs:
   build-player-android:
     if: ${{ inputs.project == 'player-android' }}
     runs-on: ubuntu-latest
+    env:
+      ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/Player/Android/AndoW_Player/app/libs/platform.jks
+      ANDROID_KEYSTORE_PASSWORD: zbqj2636
+      ANDROID_KEY_ALIAS: quber
+      ANDROID_KEY_PASSWORD: zbqj2636
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -348,19 +355,19 @@ jobs:
           java-version: '11'
 
       - name: Prepare local.properties for CI
-        working-directory: Player/Android
+        working-directory: Player/Android/AndoW_Player
         run: |
           printf "sdk.dir=%s\n" "$ANDROID_SDK_ROOT" > local.properties
 
       - name: Build Player Android (Release APK)
-        working-directory: Player/Android
+        working-directory: Player/Android/AndoW_Player
         run: |
           unset ANDROID_NDK_HOME ANDROID_NDK_ROOT NDK_HOME NDK_ROOT
           chmod +x ./gradlew
           ./gradlew --no-daemon clean :app:assembleRelease -x lintVitalRelease -x lint
 
       - name: Verify Player Android APK signature
-        working-directory: Player/Android
+        working-directory: Player/Android/AndoW_Player
         run: |
           APK_PATH="app/build/outputs/apk/release/app-release.apk"
           test -f "$APK_PATH"
@@ -370,7 +377,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: player-android-manual-${{ steps.release_meta.outputs.artifact_suffix }}
-          path: Player/Android/app/build/outputs/apk/release/app-release.apk
+          path: Player/Android/AndoW_Player/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: warn
 
       - name: Attach Player Android APK to GitHub Release
@@ -380,12 +387,263 @@ jobs:
           name: ${{ steps.release_meta.outputs.name }}
           target_commitish: ${{ inputs.source_ref }}
           prerelease: ${{ inputs.prerelease }}
-          files: Player/Android/app/build/outputs/apk/release/app-release.apk
+          files: Player/Android/AndoW_Player/app/build/outputs/apk/release/app-release.apk
+          overwrite_files: true
+
+  build-player-notifier-android:
+    if: ${{ inputs.project == 'player-notifier-android' }}
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/Player/Android/AndoW_Player/app/libs/platform.jks
+      ANDROID_KEYSTORE_PASSWORD: zbqj2636
+      ANDROID_KEY_ALIAS: quber
+      ANDROID_KEY_PASSWORD: zbqj2636
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+          lfs: true
+
+      - name: Setup JDK 17 for sdkmanager
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Resolve release metadata
+        id: release_meta
+        shell: pwsh
+        run: |
+          $tagInput = "${{ inputs.release_tag }}".Trim()
+          if ([string]::IsNullOrWhiteSpace($tagInput)) {
+            $latest = git ls-remote --tags --refs origin "v*" |
+              ForEach-Object { ($_ -split '\s+')[1] } |
+              ForEach-Object { $_ -replace '^refs/tags/', '' } |
+              Where-Object { $_ -match '^v\d+\.\d+\.\d+$' } |
+              ForEach-Object { $_.Substring(1) } |
+              ForEach-Object { [version]$_ } |
+              Sort-Object |
+              Select-Object -Last 1
+
+            if ($null -eq $latest) {
+              $next = [version]"1.0.0"
+            } else {
+              $next = [version]::new($latest.Major, $latest.Minor, $latest.Build + 1)
+            }
+            $tag = "v$next"
+          } else {
+            $tag = $tagInput
+          }
+
+          $artifactSuffix = ($tag -replace '[^0-9A-Za-z._-]+', '-')
+          if ([string]::IsNullOrWhiteSpace($artifactSuffix)) {
+            $artifactSuffix = "run-${{ github.run_number }}"
+          }
+
+          $repoName = "${{ github.repository }}".Split('/')[1]
+          $nameInput = "${{ inputs.release_name }}".Trim()
+          if ([string]::IsNullOrWhiteSpace($nameInput)) {
+            $name = $repoName
+          } else {
+            $name = $nameInput
+          }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "name=$name" >> $env:GITHUB_OUTPUT
+          "artifact_suffix=$artifactSuffix" >> $env:GITHUB_OUTPUT
+
+      - name: Setup Android SDK environment
+        run: |
+          echo "ANDROID_HOME=$RUNNER_TEMP/android-sdk-notifier" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$RUNNER_TEMP/android-sdk-notifier" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=" >> $GITHUB_ENV
+          echo "NDK_HOME=" >> $GITHUB_ENV
+          echo "NDK_ROOT=" >> $GITHUB_ENV
+          mkdir -p "$RUNNER_TEMP/android-sdk-notifier"
+
+      - name: Install Android SDK packages
+        run: |
+          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --version
+          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses || true
+          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" \
+            "cmdline-tools;latest" "platform-tools" "platforms;android-22" "build-tools;29.0.2"
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
+
+      - name: Setup JDK 11 for Gradle
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+
+      - name: Prepare local.properties for CI
+        working-directory: Player/Android/Notifier
+        run: |
+          printf "sdk.dir=%s\n" "$ANDROID_SDK_ROOT" > local.properties
+
+      - name: Build Notifier Android (Release APK)
+        working-directory: Player/Android/Notifier
+        run: |
+          unset ANDROID_NDK_HOME ANDROID_NDK_ROOT NDK_HOME NDK_ROOT
+          chmod +x ./gradlew
+          ./gradlew --no-daemon clean :app:assembleRelease -x lintVitalRelease -x lint
+
+      - name: Verify Notifier Android APK signature
+        working-directory: Player/Android/Notifier
+        run: |
+          APK_PATH="app/build/outputs/apk/release/app-release.apk"
+          test -f "$APK_PATH"
+          "$ANDROID_HOME/build-tools/29.0.2/apksigner" verify --verbose "$APK_PATH"
+
+      - name: Upload Notifier Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: player-notifier-android-manual-${{ steps.release_meta.outputs.artifact_suffix }}
+          path: Player/Android/Notifier/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: warn
+
+      - name: Attach Notifier Android APK to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_meta.outputs.tag }}
+          name: ${{ steps.release_meta.outputs.name }}
+          target_commitish: ${{ inputs.source_ref }}
+          prerelease: ${{ inputs.prerelease }}
+          files: Player/Android/Notifier/app/build/outputs/apk/release/app-release.apk
+          overwrite_files: true
+
+  build-player-usbinstaller-android:
+    if: ${{ inputs.project == 'player-usbinstaller-android' }}
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/Player/Android/AndoW_Player/app/libs/platform.jks
+      ANDROID_KEYSTORE_PASSWORD: zbqj2636
+      ANDROID_KEY_ALIAS: quber
+      ANDROID_KEY_PASSWORD: zbqj2636
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+          lfs: true
+
+      - name: Setup JDK 17 for sdkmanager
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Resolve release metadata
+        id: release_meta
+        shell: pwsh
+        run: |
+          $tagInput = "${{ inputs.release_tag }}".Trim()
+          if ([string]::IsNullOrWhiteSpace($tagInput)) {
+            $latest = git ls-remote --tags --refs origin "v*" |
+              ForEach-Object { ($_ -split '\s+')[1] } |
+              ForEach-Object { $_ -replace '^refs/tags/', '' } |
+              Where-Object { $_ -match '^v\d+\.\d+\.\d+$' } |
+              ForEach-Object { $_.Substring(1) } |
+              ForEach-Object { [version]$_ } |
+              Sort-Object |
+              Select-Object -Last 1
+
+            if ($null -eq $latest) {
+              $next = [version]"1.0.0"
+            } else {
+              $next = [version]::new($latest.Major, $latest.Minor, $latest.Build + 1)
+            }
+            $tag = "v$next"
+          } else {
+            $tag = $tagInput
+          }
+
+          $artifactSuffix = ($tag -replace '[^0-9A-Za-z._-]+', '-')
+          if ([string]::IsNullOrWhiteSpace($artifactSuffix)) {
+            $artifactSuffix = "run-${{ github.run_number }}"
+          }
+
+          $repoName = "${{ github.repository }}".Split('/')[1]
+          $nameInput = "${{ inputs.release_name }}".Trim()
+          if ([string]::IsNullOrWhiteSpace($nameInput)) {
+            $name = $repoName
+          } else {
+            $name = $nameInput
+          }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "name=$name" >> $env:GITHUB_OUTPUT
+          "artifact_suffix=$artifactSuffix" >> $env:GITHUB_OUTPUT
+
+      - name: Setup Android SDK environment
+        run: |
+          echo "ANDROID_HOME=$RUNNER_TEMP/android-sdk-usbinstaller" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$RUNNER_TEMP/android-sdk-usbinstaller" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=" >> $GITHUB_ENV
+          echo "NDK_HOME=" >> $GITHUB_ENV
+          echo "NDK_ROOT=" >> $GITHUB_ENV
+          mkdir -p "$RUNNER_TEMP/android-sdk-usbinstaller"
+
+      - name: Install Android SDK packages
+        run: |
+          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --version
+          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses || true
+          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" \
+            "cmdline-tools;latest" "platform-tools" "platforms;android-22" "build-tools;29.0.2"
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
+
+      - name: Setup JDK 11 for Gradle
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+
+      - name: Prepare local.properties for CI
+        working-directory: Player/Android/USBInstaller_4launcher
+        run: |
+          printf "sdk.dir=%s\n" "$ANDROID_SDK_ROOT" > local.properties
+
+      - name: Build USBInstaller Android (Release APK)
+        working-directory: Player/Android/USBInstaller_4launcher
+        run: |
+          unset ANDROID_NDK_HOME ANDROID_NDK_ROOT NDK_HOME NDK_ROOT
+          chmod +x ./gradlew
+          ./gradlew --no-daemon clean :app:assembleRelease -x lintVitalRelease -x lint
+
+      - name: Verify USBInstaller Android APK signature
+        working-directory: Player/Android/USBInstaller_4launcher
+        run: |
+          APK_PATH="app/build/outputs/apk/release/app-release.apk"
+          test -f "$APK_PATH"
+          "$ANDROID_HOME/build-tools/29.0.2/apksigner" verify --verbose "$APK_PATH"
+
+      - name: Upload USBInstaller Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: player-usbinstaller-android-manual-${{ steps.release_meta.outputs.artifact_suffix }}
+          path: Player/Android/USBInstaller_4launcher/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: warn
+
+      - name: Attach USBInstaller Android APK to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_meta.outputs.tag }}
+          name: ${{ steps.release_meta.outputs.name }}
+          target_commitish: ${{ inputs.source_ref }}
+          prerelease: ${{ inputs.prerelease }}
+          files: Player/Android/USBInstaller_4launcher/app/build/outputs/apk/release/app-release.apk
           overwrite_files: true
 
   build-player-launcher-android:
     if: ${{ inputs.project == 'player-launcher-android' }}
     runs-on: ubuntu-latest
+    env:
+      ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/Player/Android/AndoW_Player/app/libs/platform.jks
+      ANDROID_KEYSTORE_PASSWORD: zbqj2636
+      ANDROID_KEY_ALIAS: quber
+      ANDROID_KEY_PASSWORD: zbqj2636
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -466,12 +724,12 @@ jobs:
           java-version: '11'
 
       - name: Prepare local.properties for CI
-        working-directory: Player/TurtleLauncher
+        working-directory: Player/Android/TurtleLauncher
         run: |
           printf "sdk.dir=%s\n" "$ANDROID_SDK_ROOT" > local.properties
 
       - name: Build TurtleLauncher Android (Release APK)
-        working-directory: Player/TurtleLauncher
+        working-directory: Player/Android/TurtleLauncher
         run: |
           unset ANDROID_NDK_HOME ANDROID_NDK_ROOT NDK_HOME NDK_ROOT
           chmod +x ./gradlew
@@ -480,7 +738,7 @@ jobs:
       - name: Resolve TurtleLauncher APK path
         id: launcher_apk
         run: |
-          APK_PATH=$(find Player/TurtleLauncher/LaLauncher/build/outputs/apk/release -maxdepth 1 -type f -name "*.apk" ! -name "*-unsigned.apk" | head -n 1)
+          APK_PATH=$(find Player/Android/TurtleLauncher/LaLauncher/build/outputs/apk/release -maxdepth 1 -type f -name "*.apk" ! -name "*-unsigned.apk" | head -n 1)
           test -n "$APK_PATH"
           test -f "$APK_PATH"
           echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
@@ -514,6 +772,11 @@ jobs:
   build-player-watchdog-android:
     if: ${{ inputs.project == 'player-watchdog-android' }}
     runs-on: ubuntu-latest
+    env:
+      ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/Player/Android/AndoW_Player/app/libs/platform.jks
+      ANDROID_KEYSTORE_PASSWORD: zbqj2636
+      ANDROID_KEY_ALIAS: quber
+      ANDROID_KEY_PASSWORD: zbqj2636
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -594,12 +857,12 @@ jobs:
           java-version: '11'
 
       - name: Prepare local.properties for CI
-        working-directory: Player/WatchDog_4launcher
+        working-directory: Player/Android/WatchDog_4launcher
         run: |
           printf "sdk.dir=%s\n" "$ANDROID_SDK_ROOT" > local.properties
 
       - name: Build WatchDog Android (Release APK)
-        working-directory: Player/WatchDog_4launcher
+        working-directory: Player/Android/WatchDog_4launcher
         run: |
           unset ANDROID_NDK_HOME ANDROID_NDK_ROOT NDK_HOME NDK_ROOT
           chmod +x ./gradlew
@@ -608,7 +871,7 @@ jobs:
       - name: Resolve WatchDog APK path
         id: watchdog_apk
         run: |
-          APK_PATH=$(find Player/WatchDog_4launcher/app/build/outputs/apk/release -maxdepth 1 -type f -name "*.apk" ! -name "*-unsigned.apk" | head -n 1)
+          APK_PATH=$(find Player/Android/WatchDog_4launcher/app/build/outputs/apk/release -maxdepth 1 -type f -name "*.apk" ! -name "*-unsigned.apk" | head -n 1)
           test -n "$APK_PATH"
           test -f "$APK_PATH"
           echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
