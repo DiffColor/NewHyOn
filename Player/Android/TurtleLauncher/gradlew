@@ -66,8 +66,22 @@ esac
 
 CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
 
+# Legacy Gradle/AGP in this project is not compatible with the system-default JDK 21 on macOS.
+if $darwin; then
+    JAVACMD=""
+    if [ -x "/usr/libexec/java_home" ]; then
+        MACOS_JAVA11_HOME=`/usr/libexec/java_home -v 11 2>/dev/null`
+        if [ -n "$MACOS_JAVA11_HOME" ] && [ -x "$MACOS_JAVA11_HOME/bin/java" ] ; then
+            JAVA_HOME="$MACOS_JAVA11_HOME"
+            JAVACMD="$JAVA_HOME/bin/java"
+        fi
+    fi
+fi
+
 # Determine the Java command to use to start the JVM.
-if [ -n "$JAVA_HOME" ] ; then
+if [ -n "$JAVACMD" ] ; then
+    :
+elif [ -n "$JAVA_HOME" ] ; then
     if [ -x "$JAVA_HOME/jre/sh/java" ] ; then
         # IBM's JDK on AIX uses strange locations for the executables
         JAVACMD="$JAVA_HOME/jre/sh/java"
