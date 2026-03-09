@@ -380,6 +380,10 @@ namespace TurtleMediaControl
                 MediaTools.DisplayImage(currentChild, source);
             else
                 currentChild.Source = MediaTools.GetBitmapSourceFromFile(DirectSource, longside);
+
+            // DirectSource 경로에서도 현재 비트맵 상태를 갱신해 다음 전환에서 이전 이미지가 남지 않도록 한다.
+            currentBitmapSource = currentChild.Source as BitmapSource;
+            currentPath = source;
         }
         
         private static void OnSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
