@@ -22,6 +22,7 @@ import kr.co.turtlelab.andowsignage.AndoWSignageApp;
 import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
 import kr.co.turtlelab.andowsignage.data.rethink.RethinkDbClient;
 import kr.co.turtlelab.andowsignage.data.rethink.RethinkModels;
+import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
 import microsoft.aspnet.signalr.client.ConnectionState;
 import microsoft.aspnet.signalr.client.NullLogger;
 import microsoft.aspnet.signalr.client.Platform;
@@ -544,8 +545,8 @@ public class SignalRClientService {
     }
 
     private String buildUrl() {
-        String host = resolveHost();
-        if (TextUtils.isEmpty(host)) {
+        String address = resolveServerAddress();
+        if (TextUtils.isEmpty(address)) {
             return null;
         }
         int port = resolvePort();
@@ -553,7 +554,7 @@ public class SignalRClientService {
         if (!hubPath.startsWith("/")) {
             hubPath = "/" + hubPath;
         }
-        return "http://" + host + ":" + port + hubPath;
+        return NetworkUtils.buildHttpUrl(address, "http", port, hubPath);
     }
 
     private String buildQueryString() {
@@ -578,7 +579,7 @@ public class SignalRClientService {
         }
     }
 
-    private String resolveHost() {
+    private String resolveServerAddress() {
         String messageServerIp = LocalSettingsProvider.getMessageServerIp();
         if (!TextUtils.isEmpty(messageServerIp)) {
             return messageServerIp;

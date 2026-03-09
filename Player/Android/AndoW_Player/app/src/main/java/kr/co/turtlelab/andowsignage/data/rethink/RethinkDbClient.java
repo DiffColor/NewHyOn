@@ -190,11 +190,8 @@ public class RethinkDbClient {
     }
 
     public void updateHost(String newHost) {
-        if (newHost == null || newHost.isEmpty()) {
-            return;
-        }
-        String normalizedNewHost = newHost.trim();
-        if (normalizedNewHost.isEmpty()) {
+        String normalizedNewHost = NetworkUtils.extractHost(newHost);
+        if (normalizedNewHost == null || normalizedNewHost.isEmpty()) {
             return;
         }
         synchronized (connectionLock) {

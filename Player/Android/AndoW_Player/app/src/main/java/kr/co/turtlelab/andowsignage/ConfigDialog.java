@@ -53,10 +53,7 @@ public class ConfigDialog extends Dialog implements View.OnClickListener {
 	EditText pIP2;
 	EditText pIP3;
 	EditText pIP4;
-	EditText mIP1;
-	EditText mIP2;
-	EditText mIP3;
-	EditText mIP4;
+	EditText managerAddressEdit;
 	
 	Button mSch1from;
 	Button mSch1to;
@@ -173,14 +170,8 @@ public class ConfigDialog extends Dialog implements View.OnClickListener {
 		pIP3.setOnClickListener(this);
 		pIP4.setOnClickListener(this);
 		
-		mIP1 = (EditText)findViewById(R.id.manager_ip1_edit);
-		mIP2 = (EditText)findViewById(R.id.manager_ip2_edit);
-		mIP3 = (EditText)findViewById(R.id.manager_ip3_edit);
-		mIP4 = (EditText)findViewById(R.id.manager_ip4_edit);
-		mIP1.setOnClickListener(this);
-		mIP2.setOnClickListener(this);
-		mIP3.setOnClickListener(this);
-		mIP4.setOnClickListener(this);
+		managerAddressEdit = (EditText)findViewById(R.id.manager_address_edit);
+		managerAddressEdit.setOnClickListener(this);
 		
 		mSch1from = (Button)findViewById(R.id.timePicker1from);
 		mSch1to = (Button)findViewById(R.id.timePicker1to);
@@ -297,14 +288,7 @@ public class ConfigDialog extends Dialog implements View.OnClickListener {
 
 
 		if(mipStr.isEmpty() == false) {
-			String[] mip = mipStr.split("\\.");
-			//String[] mip = AndoWSignageApp.MANAGER_IP.split("\\.");
-			if(mip.length == 4) {
-				mIP1.setText(mip[0]);
-				mIP2.setText(mip[1]);
-				mIP3.setText(mip[2]);
-				mIP4.setText(mip[3]);
-			}
+			managerAddressEdit.setText(mipStr);
 		}
 		
 		AndoWSignageApp.IS_MANUAL = localsettings.getManualIPState();
@@ -466,9 +450,7 @@ public class ConfigDialog extends Dialog implements View.OnClickListener {
 					PlayerDataProvider.updateManualIP();
 				}
 				
-				String[] mipArr = 
-						new String[] { mIP1.getText().toString(), mIP2.getText().toString(), mIP3.getText().toString(), mIP4.getText().toString()};
-				AndoWSignageApp.MANAGER_IP = NetworkUtils.convertArrToIPFormat(mipArr);
+				AndoWSignageApp.MANAGER_IP = NetworkUtils.normalizeAddress(managerAddressEdit.getText().toString());
 				AndoWSignageApp.MSG_ADDRESS = NetworkUtils.convertIPStrToTcpStr(AndoWSignageApp.MANAGER_IP, AndoWSignageApp.MSG_PORT);
 				PlayerDataProvider.updateManagerIP();
 				

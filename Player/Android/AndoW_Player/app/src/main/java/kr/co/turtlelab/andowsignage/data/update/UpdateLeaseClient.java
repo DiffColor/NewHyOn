@@ -12,6 +12,8 @@ import java.util.Locale;
 import java.util.TimeZone;
 import java.util.UUID;
 
+import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
+
 public class UpdateLeaseClient {
 
     private static final String DATABASE = "NewHyOn";
@@ -26,17 +28,19 @@ public class UpdateLeaseClient {
     private Connection connection;
 
     public UpdateLeaseClient(String managerHost) {
-        if (!TextUtils.isEmpty(managerHost)) {
-            host = managerHost;
+        String normalized = NetworkUtils.extractHost(managerHost);
+        if (!TextUtils.isEmpty(normalized)) {
+            host = normalized;
         }
     }
 
     public void updateHost(String managerHost) {
-        if (TextUtils.isEmpty(managerHost)) {
+        String normalized = NetworkUtils.extractHost(managerHost);
+        if (TextUtils.isEmpty(normalized)) {
             return;
         }
         synchronized (syncRoot) {
-            host = managerHost;
+            host = normalized;
             resetConnection();
         }
     }

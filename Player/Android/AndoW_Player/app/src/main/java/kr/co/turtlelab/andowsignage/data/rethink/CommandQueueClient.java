@@ -17,6 +17,8 @@ import java.util.TimeZone;
 import java.util.Date;
 import java.text.SimpleDateFormat;
 
+import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
+
 public class CommandQueueClient {
     private static final String TAG = "CommandQueueClient";
 
@@ -34,8 +36,9 @@ public class CommandQueueClient {
     private Connection connection;
 
     public CommandQueueClient(String managerHost) {
-        if (!TextUtils.isEmpty(managerHost)) {
-            host = managerHost;
+        String normalized = NetworkUtils.extractHost(managerHost);
+        if (!TextUtils.isEmpty(normalized)) {
+            host = normalized;
         }
     }
 
@@ -43,7 +46,7 @@ public class CommandQueueClient {
         if (TextUtils.isEmpty(managerHost)) {
             return;
         }
-        String normalized = managerHost.trim();
+        String normalized = NetworkUtils.extractHost(managerHost);
         if (TextUtils.isEmpty(normalized)) {
             return;
         }

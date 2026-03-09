@@ -21,6 +21,7 @@ import java.util.List;
 
 import kr.co.turtlelab.andowsignage.AndoWSignageApp;
 import kr.co.turtlelab.andowsignage.datamodels.MediaDataModel;
+import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
 import kr.co.turtlelab.andowsignage.tools.SystemUtils;
 
 public class TurtleWebView extends WebView {
@@ -77,7 +78,7 @@ public class TurtleWebView extends WebView {
 		setBrowserOptions();
 
 		if(dataList.size() > 0) {
-			String url = "http://"+ AndoWSignageApp.MANAGER_IP + "/" + dataList.get(0).getRemoteSubPath();
+			String url = NetworkUtils.buildHttpUrl(AndoWSignageApp.MANAGER_IP, "http", -1, dataList.get(0).getRemoteSubPath());
 			this.loadUrl(url);
 		}
 	}

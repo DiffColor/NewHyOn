@@ -42,6 +42,7 @@ import kr.co.turtlelab.andowsignage.data.update.UpdateQueueProcessor;
 import kr.co.turtlelab.andowsignage.data.update.UpdatePayloadModels;
 import kr.co.turtlelab.andowsignage.dataproviders.UpdateQueueProvider;
 import kr.co.turtlelab.andowsignage.tools.LocalPathUtils;
+import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
 import kr.co.turtlelab.andowsignage.tools.SystemUtils;
 
 /**
@@ -306,20 +307,21 @@ public class DataSyncManager {
     private String resolveRethinkHostForRemote() {
         String dataServerIp = kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider.getDataServerIp();
         if (!TextUtils.isEmpty(dataServerIp)) {
-            return dataServerIp;
+            return NetworkUtils.extractHost(dataServerIp);
         }
         if (AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)) {
-            return AndoWSignageApp.MANUAL_IP;
+            return NetworkUtils.extractHost(AndoWSignageApp.MANUAL_IP);
         }
-        return AndoWSignageApp.MANAGER_IP;
+        return NetworkUtils.extractHost(AndoWSignageApp.MANAGER_IP);
     }
 
     private boolean canReachRethink(String host) {
-        if (TextUtils.isEmpty(host)) {
+        String resolvedHost = NetworkUtils.extractHost(host);
+        if (TextUtils.isEmpty(resolvedHost)) {
             return false;
         }
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(host, RETHINK_PORT), CONNECT_TIMEOUT_MS);
+            socket.connect(new InetSocketAddress(resolvedHost, RETHINK_PORT), CONNECT_TIMEOUT_MS);
             return true;
         } catch (Exception ex) {
             return false;

@@ -12,6 +12,7 @@ import kr.co.turtlelab.andowsignage.AndoWSignageApp;
 import kr.co.turtlelab.andowsignage.data.realm.RealmUpdateQueue;
 import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
 import kr.co.turtlelab.andowsignage.tools.FTP4JUtil;
+import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
 
 /**
  * UpdateQueue 의 downloadContentsJson 을 기준으로 실제 FTP 다운로드 및 검증을 수행한다.
@@ -418,12 +419,12 @@ public class UpdateQueueDownloader {
     private String resolveFtpHost() {
         String dataServerIp = LocalSettingsProvider.getDataServerIp();
         if (!TextUtils.isEmpty(dataServerIp)) {
-            return dataServerIp;
+            return NetworkUtils.extractHost(dataServerIp);
         }
         if (AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)) {
-            return AndoWSignageApp.MANUAL_IP;
+            return NetworkUtils.extractHost(AndoWSignageApp.MANUAL_IP);
         }
-        return AndoWSignageApp.MANAGER_IP;
+        return NetworkUtils.extractHost(AndoWSignageApp.MANAGER_IP);
     }
 
     private int resolveFtpPort() {

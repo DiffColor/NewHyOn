@@ -39,7 +39,7 @@
 	                android:layout_height="wrap_content"
 	                android:gravity="center_vertical"
 	                android:layout_below="@id/settings_label1" 
-	                android:layout_marginLeft="12dp"
+	                android:layout_marginLeft="28dp"
 	                android:layout_marginTop="6dp">
 	                
 		            <TextView
@@ -49,21 +49,22 @@
 		                android:layout_gravity="center_vertical"
 		                android:layout_marginRight="2dp"
 		                android:text="@string/ps_item1" />
-		            
-		            <EditText 
+
+		            <EditText
 		                android:id="@+id/player_id"
-		                android:layout_width="wrap_content"
-		                android:layout_height="wrap_content" 
+		                android:layout_width="170dp"
+		                android:layout_height="wrap_content"
 		                android:singleLine="true"
 						android:gravity="center"
 						android:ems="6"
 		                android:hint="@string/hint1"/>
-		            <Button 
+		            <Button
 		                android:id="@+id/id_confirm_btn"
 		                android:layout_width="wrap_content"
 		                android:layout_height="wrap_content"
 		                android:text="@string/confirm"
-		                android:enabled="false"/>
+		                android:enabled="false"
+                        android:visibility="gone"/>
 	            </LinearLayout>
 	            <LinearLayout 
 	                android:id="@+id/set12_layout"
@@ -72,7 +73,7 @@
 	                android:layout_below="@id/set11_layout"
 	                android:orientation="horizontal"
 				    android:gravity="center_vertical"
-	                android:layout_marginLeft="19dp"
+	                android:layout_marginLeft="12dp"
 	                android:layout_marginTop="6dp" >
 		            
 		            <TextView 
@@ -81,42 +82,15 @@
 		                android:layout_height="wrap_content"
 		                android:layout_marginRight="2dp"
 		                android:text="@string/ps_item2" />
-					<EditText 
-					    android:id="@+id/manager_ip1_edit"
-					    android:layout_width="wrap_content"
-					    android:layout_height="36dp"
-					    android:inputType="numberDecimal"
-					    android:gravity="center"
-					    android:minWidth="42sp"
-					    android:maxEms="3"
-					    android:textSize="12sp"/>
-					<EditText 
-					    android:id="@+id/manager_ip2_edit"
-					    android:layout_width="wrap_content"
-					    android:layout_height="36dp"
-					    android:inputType="numberDecimal"
-					    android:gravity="center"
-					    android:minWidth="42sp"
-					    android:maxEms="3"
-					    android:textSize="12sp"/>
-					<EditText 
-					    android:id="@+id/manager_ip3_edit"
-					    android:layout_width="wrap_content"
-					    android:layout_height="36dp"
-					    android:inputType="numberDecimal"
-					    android:gravity="center"
-					    android:minWidth="42sp"
-					    android:maxEms="3"
-					    android:textSize="12sp"/>
-					<EditText 
-					    android:id="@+id/manager_ip4_edit"
-					    android:layout_width="wrap_content"
-					    android:layout_height="36dp"
-					    android:inputType="numberDecimal"
-					    android:gravity="center"
-					    android:minWidth="42sp"
-					    android:maxEms="3"
-					    android:textSize="12sp"/>
+					<EditText
+					    android:id="@+id/manager_address_edit"
+					    android:layout_width="170dp"
+					    android:layout_height="wrap_content"
+					    android:hint="@string/hint_server_address"
+                        android:gravity="center"
+					    android:inputType="textUri"
+					    android:maxLines="1"
+					    android:singleLine="true"/>
 
                 </LinearLayout>
 				
@@ -149,7 +123,8 @@
                         android:layout_height="30dp"
                         android:layout_marginLeft="18dp"
                         android:background="@android:color/darker_gray"
-                        android:text="@string/export_realm_button" />
+                        android:text="@string/export_realm_button"
+                        android:visibility="gone"/>
 	            </LinearLayout>
 	            
 			<LinearLayout

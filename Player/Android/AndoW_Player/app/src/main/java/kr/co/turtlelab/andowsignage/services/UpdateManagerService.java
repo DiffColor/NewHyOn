@@ -25,6 +25,7 @@ import kr.co.turtlelab.andowsignage.data.update.UpdateQueueHelper;
 import kr.co.turtlelab.andowsignage.data.update.UpdatePayloadModels;
 import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
 import kr.co.turtlelab.andowsignage.tools.LightestTimer;
+import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
 import kr.co.turtlelab.andowsignage.tools.PowerApi;
 import kr.co.turtlelab.andowsignage.tools.SystemUtils;
 
@@ -141,32 +142,32 @@ public class UpdateManagerService extends Service implements SignalRClientServic
     private String resolveRethinkHost(String fallbackHost) {
         String dataServerIp = LocalSettingsProvider.getDataServerIp();
         if (!TextUtils.isEmpty(dataServerIp)) {
-            return dataServerIp;
+            return NetworkUtils.extractHost(dataServerIp);
         }
         if (AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)) {
-            return AndoWSignageApp.MANUAL_IP;
+            return NetworkUtils.extractHost(AndoWSignageApp.MANUAL_IP);
         }
-        return fallbackHost;
+        return NetworkUtils.extractHost(fallbackHost);
     }
 
     private String resolveBootstrapHost() {
         if (AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)) {
-            return AndoWSignageApp.MANUAL_IP;
+            return NetworkUtils.extractHost(AndoWSignageApp.MANUAL_IP);
         }
         String localManual = LocalSettingsProvider.getManualIp();
         if (!TextUtils.isEmpty(localManual)) {
-            return localManual;
+            return NetworkUtils.extractHost(localManual);
         }
         if (!TextUtils.isEmpty(AndoWSignageApp.MANAGER_IP)) {
-            return AndoWSignageApp.MANAGER_IP;
+            return NetworkUtils.extractHost(AndoWSignageApp.MANAGER_IP);
         }
         String localManager = LocalSettingsProvider.getManagerIp();
         if (!TextUtils.isEmpty(localManager)) {
-            return localManager;
+            return NetworkUtils.extractHost(localManager);
         }
         String dataServerIp = LocalSettingsProvider.getDataServerIp();
         if (!TextUtils.isEmpty(dataServerIp)) {
-            return dataServerIp;
+            return NetworkUtils.extractHost(dataServerIp);
         }
         return "";
     }
@@ -610,11 +611,12 @@ public class UpdateManagerService extends Service implements SignalRClientServic
     }
 
     private boolean canReachRethink(String host) {
-        if (TextUtils.isEmpty(host)) {
+        String resolvedHost = NetworkUtils.extractHost(host);
+        if (TextUtils.isEmpty(resolvedHost)) {
             return false;
         }
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(host, RETHINK_PORT), CONNECT_TIMEOUT_MS);
+            socket.connect(new InetSocketAddress(resolvedHost, RETHINK_PORT), CONNECT_TIMEOUT_MS);
             return true;
         } catch (Exception ex) {
             return false;

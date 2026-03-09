@@ -2,10 +2,12 @@ package kr.co.turtlelab.andowsignage.tools;
 
 import android.app.Activity;
 import android.content.Context;
+import android.net.Uri;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.text.TextUtils;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
@@ -13,6 +15,7 @@ import java.io.IOException;
 import java.net.NetworkInterface;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 import kr.co.turtlelab.andowsignage.AndoWSignageApp;
 
@@ -187,14 +190,147 @@ public class NetworkUtils {
 	}
 	
 	public static String convertIPStrToTcpStr(String ipStr, int port) {
-        if(ipStr.isEmpty())
-            ipStr = "127.0.0.1";
+        String host = extractHost(ipStr);
+        if(TextUtils.isEmpty(host))
+            host = "127.0.0.1";
 
-		return String.format("tcp://%s:%d", ipStr, port);
+		return String.format("tcp://%s:%d", host, port);
 	}
 	
 	public static boolean isIPAddr(String ipStr) {	
 		String[] _iparr = ipStr.replaceAll("[^0-9 ]", "").split(".");
 		return _iparr.length == 4;
 	}
+
+    public static String normalizeAddress(String address) {
+        return address == null ? "" : address.trim();
+    }
+
+    public static String extractHost(String address) {
+        Uri uri = parseAddress(address);
+        if (uri != null && !TextUtils.isEmpty(uri.getHost())) {
+            return uri.getHost().trim();
+        }
+
+        String normalized = normalizeAddress(address);
+        if (TextUtils.isEmpty(normalized)) {
+            return "";
+        }
+
+        int slashIndex = normalized.indexOf('/');
+        if (slashIndex >= 0) {
+            normalized = normalized.substring(0, slashIndex);
+        }
+
+        int atIndex = normalized.lastIndexOf('@');
+        if (atIndex >= 0 && atIndex + 1 < normalized.length()) {
+            normalized = normalized.substring(atIndex + 1);
+        }
+
+        if (normalized.startsWith("[") && normalized.contains("]")) {
+            return normalized.substring(1, normalized.indexOf(']')).trim();
+        }
+
+        int colonIndex = normalized.indexOf(':');
+        if (colonIndex >= 0) {
+            normalized = normalized.substring(0, colonIndex);
+        }
+
+        return normalized.trim();
+    }
+
+    public static int extractPort(String address, int defaultPort) {
+        Uri uri = parseAddress(address);
+        if (uri != null && uri.getPort() > 0) {
+            return uri.getPort();
+        }
+        return defaultPort;
+    }
+
+    public static String extractScheme(String address, String defaultScheme) {
+        Uri uri = parseAddress(address);
+        if (uri != null && !TextUtils.isEmpty(uri.getScheme())) {
+            return uri.getScheme().toLowerCase(Locale.US);
+        }
+        return TextUtils.isEmpty(defaultScheme) ? "http" : defaultScheme;
+    }
+
+    public static String buildHttpUrl(String address, String defaultScheme, int defaultPort, String path) {
+        String host = extractHost(address);
+        if (TextUtils.isEmpty(host)) {
+            host = "127.0.0.1";
+        }
+
+        String scheme = extractScheme(address, defaultScheme);
+        int port = extractPort(address, defaultPort);
+        StringBuilder sb = new StringBuilder();
+        sb.append(scheme).append("://").append(host);
+        if (port > 0) {
+            sb.append(":").append(port);
+        }
+
+        String basePath = "";
+        Uri uri = parseAddress(address);
+        if (uri != null && !TextUtils.isEmpty(uri.getPath()) && !"/".equals(uri.getPath())) {
+            basePath = normalizePath(uri.getPath(), false);
+        }
+        if (!TextUtils.isEmpty(basePath)) {
+            sb.append(basePath);
+        }
+
+        String normalizedPath = normalizePath(path, true);
+        if (!TextUtils.isEmpty(normalizedPath)) {
+            if (sb.charAt(sb.length() - 1) != '/') {
+                sb.append('/');
+            }
+            sb.append(normalizedPath);
+        }
+
+        return sb.toString();
+    }
+
+    private static String normalizePath(String value, boolean trimLeadingSlash) {
+        String normalized = normalizeAddress(value).replace("\\", "/");
+        if (TextUtils.isEmpty(normalized)) {
+            return "";
+        }
+
+        while (normalized.startsWith("//")) {
+            normalized = normalized.substring(1);
+        }
+        while (normalized.endsWith("/") && normalized.length() > 1) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+
+        if (trimLeadingSlash) {
+            while (normalized.startsWith("/")) {
+                normalized = normalized.substring(1);
+            }
+            return normalized;
+        }
+
+        return normalized.startsWith("/") ? normalized : "/" + normalized;
+    }
+
+    private static Uri parseAddress(String address) {
+        String normalized = normalizeAddress(address);
+        if (TextUtils.isEmpty(normalized)) {
+            return null;
+        }
+
+        try {
+            String candidate = hasScheme(normalized) ? normalized : "http://" + normalized;
+            Uri uri = Uri.parse(candidate);
+            if (!TextUtils.isEmpty(uri.getHost())) {
+                return uri;
+            }
+        } catch (Exception ignored) {
+        }
+
+        return null;
+    }
+
+    private static boolean hasScheme(String value) {
+        return value.matches("^[a-zA-Z][a-zA-Z0-9+.-]*://.*$");
+    }
 }

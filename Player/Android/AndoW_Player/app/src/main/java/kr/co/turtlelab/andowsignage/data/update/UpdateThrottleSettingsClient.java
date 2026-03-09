@@ -12,6 +12,8 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.TimeZone;
 
+import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
+
 public class UpdateThrottleSettingsClient {
 
     private static final String DATABASE = "NewHyOn";
@@ -30,17 +32,19 @@ public class UpdateThrottleSettingsClient {
     private long nextRefreshAt;
 
     public UpdateThrottleSettingsClient(String managerHost) {
-        if (!TextUtils.isEmpty(managerHost)) {
-            host = managerHost;
+        String normalized = NetworkUtils.extractHost(managerHost);
+        if (!TextUtils.isEmpty(normalized)) {
+            host = normalized;
         }
     }
 
     public void updateHost(String managerHost) {
-        if (TextUtils.isEmpty(managerHost)) {
+        String normalized = NetworkUtils.extractHost(managerHost);
+        if (TextUtils.isEmpty(normalized)) {
             return;
         }
         synchronized (syncRoot) {
-            host = managerHost;
+            host = normalized;
             resetConnection();
         }
     }
