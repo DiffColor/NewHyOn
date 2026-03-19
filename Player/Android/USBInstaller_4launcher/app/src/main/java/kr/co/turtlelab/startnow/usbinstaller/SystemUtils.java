@@ -1,29 +1,12 @@
 package kr.co.turtlelab.startnow.usbinstaller;
 
 import android.content.Context;
-import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 
 import java.io.File;
 
 public class SystemUtils {
-
-    public static void startNewActivity(Context context, String packageName) {
-        if (context == null || packageName == null || packageName.length() < 1) {
-            return;
-        }
-
-        try {
-            Intent intent = context.getPackageManager().getLaunchIntentForPackage(packageName);
-            if (intent == null) {
-                return;
-            }
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            context.startActivity(intent);
-        } catch (Exception ignore) {
-        }
-    }
 
     public static PackageInfo getArchivePackageInfo(Context context, String apkpath) {
         if (context == null || apkpath == null || apkpath.length() < 1) {

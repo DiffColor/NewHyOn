@@ -4,11 +4,18 @@ import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.os.Build;
+import android.os.Environment;
 import android.net.Uri;
 import android.content.pm.PackageInfo;
 import android.util.Log;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -29,16 +36,12 @@ public class USBReceiver extends BroadcastReceiver {
     private static final String RECEIVER_NOTIFIER = "kr.co.turtlelab.notifier.NotiReceiver";
     private static final String RECEIVER_WATCHDOG = "kr.co.turtlelab.startnow.watchdog.WatchDogReceiver";
     private static final String USB_DIRNAME = "APKs";
-    private static final String[] USB_SEARCH_ROOTS = {
-            "/mnt/usb_storage",
-            "/storage",
-            "/mnt/media_rw",
-            "/mnt"
-    };
     private static final long INSTALL_VERIFY_TIMEOUT_MS = 90000L;
     private static final long INSTALL_VERIFY_INTERVAL_MS = 1500L;
     private static final long NOTIFIER_BOOTSTRAP_DELAY_MS = 1200L;
     private static final long MIN_NOTIFIER_VISIBLE_MS = 2500L;
+    private static final String STAGING_DIRNAME = "quber_apk_stage";
+    private static final int COPY_BUFFER_SIZE = 64 * 1024;
 
     @Override
     public void onReceive(final Context context, Intent intent) {
@@ -65,7 +68,7 @@ public class USBReceiver extends BroadcastReceiver {
     }
 
     private void handleMounted(Context context, Intent intent) {
-        List<File> searchRoots = buildSearchRoots(intent);
+        List<File> searchRoots = buildSearchRoots(context, intent);
         File installDir = findInstallDir(searchRoots, USB_DIRNAME);
         if (installDir == null) {
             Log.w(TAG, "APKs directory not found. roots=" + joinPaths(searchRoots));
@@ -100,28 +103,206 @@ public class USBReceiver extends BroadcastReceiver {
             return;
         }
 
-        PackageInfo archiveInfo = SystemUtils.getArchivePackageInfo(context, apkFile.getAbsolutePath());
-        String displayName = apkFile.getName();
-        if (archiveInfo != null && archiveInfo.applicationInfo != null) {
-            CharSequence label = archiveInfo.applicationInfo.loadLabel(context.getPackageManager());
-            if (label != null && label.length() > 0) {
-                displayName = label.toString();
+        File stagedApk = null;
+        try {
+            stagedApk = stageApkForInstall(context, apkFile);
+            if (stagedApk == null) {
+                sendMsg(context, INTENT_MSG, apkFile.getName() + " 스테이징에 실패했습니다.");
+                return;
             }
+
+            PackageInfo archiveInfo = SystemUtils.getArchivePackageInfo(context, stagedApk.getAbsolutePath());
+            String displayName = apkFile.getName();
+            if (archiveInfo != null && archiveInfo.applicationInfo != null) {
+                CharSequence label = archiveInfo.applicationInfo.loadLabel(context.getPackageManager());
+                if (label != null && label.length() > 0) {
+                    displayName = label.toString();
+                }
+            }
+
+            sendMsg(context, INTENT_MSG, displayName + " 설치 요청을 전송합니다.");
+
+            boolean sent = QuberInstallAgentClient.requestInstall(context, stagedApk.getAbsolutePath());
+            if (!sent) {
+                sendMsg(context, INTENT_MSG, displayName + " 설치 요청 전송에 실패했습니다.");
+                return;
+            }
+
+            boolean verified = waitForInstall(context, archiveInfo);
+            if (verified) {
+                sendMsg(context, INTENT_MSG, displayName + " 설치가 확인되었습니다.");
+            } else {
+                sendMsg(context, INTENT_MSG, displayName + " 설치 확인이 지연되고 있습니다.");
+            }
+        } finally {
+            deleteQuietly(stagedApk);
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private File stageApkForInstall(Context context, File sourceApk) {
+        if (context == null || sourceApk == null || !sourceApk.isFile()) {
+            return null;
         }
 
-        sendMsg(context, INTENT_MSG, displayName + " 설치 요청을 전송합니다.");
+        File stagingDir = resolveStagingDir(context);
+        if (stagingDir == null) {
+            return null;
+        }
 
-        boolean sent = QuberInstallAgentClient.requestInstall(context, apkFile.getAbsolutePath());
-        if (!sent) {
-            sendMsg(context, INTENT_MSG, displayName + " 설치 요청 전송에 실패했습니다.");
+        if (!stagingDir.exists() && !stagingDir.mkdirs()) {
+            Log.w(TAG, "Failed to create staging dir: " + stagingDir.getAbsolutePath());
+            return null;
+        }
+
+        stagingDir.setReadable(true, false);
+        stagingDir.setExecutable(true, false);
+        stagingDir.setWritable(true, true);
+        cleanupStagingDir(stagingDir);
+
+        File stagedApk = new File(stagingDir, buildStagedApkName(sourceApk));
+        deleteQuietly(stagedApk);
+
+        try {
+            copyFile(sourceApk, stagedApk);
+            stagedApk.setReadable(true, false);
+            Log.d(TAG, "Staged apk for Quber install: " + stagedApk.getAbsolutePath());
+            return stagedApk;
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to stage apk: " + sourceApk.getAbsolutePath(), e);
+            deleteQuietly(stagedApk);
+            return null;
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private File resolveStagingDir(Context context) {
+        File sharedExternalDir = null;
+        try {
+            File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+            if (downloadsDir != null) {
+                sharedExternalDir = new File(downloadsDir, STAGING_DIRNAME);
+            }
+        } catch (Throwable ignore) {
+        }
+
+        File externalAppDir = null;
+        try {
+            File appExternalRoot = context.getExternalFilesDir(null);
+            if (appExternalRoot != null) {
+                externalAppDir = new File(appExternalRoot, STAGING_DIRNAME);
+            }
+        } catch (Throwable ignore) {
+        }
+
+        File internalDir = null;
+        try {
+            internalDir = context.getDir(STAGING_DIRNAME, Context.MODE_WORLD_READABLE);
+        } catch (Throwable ignore) {
+        }
+
+        if (canUseStagingDir(sharedExternalDir)) {
+            Log.d(TAG, "Using shared external staging dir: " + sharedExternalDir.getAbsolutePath());
+            return sharedExternalDir;
+        }
+
+        if (canUseStagingDir(externalAppDir)) {
+            Log.d(TAG, "Using app external staging dir: " + externalAppDir.getAbsolutePath());
+            return externalAppDir;
+        }
+
+        if (canUseStagingDir(internalDir)) {
+            Log.d(TAG, "Using internal staging dir: " + internalDir.getAbsolutePath());
+            return internalDir;
+        }
+
+        return null;
+    }
+
+    private boolean canUseStagingDir(File dir) {
+        if (dir == null) {
+            return false;
+        }
+
+        File parent = dir.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            return false;
+        }
+
+        if (!dir.exists() && !dir.mkdirs()) {
+            return false;
+        }
+
+        return dir.isDirectory() && dir.canWrite();
+    }
+
+    private void cleanupStagingDir(File stagingDir) {
+        if (stagingDir == null || !stagingDir.isDirectory()) {
             return;
         }
 
-        boolean verified = waitForInstall(context, archiveInfo);
-        if (verified) {
-            sendMsg(context, INTENT_MSG, displayName + " 설치가 확인되었습니다.");
-        } else {
-            sendMsg(context, INTENT_MSG, displayName + " 설치 확인이 지연되고 있습니다.");
+        File[] list = stagingDir.listFiles();
+        if (list == null) {
+            return;
+        }
+
+        for (File file : list) {
+            deleteQuietly(file);
+        }
+    }
+
+    private String buildStagedApkName(File sourceApk) {
+        String name = sourceApk.getName();
+        String sanitized = name.replaceAll("[^A-Za-z0-9._-]", "_");
+        return System.currentTimeMillis() + "_" + sanitized;
+    }
+
+    private void copyFile(File source, File target) throws IOException {
+        BufferedInputStream input = null;
+        BufferedOutputStream output = null;
+        try {
+            input = new BufferedInputStream(new FileInputStream(source));
+            output = new BufferedOutputStream(new FileOutputStream(target));
+
+            byte[] buffer = new byte[COPY_BUFFER_SIZE];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                output.write(buffer, 0, read);
+            }
+            output.flush();
+        } finally {
+            closeQuietly(output);
+            closeQuietly(input);
+        }
+    }
+
+    private void closeQuietly(java.io.Closeable closeable) {
+        if (closeable == null) {
+            return;
+        }
+
+        try {
+            closeable.close();
+        } catch (IOException ignore) {
+        }
+    }
+
+    private void deleteQuietly(File file) {
+        if (file == null || !file.exists()) {
+            return;
+        }
+
+        if (file.isDirectory()) {
+            File[] list = file.listFiles();
+            if (list != null) {
+                for (File child : list) {
+                    deleteQuietly(child);
+                }
+            }
+        }
+
+        if (!file.delete()) {
+            Log.w(TAG, "Failed to delete: " + file.getAbsolutePath());
         }
     }
 
@@ -142,17 +323,25 @@ public class USBReceiver extends BroadcastReceiver {
         return false;
     }
 
-    private List<File> buildSearchRoots(Intent intent) {
+    private List<File> buildSearchRoots(Context context, Intent intent) {
         Set<String> uniquePaths = new LinkedHashSet<>();
 
         File mountedDir = resolveMountedDir(intent);
+        File mountedRoot = resolveStorageRoot(mountedDir);
+        addSearchPath(uniquePaths, mountedRoot);
         addSearchPath(uniquePaths, mountedDir);
-        if (mountedDir != null) {
-            addSearchPath(uniquePaths, mountedDir.getParentFile());
+
+        List<File> externalRoots = collectExternalStorageRoots(context);
+        for (File root : externalRoots) {
+            if (isRelevantStorageRoot(root, mountedDir, mountedRoot)) {
+                addSearchPath(uniquePaths, root);
+            }
         }
 
-        for (String fallbackRoot : USB_SEARCH_ROOTS) {
-            addSearchPath(uniquePaths, new File(fallbackRoot));
+        if (uniquePaths.isEmpty()) {
+            for (File root : externalRoots) {
+                addSearchPath(uniquePaths, root);
+            }
         }
 
         List<File> roots = new ArrayList<>();
@@ -182,12 +371,126 @@ public class USBReceiver extends BroadcastReceiver {
         return mountedDir;
     }
 
+    private List<File> collectExternalStorageRoots(Context context) {
+        Set<String> uniquePaths = new LinkedHashSet<>();
+        if (context == null) {
+            return new ArrayList<>();
+        }
+
+        File[] externalFilesDirs;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            externalFilesDirs = context.getExternalFilesDirs(null);
+        } else {
+            externalFilesDirs = new File[]{context.getExternalFilesDir(null)};
+        }
+
+        if (externalFilesDirs == null) {
+            return new ArrayList<>();
+        }
+
+        for (File appSpecificDir : externalFilesDirs) {
+            if (!shouldUseExternalDir(appSpecificDir)) {
+                continue;
+            }
+
+            File storageRoot = resolveStorageRoot(appSpecificDir);
+            addSearchPath(uniquePaths, storageRoot);
+        }
+
+        List<File> roots = new ArrayList<>();
+        for (String path : uniquePaths) {
+            roots.add(new File(path));
+        }
+        return roots;
+    }
+
+    private boolean shouldUseExternalDir(File appSpecificDir) {
+        if (appSpecificDir == null) {
+            return false;
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            try {
+                if (!Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState(appSpecificDir))) {
+                    return false;
+                }
+            } catch (Throwable ignore) {
+            }
+        }
+
+        return resolveStorageRoot(appSpecificDir) != null;
+    }
+
+    private File resolveStorageRoot(File dir) {
+        File current = dir;
+        while (current != null) {
+            if ("Android".equals(current.getName())) {
+                return current.getParentFile();
+            }
+            current = current.getParentFile();
+        }
+        return dir;
+    }
+
+    private boolean isRelevantStorageRoot(File root, File mountedDir, File mountedRoot) {
+        if (root == null) {
+            return false;
+        }
+
+        if (mountedDir == null && mountedRoot == null) {
+            return true;
+        }
+
+        return isSameOrParent(root, mountedDir)
+                || isSameOrParent(mountedDir, root)
+                || isSameOrParent(root, mountedRoot)
+                || isSameOrParent(mountedRoot, root)
+                || hasSameVolumeName(root, mountedDir)
+                || hasSameVolumeName(root, mountedRoot);
+    }
+
+    private boolean isSameOrParent(File parentCandidate, File childCandidate) {
+        if (parentCandidate == null || childCandidate == null) {
+            return false;
+        }
+
+        String parentPath = normalizePath(parentCandidate);
+        String childPath = normalizePath(childCandidate);
+        if (parentPath == null || childPath == null) {
+            return false;
+        }
+
+        return childPath.equals(parentPath) || childPath.startsWith(parentPath + File.separator);
+    }
+
+    private boolean hasSameVolumeName(File left, File right) {
+        if (left == null || right == null) {
+            return false;
+        }
+
+        String leftName = left.getName();
+        String rightName = right.getName();
+        return leftName != null && leftName.length() > 0 && leftName.equalsIgnoreCase(rightName);
+    }
+
+    private String normalizePath(File file) {
+        if (file == null) {
+            return null;
+        }
+
+        try {
+            return file.getCanonicalPath();
+        } catch (Exception ignore) {
+            return file.getAbsolutePath();
+        }
+    }
+
     private void addSearchPath(Set<String> paths, File dir) {
         if (dir == null) {
             return;
         }
 
-        String path = dir.getAbsolutePath();
+        String path = normalizePath(dir);
         if (path.length() < 1) {
             return;
         }
@@ -247,6 +550,11 @@ public class USBReceiver extends BroadcastReceiver {
 
         if (dirname.equalsIgnoreCase(base.getName())) {
             return base;
+        }
+
+        File directChild = new File(base, dirname);
+        if (directChild.isDirectory()) {
+            return directChild;
         }
 
         File[] list = base.listFiles();
