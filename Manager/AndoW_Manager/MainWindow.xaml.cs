@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -47,6 +48,7 @@ namespace AndoW_Manager
         public MainWindow()
         {
             this.InitializeComponent();
+            SetTopbarVersionText();
 
             Instance = this;
 
@@ -66,6 +68,20 @@ namespace AndoW_Manager
             InitEventHandler();
 
             this.PageTransition1.TransitionType = WpfPageTransitions.PageTransitionType.Fade;
+        }
+
+        private void SetTopbarVersionText()
+        {
+            Version assemblyVersion = typeof(MainWindow).Assembly.GetName().Version;
+            if (assemblyVersion == null)
+            {
+                Favorite_title_Copy.Text = "New Hyon";
+                return;
+            }
+
+            int fieldCount = assemblyVersion.Revision > 0 ? 4 : 3;
+            string versionText = assemblyVersion.ToString(fieldCount);
+            Favorite_title_Copy.Text = $"New Hyon ( v{versionText} )";
         }
 
         public void InitPages()
