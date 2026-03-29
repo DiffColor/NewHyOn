@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using AndoW.Shared;
 using System.Collections.Generic;
 using System.Configuration;
@@ -10,7 +10,7 @@ using Newtonsoft.Json.Linq;
 using TurtleTools;
 using SharedWeeklyPlayScheduleInfo = AndoW.Shared.WeeklyPlayScheduleInfo;
 
-namespace HyOnPlayer
+namespace NewHyOnPlayer
 {
     internal sealed class SignalRClientService : IDisposable
     {
@@ -159,19 +159,22 @@ namespace HyOnPlayer
         public void SendStoppedAndStop(HeartbeatPayload payload)
         {
             Interlocked.Exchange(ref terminalHeartbeatMode, 1);
+            Interlocked.Exchange(ref stopping, 1);
             InvalidateHeartbeatQueue();
             CancelReconnectSchedule();
             ClearPendingActions();
 
-            try
+            Task.Run(() =>
             {
-                SendTerminalHeartbeat(payload);
-            }
-            finally
-            {
-                Interlocked.Exchange(ref stopping, 1);
-                StopConnection();
-            }
+                try
+                {
+                    SendTerminalHeartbeat(payload);
+                }
+                finally
+                {
+                    StopConnection();
+                }
+            });
         }
 
         private void ScheduleReconnect()

@@ -7,8 +7,8 @@
     <ProjectGuid>{D8609F9F-C4E8-4B44-93BE-454C46F4690D}</ProjectGuid>
     <OutputType>WinExe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>HyOnPlayer</RootNamespace>
-    <AssemblyName>HyOn Player</AssemblyName>
+    <RootNamespace>NewHyOnPlayer</RootNamespace>
+    <AssemblyName>NewHyOn Player</AssemblyName>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <ProjectTypeGuids>{60dc8134-eba5-43b8-bcc9-bb4bc16c2548};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
@@ -65,7 +65,7 @@
     <ManifestCertificateThumbprint>87EE9E3948A83FA064AFCC1F0BF9032D0DEFD0F7</ManifestCertificateThumbprint>
   </PropertyGroup>
   <PropertyGroup>
-    <ManifestKeyFile>HyOnPlayer_WPF_DS_TemporaryKey.pfx</ManifestKeyFile>
+    <ManifestKeyFile>NewHyOnPlayer_WPF_DS_TemporaryKey.pfx</ManifestKeyFile>
   </PropertyGroup>
   <PropertyGroup>
     <GenerateManifests>false</GenerateManifests>
@@ -271,6 +271,7 @@
     <Compile Include="FNDTools.cs" />
     <Compile Include="TurtleTools\FileTools.cs" />
     <Compile Include="TurtleTools\ImageCacheTools.cs" />
+    <Compile Include="TurtleTools\KeyboardHook.cs" />
     <Compile Include="TurtleTools\Key.cs" />
     <Compile Include="TurtleTools\LoggerClass.cs" />
     <Compile Include="TurtleTools\LogicTools.cs" />

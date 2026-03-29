@@ -1,4 +1,4 @@
-﻿using HyOnPlayer.Properties;
+﻿using NewHyOnPlayer.Properties;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -12,13 +12,13 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using TurtleTools;
-using HyOnPlayer.Services;
-using HyOnPlayer.DataManager;
+using NewHyOnPlayer.Services;
+using NewHyOnPlayer.DataManager;
 using AndoW.Shared;
 using forms = System.Windows.Forms;
 using SharedElementInfoClass = AndoW.Shared.ElementInfoClass;
 
-namespace HyOnPlayer
+namespace NewHyOnPlayer
 {
     /// <summary>
     /// MainWindow.xaml에 대한 상호 작용 논리
@@ -91,6 +91,7 @@ namespace HyOnPlayer
         private RethinkSyncService rethinkSyncService;
         private SignalRClientService signalRClientService;
         private DebugWindow debugWindow;
+        private KeyboardHook keyboardHook;
         private ScheduleEvaluator scheduleEvaluator;
         private OnAirService onAirService;
         private DateTime lastScheduleEval = DateTime.MinValue;
@@ -111,6 +112,10 @@ namespace HyOnPlayer
         private int lastCommitFromIndex = -1;
         private bool hasReceivedSyncMessage;
         private int commStarted;
+        private bool isShortcutCursorVisible;
+        private bool isShortcutTaskbarVisible;
+        private bool isShortcutTestMode;
+        private bool isShortcutTopmost = true;
         private readonly object periodLock = new object();
         private Dictionary<string, ContentPeriodPayload> contentPeriodMap = new Dictionary<string, ContentPeriodPayload>(StringComparer.OrdinalIgnoreCase);
 
@@ -124,6 +129,7 @@ namespace HyOnPlayer
 
             InitEventHandler();
             Instance = this;
+            InitShortcutHook();
 
             defaultCursor = this.Cursor;
             this.Cursor = Cursors.None;
@@ -191,44 +197,243 @@ namespace HyOnPlayer
         {
             this.Loaded += MainWindow_Loaded;
             this.Closing += MainWindow_Closing;
-            this.PreviewKeyDown += MainWindow_PreviewKeyDown;
         }
 
-        private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+        private void InitShortcutHook()
         {
-            if (e.Key == System.Windows.Input.Key.F1)
+            try
             {
-                ToggleDebugWindow();
-                e.Handled = true;
+                keyboardHook = new KeyboardHook();
+                keyboardHook.KeyDown += KeyboardHook_KeyDown;
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog($"KeyboardHook init failed: {ex}", Logger.GetLogFileName());
             }
         }
 
-        private void ToggleDebugWindow()
+        private void KeyboardHook_KeyDown(object sender, KeyEventArgs e)
         {
-            if (debugWindow == null)
+            try
             {
-                debugWindow = new DebugWindow(this)
+                Dispatcher.BeginInvoke(new Action(() => HandleShortcutKey(e.Key)));
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog($"Keyboard shortcut dispatch failed: {ex}", Logger.GetLogFileName());
+            }
+        }
+
+        private void SetDebugWindowVisible(bool visible)
+        {
+            if (visible)
+            {
+                if (debugWindow == null)
                 {
-                    Owner = this
-                };
-                debugWindow.Closed += (s, e) => debugWindow = null;
+                    debugWindow = new DebugWindow(this)
+                    {
+                        Owner = this
+                    };
+                    debugWindow.Closed += (s, e) => debugWindow = null;
+                }
+
+                if (!debugWindow.IsVisible)
+                {
+                    debugWindow.Show();
+                }
+
+                debugWindow.Start();
+                return;
             }
 
-            if (debugWindow.IsVisible)
+            if (debugWindow != null)
             {
                 debugWindow.Close();
                 debugWindow = null;
             }
+        }
+
+        private void HandleShortcutKey(System.Windows.Input.Key key)
+        {
+            switch (key)
+            {
+                case System.Windows.Input.Key.F1:
+                    ApplyCursorVisibility(!isShortcutCursorVisible);
+                    break;
+
+                case System.Windows.Input.Key.F2:
+                    ApplyTaskbarVisibility(!isShortcutTaskbarVisible);
+                    break;
+
+                case System.Windows.Input.Key.F3:
+                    ToggleShortcutTestMode();
+                    break;
+
+                case System.Windows.Input.Key.F4:
+                    isShortcutTopmost = !isShortcutTopmost;
+                    Topmost = isShortcutTopmost;
+                    break;
+
+                case System.Windows.Input.Key.F9:
+                    ForceCloseByShortcut();
+                    break;
+
+                case System.Windows.Input.Key.F11:
+                    if (isShortcutTestMode)
+                    {
+                        return;
+                    }
+
+                    WindowState = WindowState == WindowState.Normal ? WindowState.Maximized : WindowState.Normal;
+                    break;
+
+                case System.Windows.Input.Key.F12:
+                    if (isShortcutTestMode)
+                    {
+                        return;
+                    }
+
+                    OpenConfigPlayer();
+                    break;
+            }
+        }
+
+        private void InitializeShortcutState()
+        {
+            isShortcutTestMode = g_LocalSettingsManager?.Settings?.IsTestMode ?? false;
+            isShortcutCursorVisible = !(g_LocalSettingsManager?.Settings?.HideCursor ?? true);
+            isShortcutTaskbarVisible = Taskbar.IsTaskbarVisible();
+            isShortcutTopmost = Topmost;
+
+            ApplyCursorVisibility(isShortcutCursorVisible);
+            ApplyTaskbarVisibility(isShortcutTaskbarVisible);
+
+            if (isShortcutTestMode)
+            {
+                WindowStyle = WindowStyle.SingleBorderWindow;
+                ResizeMode = ResizeMode.CanResize;
+                Topmost = false;
+                isShortcutTopmost = false;
+                ApplyTaskbarVisibility(true);
+                ApplyCursorVisibility(true);
+                SetDebugWindowVisible(true);
+            }
             else
             {
-                debugWindow.Show();
-                debugWindow.Start();
+                ResizeMode = ResizeMode.NoResize;
+                SetDebugWindowVisible(false);
+            }
+        }
+
+        private void ToggleShortcutTestMode()
+        {
+            isShortcutTestMode = !isShortcutTestMode;
+            if (g_LocalSettingsManager?.Settings != null)
+            {
+                g_LocalSettingsManager.Settings.IsTestMode = isShortcutTestMode;
+            }
+
+            if (isShortcutTestMode)
+            {
+                WindowStyle = WindowStyle.SingleBorderWindow;
+                ResizeMode = ResizeMode.CanResize;
+                isShortcutTopmost = false;
+                Topmost = false;
+                ApplyTaskbarVisibility(true);
+                ApplyCursorVisibility(true);
+                SetDebugWindowVisible(true);
+            }
+            else
+            {
+                WindowStyle = WindowStyle.None;
+                ResizeMode = ResizeMode.NoResize;
+                isShortcutTopmost = true;
+                Topmost = true;
+                SetDebugWindowVisible(false);
+                ApplyTaskbarVisibility(!(g_LocalSettingsManager?.Settings?.HideCursor ?? true));
+                ApplyCursorVisibility(!(g_LocalSettingsManager?.Settings?.HideCursor ?? true));
+            }
+        }
+
+        private void ApplyCursorVisibility(bool visible)
+        {
+            isShortcutCursorVisible = visible;
+
+            if (visible)
+            {
+                Cursor = defaultCursor;
+                forms.Cursor.Show();
+                WindowTools.RestoreMouseCursor();
+            }
+            else
+            {
+                Cursor = Cursors.None;
+                forms.Cursor.Hide();
+            }
+        }
+
+        private void ApplyTaskbarVisibility(bool visible)
+        {
+            isShortcutTaskbarVisible = visible;
+
+            if (visible)
+            {
+                Taskbar.Show();
+            }
+            else
+            {
+                Taskbar.Hide();
+            }
+        }
+
+        private void ForceCloseByShortcut()
+        {
+            try
+            {
+                Taskbar.Show();
+                forms.Cursor.Show();
+                Cursor = defaultCursor;
+                WindowTools.RestoreMouseCursor();
+            }
+            catch
+            {
+            }
+
+            Close();
+        }
+
+        private void OpenConfigPlayer()
+        {
+            try
+            {
+                string configPlayerPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ConfigPlayer.exe");
+                if (!File.Exists(configPlayerPath))
+                {
+                    Logger.WriteErrorLog($"ConfigPlayer not found: {configPlayerPath}", Logger.GetLogFileName());
+                    return;
+                }
+
+                if (!ProcessTools.CheckExeProcessAlive("ConfigPlayer"))
+                {
+                    ProcessTools.LaunchProcess(configPlayerPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog($"ConfigPlayer launch failed: {ex}", Logger.GetLogFileName());
             }
         }
 
         void MainWindow_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
             bool signalRStoppedForExit = false;
+
+            if (keyboardHook != null)
+            {
+                keyboardHook.KeyDown -= KeyboardHook_KeyDown;
+                keyboardHook.Dispose();
+                keyboardHook = null;
+            }
 
             if (debugWindow != null)
             {
@@ -367,6 +572,7 @@ namespace HyOnPlayer
             StartSyncService();
 
             ChangePlayerStyle();
+            InitializeShortcutState();
 
             AdjustCanvasSize();
 

@@ -16,6 +16,9 @@ namespace TurtleTools
         [DllImport("user32.dll")]
         private static extern int GetDesktopWindow();
 
+        [DllImport("user32.dll")]
+        private static extern bool IsWindowVisible(int hWnd);
+
         private const int SW_HIDE = 0;
         private const int SW_SHOW = 1;
 
@@ -52,6 +55,17 @@ namespace TurtleTools
         {
             ShowWindow(Handle, SW_HIDE);
             ShowWindow(HandleOfStartButton, SW_HIDE);
+        }
+
+        public static bool IsTaskbarVisible()
+        {
+            int hTaskbar = FindWindow("Shell_TrayWnd", null);
+            if (hTaskbar == 0)
+            {
+                return false;
+            }
+
+            return IsWindowVisible(hTaskbar);
         }
     }
 }

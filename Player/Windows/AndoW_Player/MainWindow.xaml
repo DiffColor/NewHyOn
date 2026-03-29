@@ -1,8 +1,8 @@
-﻿<Window x:Class="HyOnPlayer.MainWindow"
+﻿<Window x:Class="NewHyOnPlayer.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         LocationChanged="Window_LocationChanged"
-        Title="HyOn Player" WindowStyle="None" ResizeMode="NoResize" WindowStartupLocation="Manual" Background="Black" >
+        Title="NewHyOn Player" WindowStyle="None" ResizeMode="NoResize" WindowStartupLocation="Manual" Background="Black" >
     <Grid x:Name="LayoutGrid" Background="Black">
         <ScrollViewer x:Name="MainScrollViewer" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Hidden">
             <Canvas x:Name="DesignerCanvas" SnapsToDevicePixels="True" />
