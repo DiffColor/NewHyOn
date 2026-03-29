@@ -250,7 +250,7 @@
             </Grid.ColumnDefinitions>
             <Rectangle x:Name="DragRect" Grid.Column="1" PreviewMouseLeftButtonDown="BtnWin_drag_PreviewMouseLeftButtonDown" StrokeThickness="3" Fill="#005252AB"/>
             <StackPanel Orientation="Horizontal">
-                <TextBlock x:Name="Favorite_title_Copy" Text="New Hyon ( v1.01 )" TextWrapping="Wrap" FontFamily="Arial" HorizontalAlignment="Center" TextAlignment="Center" VerticalAlignment="Center" Margin="11,0,0,0" FontSize="13.333" FontWeight="Bold" Foreground="#FF9C9BFB"/>
+                <TextBlock x:Name="Favorite_title_Copy" Text="New Hyon ( v1.0.4 )" TextWrapping="Wrap" FontFamily="Arial" HorizontalAlignment="Center" TextAlignment="Center" VerticalAlignment="Center" Margin="11,0,0,0" FontSize="13.333" FontWeight="Bold" Foreground="#FF9C9BFB"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Grid.Column="2" HorizontalAlignment="Right" Margin="0,0,5,0" Width="118">
                 <Button x:Name="maxBTN" HorizontalAlignment="Right" Width="38" FontSize="13.333" Foreground="White" IsDefault="True" IsCancel="True" Style="{DynamicResource Btn_default3}" Margin="1,3">
