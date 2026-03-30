@@ -14,7 +14,6 @@ import io.realm.RealmConfiguration;
 import kr.co.turtlelab.andowsignage.tools.CanvasUtils;
 import kr.co.turtlelab.andowsignage.tools.LocalPathUtils;
 import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
-import kr.co.turtlelab.andowsignage.tools.QuberAgentClient;
 
 public class AndoWSignageApp extends Application {
 	
@@ -73,7 +72,6 @@ public class AndoWSignageApp extends Application {
 		super.onCreate();
 		sApp = this;
 		clearShutdownInProgress();
-		QuberAgentClient.get().initialize(this);
 		initRealm();
 		init();
 	}

@@ -191,9 +191,9 @@ public class HeartbeatService extends Service {
         }
         String version = AndoWSignageApp.version;
         String currentPage = AndoWSignage.currentPageName;
-        Boolean quberHdmi = PowerApi.queryHdmiCableState();
-        String hdmiState = quberHdmi != null
-                ? Boolean.toString(quberHdmi)
+        Boolean hdmiConnected = PowerApi.queryHdmiCableState();
+        String hdmiState = hdmiConnected != null
+                ? Boolean.toString(hdmiConnected)
                 : Boolean.toString(!AndoWSignageApp.isSlept);
         if (signalRClient != null) {
             SignalRClientService.HeartbeatPayload payload = SignalRClientService.HeartbeatPayload.create(
