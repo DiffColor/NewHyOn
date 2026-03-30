@@ -54,7 +54,7 @@ namespace ConfigPlayer
             SecurityTools.DisableUAC();
             AuthTools.WriteDemoReg();
 
-            if (CheckInvalidAuthKey())
+            if (CheckInvalidAuthKey(g_PlayerInfoManager.g_PlayerInfo.PIF_AuthKey))
             {
                 auth_group.Text = "현재 인증 상태 : 시험판";
                 auth_group.ForeColor = Color.DarkRed;
@@ -276,7 +276,7 @@ namespace ConfigPlayer
                 }
                 else
                 {
-                    if (CheckInvalidAuthKey())
+                    if (CheckInvalidAuthKey(g_PlayerInfoManager.g_PlayerInfo.PIF_AuthKey))
                     {
                         auth_group.Text = "현재 인증 상태 : 시험판";
                         auth_group.ForeColor = Color.DarkRed;
@@ -399,11 +399,13 @@ namespace ConfigPlayer
             }
         }
 
-        private bool CheckInvalidAuthKey()
+        private bool CheckInvalidAuthKey(string encodedKey)
         {
+            if (string.IsNullOrEmpty(encodedKey))
+                return true;
+
             // DB 기반 AuthKey 검증
             List<string> nics = NetworkTools.GetAllMACAddressesBySystemNet();
-            string encodedKey = g_PlayerInfoManager.g_PlayerInfo.PIF_AuthKey ?? string.Empty;
 
             foreach (string nic in nics)
             {
