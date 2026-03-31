@@ -467,7 +467,18 @@ public partial class MainWindowViewModel : ObservableObject
         else if (definition.Type == AppType.Rdb && string.IsNullOrWhiteSpace(definition.ExecutablePath))
         {
             changed |= ApplyRunAsAdministratorDefault(definition, defaultValue: true);
+            definition.Port ??= 28015;
             definition.ExecutablePath = _dependencyService.GetExecutablePath(AppType.Rdb);
+            definition.WorkingDirectory = Path.GetDirectoryName(definition.ExecutablePath);
+        }
+        else if (definition.Type == AppType.Rdb)
+        {
+            changed |= ApplyRunAsAdministratorDefault(definition, defaultValue: true);
+            definition.Port ??= 28015;
+            if (string.IsNullOrWhiteSpace(definition.WorkingDirectory))
+            {
+                definition.WorkingDirectory = Path.GetDirectoryName(_dependencyService.GetExecutablePath(AppType.Rdb));
+            }
         }
         else if (definition.Type == AppType.App)
         {

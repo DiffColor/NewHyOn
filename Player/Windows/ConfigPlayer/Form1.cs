@@ -66,40 +66,6 @@ namespace ConfigPlayer
         }
         
 
-        void CheckAndAddSecurityRules()
-        {
-            Dictionary<string, string> progDic = new Dictionary<string, string>();
-            Dictionary<string, int> portDic = new Dictionary<string, int>();
-
-            SecurityTools.SetICMP();
-
-            if (SecurityTools.NeedToAddRule("vnc"))
-            {
-                progDic["vnc"] = FNDTools.GetVNCServerExeFilePath();
-                portDic["vnc1_port"] = 5900;
-                portDic["vnc2_port"] = 5800;
-            }
-
-            if (SecurityTools.NeedToAddRule("ftp_ports"))
-                portDic["ftp_ports"] = g_PortInfoManager.g_DataClassList[0].AIF_FTP;
-
-            if (SecurityTools.NeedToAddRule("agent_port"))
-                portDic["agent_port"] = g_PortInfoManager.g_DataClassList[0].AIF_AgentSVCPort;
-
-            if (SecurityTools.NeedToAddRule("op_port"))
-                portDic["op_port"] = g_PortInfoManager.g_DataClassList[0].AIF_OperaterSVCPort;
-
-            if (SecurityTools.NeedToAddRule("sync_port"))
-                portDic["sync_port"] = g_PortInfoManager.g_DataClassList[0].AIF_SYNC;
-
-            if (SecurityTools.NeedToAddRule("agent"))
-                progDic["agent"] = FNDTools.GetAgentExeFilePath();
-
-            SecurityTools.ReleaseFirewallRules(SecurityTools.CreateAuthorAppNetshCmdList(progDic));
-            SecurityTools.ReleaseFirewallRules(SecurityTools.CreateOpenPortNetshCmdList(portDic));
-        }
-
-
         public void DisplayPortInfoData()
         {
             textBox4.Text = g_PortInfoManager.g_DataClassList[0].AIF_AgentSVCPort.ToString();
@@ -230,16 +196,10 @@ namespace ConfigPlayer
                 int FTPPortNum = Convert.ToInt32(textBox3.Text);
                 int syncPortNum = Convert.ToInt32(syncPortTextBox.Text);
 
-                SecurityTools.DeletePorts("agent_port", g_PortInfoManager.g_DataClassList[0].AIF_AgentSVCPort);
-                SecurityTools.DeletePorts("ftp_ports", g_PortInfoManager.g_DataClassList[0].AIF_FTP);
-                SecurityTools.DeletePorts("sync_port", g_PortInfoManager.g_DataClassList[0].AIF_SYNC);
-
                 g_PortInfoManager.g_DataClassList[0].AIF_AgentSVCPort = agentSvcPortNum;
                 g_PortInfoManager.g_DataClassList[0].AIF_FTP = FTPPortNum;
                 g_PortInfoManager.g_DataClassList[0].AIF_SYNC = syncPortNum;
                 g_PortInfoManager.SaveData();
-
-                CheckAndAddSecurityRules();
 
                 MessageBox.Show("포트번호를 저장했습니다.");
             }
@@ -907,10 +867,7 @@ namespace ConfigPlayer
 
         }
 
-        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
-        {
-            CheckAndAddSecurityRules();
-        }
+        private void Form1_FormClosing(object sender, FormClosingEventArgs e) { }
 
         private void button3_Click(object sender, EventArgs e)
         {

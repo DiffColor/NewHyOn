@@ -10,15 +10,17 @@ public class AppManager
 {
     private readonly AppDataStore _dataStore;
     private readonly AppDependencyService _dependencyService;
+    private readonly FirewallRuleService _firewallRuleService;
     private readonly Dictionary<Guid, Process> _runningProcesses = new();
     private readonly object _gate = new();
 
     public event EventHandler<AppRuntimeState>? RuntimeStateChanged;
 
-    public AppManager(AppDataStore dataStore, AppDependencyService dependencyService)
+    public AppManager(AppDataStore dataStore, AppDependencyService dependencyService, FirewallRuleService firewallRuleService)
     {
         _dataStore = dataStore;
         _dependencyService = dependencyService;
+        _firewallRuleService = firewallRuleService;
     }
 
     public Task<IList<AppDefinition>> LoadAsync() => _dataStore.LoadAsync();
@@ -37,6 +39,7 @@ public class AppManager
         }
 
         var processInfo = BuildProcessStartInfo(definition);
+        await _firewallRuleService.EnsureRulesAsync(definition, processInfo.FileName, cancellationToken);
         var process = new Process
         {
             StartInfo = processInfo,
@@ -310,7 +313,8 @@ public class AppManager
         switch (definition.Type)
         {
             case AppType.Rdb:
-                startInfo.Arguments = "--bind all --initial-password turtle04!9";
+                var rethinkPort = definition.Port.GetValueOrDefault(28015).ToString(CultureInfo.InvariantCulture);
+                startInfo.Arguments = $"--bind all --driver-port {rethinkPort} --initial-password turtle04!9";
                 break;
             case AppType.Ftp:
                 startInfo.Arguments = "-compat-start";

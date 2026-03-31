@@ -35,6 +35,7 @@ namespace StartApps
                 services.AddSingleton(profile);
                 services.AddSingleton<AppDataStore>();
                 services.AddSingleton<AppDependencyService>();
+                services.AddSingleton<FirewallRuleService>();
                 services.AddSingleton<AppManager>();
                 services.AddSingleton<MainWindowViewModel>();
                 services.AddSingleton<MainWindow>();
