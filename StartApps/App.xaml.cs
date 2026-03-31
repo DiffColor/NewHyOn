@@ -1,4 +1,7 @@
-﻿using System.IO;
+﻿using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
+using System.Security.Principal;
 using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Extensions.Configuration;
@@ -54,6 +57,13 @@ namespace StartApps
         /// </summary>
         private async void OnStartup(object sender, StartupEventArgs e)
         {
+            if (!IsRunningAsAdministrator())
+            {
+                RelaunchAsAdministratorOrExit(e.Args);
+                Shutdown();
+                return;
+            }
+
             await _host.StartAsync();
 
             ApplicationThemeManager.Apply(ApplicationTheme.Dark);
@@ -81,6 +91,56 @@ namespace StartApps
         private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
         {
             // For more info see https://docs.microsoft.com/en-us/dotnet/api/system.windows.application.dispatcherunhandledexception?view=windowsdesktop-6.0
+        }
+
+        private static bool IsRunningAsAdministrator()
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            var principal = new WindowsPrincipal(identity);
+            return principal.IsInRole(WindowsBuiltInRole.Administrator);
+        }
+
+        private static void RelaunchAsAdministratorOrExit(IEnumerable<string> args)
+        {
+            var executablePath = Environment.ProcessPath;
+            if (string.IsNullOrWhiteSpace(executablePath))
+            {
+                throw new InvalidOperationException("현재 실행 파일 경로를 확인할 수 없습니다.");
+            }
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = executablePath,
+                UseShellExecute = true,
+                Verb = "runas",
+                WorkingDirectory = Environment.CurrentDirectory
+            };
+
+            foreach (var arg in args)
+            {
+                startInfo.ArgumentList.Add(arg);
+            }
+
+            try
+            {
+                Process.Start(startInfo);
+            }
+            catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
+            {
+                System.Windows.MessageBox.Show(
+                    "관리자 권한 승인이 취소되어 StartApps를 종료합니다.",
+                    "StartApps",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show(
+                    $"관리자 권한으로 다시 실행하지 못했습니다.\n{ex.Message}",
+                    "StartApps",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
         }
     }
 }

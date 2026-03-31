@@ -39,7 +39,19 @@ public class AppManager
         }
 
         var processInfo = BuildProcessStartInfo(definition);
-        await _firewallRuleService.EnsureRulesAsync(definition, processInfo.FileName, cancellationToken);
+        try
+        {
+            await _firewallRuleService.EnsureRulesAsync(definition, processInfo.FileName, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Firewall rule sync failed for {definition.Name}: {ex}");
+        }
+
         var process = new Process
         {
             StartInfo = processInfo,
