@@ -1,29 +1,8 @@
 apply plugin: 'com.android.application'
 
-def defaultKeystoreFile = rootProject.file("../_shared/platformkeys/krizer/platform.jks")
-def keystorePath = System.getenv("ANDROID_KEYSTORE_PATH") ?: defaultKeystoreFile.path
-def keystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: "android"
-def keyAliasValue = System.getenv("ANDROID_KEY_ALIAS") ?: "androiddebugkey"
-def keyPasswordValue = System.getenv("ANDROID_KEY_PASSWORD") ?: "android"
-
 android {
     compileSdkVersion 22
     buildToolsVersion "29.0.2"
-
-    signingConfigs {
-        debug {
-            storeFile file(keystorePath)
-            storePassword keystorePassword
-            keyAlias keyAliasValue
-            keyPassword keyPasswordValue
-        }
-        release {
-            storeFile file(keystorePath)
-            storePassword keystorePassword
-            keyAlias keyAliasValue
-            keyPassword keyPasswordValue
-        }
-    }
 
     defaultConfig {
         applicationId "kr.co.turtlelab.startnow.watchdog"
@@ -34,7 +13,6 @@ android {
 
     buildTypes {
         release {
-            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
         }
