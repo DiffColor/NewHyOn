@@ -32,9 +32,8 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
-
-import java8.util.Comparators;
 
 import kr.co.turtlelab.launcher.views.KeyCaptureEditText;
 
@@ -537,7 +536,14 @@ public class FavoriteAppsActivity extends Activity {
         List<String> smallPackageNames = new ArrayList<>();
 
         List<ResolveInfo> activities = getActivities();
-        Collections.sort(activities, Comparators.comparing(pm -> pm.loadLabel(getPackageManager()).toString().toLowerCase()));
+        Collections.sort(activities, new Comparator<ResolveInfo>() {
+            @Override
+            public int compare(ResolveInfo left, ResolveInfo right) {
+                String leftLabel = left.loadLabel(getPackageManager()).toString().toLowerCase();
+                String rightLabel = right.loadLabel(getPackageManager()).toString().toLowerCase();
+                return leftLabel.compareTo(rightLabel);
+            }
+        });
 
 
         for (ResolveInfo resolver : activities) {

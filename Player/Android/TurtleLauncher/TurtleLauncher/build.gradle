@@ -25,5 +25,4 @@ android {
 }
 
 dependencies {
-    implementation 'net.sourceforge.streamsupport:streamsupport:1.6.0'
 }
