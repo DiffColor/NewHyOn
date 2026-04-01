@@ -7,7 +7,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.StatFs;
@@ -16,7 +15,10 @@ import android.view.Window;
 import android.view.WindowManager.LayoutParams;
 
 import java.lang.reflect.Field;
+import java.io.File;
 import java.util.List;
+
+import kr.co.turtlelab.andowsignage.AndoWSignageApp;
 
 public class SystemUtils {
 
@@ -78,7 +80,11 @@ public class SystemUtils {
 	@SuppressWarnings("deprecation")
 	public static int getRemainingExtSDPercent()
 	{
-	    StatFs stat = new StatFs(Environment.getExternalStorageDirectory().getPath());
+	    File storageRoot = AndoWSignageApp.getAppRootDir();
+	    if (storageRoot == null) {
+	        return 0;
+	    }
+	    StatFs stat = new StatFs(storageRoot.getAbsolutePath());
 //	    long remainBytes = (long)stat.getBlockSize() * (long)stat.getAvailableBlocks();
 //	    long totalBytes = (long)stat.getBlockSize() * (long)stat.getBlockCount();
 	    int remainBlocks = stat.getAvailableBlocks();

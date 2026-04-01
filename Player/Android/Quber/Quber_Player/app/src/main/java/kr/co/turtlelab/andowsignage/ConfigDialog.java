@@ -587,8 +587,11 @@ public class ConfigDialog extends Dialog implements View.OnClickListener {
 				realm = Realm.getDefaultInstance();
 				String dirPath = AndoWSignageApp.getDirPath();
 				if (dirPath == null || dirPath.isEmpty()) {
-					File fallback = ctx.getExternalFilesDir(null);
-					dirPath = fallback != null ? fallback.getAbsolutePath() : ctx.getFilesDir().getAbsolutePath();
+					File fallback = AndoWSignageApp.getAppRootDir();
+					dirPath = fallback != null ? fallback.getAbsolutePath() : null;
+				}
+				if (dirPath == null || dirPath.isEmpty()) {
+					throw new IllegalStateException("앱 전용 외부 저장소 경로를 확인할 수 없습니다.");
 				}
 				File dir = new File(dirPath);
 				if (!dir.exists()) {

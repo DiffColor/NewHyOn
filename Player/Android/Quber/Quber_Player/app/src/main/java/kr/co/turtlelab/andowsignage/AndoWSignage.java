@@ -1484,11 +1484,11 @@ public class AndoWSignage extends Activity {
 		overlayCommandLastInputAt = 0L;
 	}
 
-	private boolean executeOverlaySequenceCommand(char commandChar) {
-		switch (Character.toLowerCase(commandChar)) {
-			case 'e':
-				enable7waitWatchDog();
-				return true;
+		private boolean executeOverlaySequenceCommand(char commandChar) {
+			switch (Character.toLowerCase(commandChar)) {
+				case 'e':
+					enable7waitWatchDog();
+					return true;
 
 			case 'd':
 				manualStopRequested = true;
@@ -1572,14 +1572,14 @@ public class AndoWSignage extends Activity {
 			return false;
 		}
 
-		switch (keyCode) {
-			case KeyEvent.KEYCODE_D:
-				return appendOverlaySequenceChar('d');
-			case KeyEvent.KEYCODE_E:
-				return appendOverlaySequenceChar('e');
-			case KeyEvent.KEYCODE_M:
-				return appendOverlaySequenceChar('m');
-			case KeyEvent.KEYCODE_S:
+			switch (keyCode) {
+				case KeyEvent.KEYCODE_D:
+					return appendOverlaySequenceChar('d');
+				case KeyEvent.KEYCODE_E:
+					return appendOverlaySequenceChar('e');
+				case KeyEvent.KEYCODE_M:
+					return appendOverlaySequenceChar('m');
+				case KeyEvent.KEYCODE_S:
 				return appendOverlaySequenceChar('s');
 			default:
 				return false;

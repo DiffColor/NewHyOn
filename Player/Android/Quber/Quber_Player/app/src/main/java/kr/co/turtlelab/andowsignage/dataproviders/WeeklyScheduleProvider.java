@@ -10,6 +10,10 @@ import kr.co.turtlelab.andowsignage.datamodels.WeeklyScheduleDataModel;
 
 public class WeeklyScheduleProvider {
 
+    private static final String[] DAYS = {
+            "MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"
+    };
+
     private WeeklyScheduleProvider() {
     }
 
@@ -21,16 +25,18 @@ public class WeeklyScheduleProvider {
                     .equalTo("playerId", AndoWSignageApp.PLAYER_ID)
                     .findFirst();
             if (schedule == null) {
+                realm.executeTransaction(r -> ensureScheduleInTransaction(r));
+                schedule = realm.where(RealmWeeklySchedule.class)
+                        .equalTo("playerId", AndoWSignageApp.PLAYER_ID)
+                        .findFirst();
+            }
+            if (schedule == null) {
                 return list;
             }
             RealmWeeklySchedule detached = realm.copyFromRealm(schedule);
-            addModel(list, detached, "MON");
-            addModel(list, detached, "TUE");
-            addModel(list, detached, "WED");
-            addModel(list, detached, "THU");
-            addModel(list, detached, "FRI");
-            addModel(list, detached, "SAT");
-            addModel(list, detached, "SUN");
+            for (String day : DAYS) {
+                addModel(list, detached, day);
+            }
         } finally {
             realm.close();
         }
@@ -48,9 +54,7 @@ public class WeeklyScheduleProvider {
     public static void updateIsOnAir(String day, boolean isOnAir) {
         Realm realm = Realm.getDefaultInstance();
         realm.executeTransaction(r -> {
-            RealmWeeklySchedule schedule = r.where(RealmWeeklySchedule.class)
-                    .equalTo("playerId", AndoWSignageApp.PLAYER_ID)
-                    .findFirst();
+            RealmWeeklySchedule schedule = ensureScheduleInTransaction(r);
             if (schedule == null) {
                 return;
             }
@@ -62,9 +66,7 @@ public class WeeklyScheduleProvider {
     private static void updateDay(String day, boolean isFrom, String hour, String minute) {
         Realm realm = Realm.getDefaultInstance();
         realm.executeTransaction(r -> {
-            RealmWeeklySchedule schedule = r.where(RealmWeeklySchedule.class)
-                    .equalTo("playerId", AndoWSignageApp.PLAYER_ID)
-                    .findFirst();
+            RealmWeeklySchedule schedule = ensureScheduleInTransaction(r);
             if (schedule == null) {
                 return;
             }
@@ -92,6 +94,34 @@ public class WeeklyScheduleProvider {
         model.setTo(String.valueOf(schedule.getEndHour(day)), String.valueOf(schedule.getEndMinute(day)));
         model.setOnAir(String.valueOf(schedule.isOnAir(day)));
         list.add(model);
+    }
+
+    private static RealmWeeklySchedule ensureScheduleInTransaction(Realm realm) {
+        if (realm == null) {
+            return null;
+        }
+        RealmWeeklySchedule schedule = realm.where(RealmWeeklySchedule.class)
+                .equalTo("playerId", AndoWSignageApp.PLAYER_ID)
+                .findFirst();
+        if (schedule != null) {
+            return schedule;
+        }
+        if (AndoWSignageApp.PLAYER_ID == null) {
+            return null;
+        }
+        schedule = realm.createObject(RealmWeeklySchedule.class, AndoWSignageApp.PLAYER_ID);
+        applyDefaultSchedule(schedule);
+        return schedule;
+    }
+
+    private static void applyDefaultSchedule(RealmWeeklySchedule schedule) {
+        if (schedule == null) {
+            return;
+        }
+        for (String day : DAYS) {
+            schedule.setSchedule(day, 0, 0, 0, 0);
+            schedule.setOnAir(day, true);
+        }
     }
 
     private static int safeParse(String value) {

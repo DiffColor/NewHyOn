@@ -20,7 +20,7 @@ import kr.co.turtlelab.andowsignage.data.update.UpdateQueueLogger;
  */
 public class FTP4JUtil {
     private static final int DEFAULT_BUFFER_SIZE = 2 * 1024 * 1024;
-    private static final int MIN_BUFFER_SIZE = 64 * 1024;
+    private static final int MIN_BUFFER_SIZE = 1 * 1024 * 1024;
 
     private final String host;
     private final int port;

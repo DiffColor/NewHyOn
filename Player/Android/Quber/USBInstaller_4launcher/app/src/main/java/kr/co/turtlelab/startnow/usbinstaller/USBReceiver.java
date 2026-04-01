@@ -41,7 +41,8 @@ public class USBReceiver extends BroadcastReceiver {
     private static final long NOTIFIER_BOOTSTRAP_DELAY_MS = 1200L;
     private static final long MIN_NOTIFIER_VISIBLE_MS = 2500L;
     private static final String STAGING_DIRNAME = "quber_apk_stage";
-    private static final int COPY_BUFFER_SIZE = 64 * 1024;
+    private static final int MIN_COPY_BUFFER_SIZE = 1 * 1024 * 1024;
+    private static final int COPY_BUFFER_SIZE = Math.max(MIN_COPY_BUFFER_SIZE, 2 * 1024 * 1024);
 
     @Override
     public void onReceive(final Context context, Intent intent) {
@@ -177,15 +178,6 @@ public class USBReceiver extends BroadcastReceiver {
 
     @SuppressWarnings("deprecation")
     private File resolveStagingDir(Context context) {
-        File sharedExternalDir = null;
-        try {
-            File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-            if (downloadsDir != null) {
-                sharedExternalDir = new File(downloadsDir, STAGING_DIRNAME);
-            }
-        } catch (Throwable ignore) {
-        }
-
         File externalAppDir = null;
         try {
             File appExternalRoot = context.getExternalFilesDir(null);
@@ -195,25 +187,9 @@ public class USBReceiver extends BroadcastReceiver {
         } catch (Throwable ignore) {
         }
 
-        File internalDir = null;
-        try {
-            internalDir = context.getDir(STAGING_DIRNAME, Context.MODE_WORLD_READABLE);
-        } catch (Throwable ignore) {
-        }
-
-        if (canUseStagingDir(sharedExternalDir)) {
-            Log.d(TAG, "Using shared external staging dir: " + sharedExternalDir.getAbsolutePath());
-            return sharedExternalDir;
-        }
-
         if (canUseStagingDir(externalAppDir)) {
-            Log.d(TAG, "Using app external staging dir: " + externalAppDir.getAbsolutePath());
+            Log.d(TAG, "Using app-scoped external staging dir: " + externalAppDir.getAbsolutePath());
             return externalAppDir;
-        }
-
-        if (canUseStagingDir(internalDir)) {
-            Log.d(TAG, "Using internal staging dir: " + internalDir.getAbsolutePath());
-            return internalDir;
         }
 
         return null;
