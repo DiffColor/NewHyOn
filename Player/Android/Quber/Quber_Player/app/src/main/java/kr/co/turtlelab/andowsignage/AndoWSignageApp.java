@@ -82,7 +82,7 @@ public class AndoWSignageApp extends Application {
 	private File prepareAppRoot() {
 		File appRootDir = resolveAppRootDir(this);
 		if (appRootDir == null) {
-			throw new IllegalStateException("앱 전용 외부 저장소를 사용할 수 없습니다.");
+			throw new IllegalStateException("앱 내부 저장소를 사용할 수 없습니다.");
 		}
 		if (!appRootDir.exists()) {
 			appRootDir.mkdirs();
@@ -202,13 +202,13 @@ public class AndoWSignageApp extends Application {
 			return null;
 		}
 
-		File externalRoot = null;
+		File internalRoot = null;
 		try {
-			externalRoot = context.getExternalFilesDir(null);
+			internalRoot = context.getFilesDir();
 		} catch (Throwable ignore) {
 		}
-		if (externalRoot != null) {
-			return new File(externalRoot, APP_ROOT_DIRNAME);
+		if (internalRoot != null) {
+			return new File(internalRoot, APP_ROOT_DIRNAME);
 		}
 
 		return null;

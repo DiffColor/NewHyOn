@@ -1,6 +1,5 @@
 package kr.co.turtlelab.andowsignage.dataproviders;
 
-import android.os.Environment;
 import android.text.TextUtils;
 import android.util.Log;
 
@@ -460,7 +459,23 @@ public class LocalSettingsProvider {
     }
 
     private static File getBackupFile() {
-        File rootDir = new File(Environment.getExternalStorageDirectory().getPath(), "AndoWSignage");
+        File rootDir = AndoWSignageApp.getAppRootDir();
+        if (rootDir == null) {
+            AndoWSignageApp app = AndoWSignageApp.getApplication();
+            if (app != null) {
+                File internalRoot = null;
+                try {
+                    internalRoot = app.getFilesDir();
+                } catch (Throwable ignore) {
+                }
+                if (internalRoot != null) {
+                    rootDir = new File(internalRoot, "AndoWSignage");
+                }
+            }
+        }
+        if (rootDir == null) {
+            rootDir = new File("AndoWSignage");
+        }
         if (!rootDir.exists() && !rootDir.mkdirs()) {
             Log.w(TAG, "getBackupFile: failed to create backup dir=" + rootDir.getAbsolutePath());
         }

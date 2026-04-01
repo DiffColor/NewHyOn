@@ -40,6 +40,8 @@ public class USBReceiver extends BroadcastReceiver {
     private static final long INSTALL_VERIFY_INTERVAL_MS = 1500L;
     private static final long NOTIFIER_BOOTSTRAP_DELAY_MS = 1200L;
     private static final long MIN_NOTIFIER_VISIBLE_MS = 2500L;
+    private static final boolean INSTALL_APK_DIRECT_FROM_USB = true;
+    private static final boolean ENABLE_LEGACY_STAGING_FALLBACK = false;
     private static final String STAGING_DIRNAME = "quber_apk_stage";
     private static final int MIN_COPY_BUFFER_SIZE = 1 * 1024 * 1024;
     private static final int COPY_BUFFER_SIZE = Math.max(MIN_COPY_BUFFER_SIZE, 2 * 1024 * 1024);
@@ -84,7 +86,7 @@ public class USBReceiver extends BroadcastReceiver {
 
         Log.d(TAG, "Found APKs directory: " + installDir.getAbsolutePath() + ", count=" + apkFiles.size());
         sendMsg(context, WATCHDOG_DISABLE, null);
-        sendMsg(context, INTENT_MSG, "USB 앱 설치를 시작합니다.");
+        sendMsg(context, INTENT_MSG, "앱 설치를 시작합니다.");
         long notifierShownAt = System.currentTimeMillis();
         sleepQuietly(NOTIFIER_BOOTSTRAP_DELAY_MS);
 
@@ -106,43 +108,66 @@ public class USBReceiver extends BroadcastReceiver {
 
         File stagedApk = null;
         try {
+            if (INSTALL_APK_DIRECT_FROM_USB) {
+                boolean installedFromUsb = requestInstall(context, apkFile, apkFile, "원본 경로");
+                if (installedFromUsb || !ENABLE_LEGACY_STAGING_FALLBACK) {
+                    return;
+                }
+
+                sendMsg(context, INTENT_MSG, apkFile.getName() + " 원본 경로 요청 실패로 스테이징 설치를 시도합니다.");
+            }
+
             stagedApk = stageApkForInstall(context, apkFile);
             if (stagedApk == null) {
                 sendMsg(context, INTENT_MSG, apkFile.getName() + " 스테이징에 실패했습니다.");
                 return;
             }
 
-            PackageInfo archiveInfo = SystemUtils.getArchivePackageInfo(context, stagedApk.getAbsolutePath());
-            String displayName = apkFile.getName();
-            if (archiveInfo != null && archiveInfo.applicationInfo != null) {
-                CharSequence label = archiveInfo.applicationInfo.loadLabel(context.getPackageManager());
-                if (label != null && label.length() > 0) {
-                    displayName = label.toString();
-                }
-            }
-
-            sendMsg(context, INTENT_MSG, displayName + " 설치 요청을 전송합니다.");
-
-            boolean sent = QuberInstallAgentClient.requestInstall(context, stagedApk.getAbsolutePath());
-            if (!sent) {
-                sendMsg(context, INTENT_MSG, displayName + " 설치 요청 전송에 실패했습니다.");
-                return;
-            }
-
-            boolean verified = waitForInstall(context, archiveInfo);
-            if (verified) {
-                sendMsg(context, INTENT_MSG, displayName + " 설치가 확인되었습니다.");
-            } else {
-                sendMsg(context, INTENT_MSG, displayName + " 설치 확인이 지연되고 있습니다.");
-            }
+            requestInstall(context, apkFile, stagedApk, "스테이징 경로");
         } finally {
             deleteQuietly(stagedApk);
         }
     }
 
+    private boolean requestInstall(Context context, File sourceApk, File installApk, String installModeLabel) {
+        if (context == null || sourceApk == null || installApk == null || !installApk.isFile()) {
+            return false;
+        }
+
+        PackageInfo archiveInfo = SystemUtils.getArchivePackageInfo(context, installApk.getAbsolutePath());
+        String displayName = resolveDisplayName(context, sourceApk, archiveInfo);
+        sendMsg(context, INTENT_MSG, displayName + " 설치 요청을 전송합니다. (" + installModeLabel + ")");
+
+        boolean sent = QuberInstallAgentClient.requestInstall(context, installApk.getAbsolutePath());
+        if (!sent) {
+            sendMsg(context, INTENT_MSG, displayName + " 설치 요청 전송에 실패했습니다. (" + installModeLabel + ")");
+            return false;
+        }
+
+        boolean verified = waitForInstall(context, archiveInfo);
+        if (verified) {
+            sendMsg(context, INTENT_MSG, displayName + " 설치가 확인되었습니다.");
+            return true;
+        }
+
+        sendMsg(context, INTENT_MSG, displayName + " 설치 확인이 지연되고 있습니다.");
+        return false;
+    }
+
+    private String resolveDisplayName(Context context, File sourceApk, PackageInfo archiveInfo) {
+        String displayName = sourceApk == null ? "" : sourceApk.getName();
+        if (archiveInfo != null && archiveInfo.applicationInfo != null) {
+            CharSequence label = archiveInfo.applicationInfo.loadLabel(context.getPackageManager());
+            if (label != null && label.length() > 0) {
+                displayName = label.toString();
+            }
+        }
+        return displayName;
+    }
+
     @SuppressWarnings("deprecation")
     private File stageApkForInstall(Context context, File sourceApk) {
-        if (context == null || sourceApk == null || !sourceApk.isFile()) {
+        if (context == null || !isInstallableApkFile(sourceApk)) {
             return null;
         }
 
@@ -231,6 +256,32 @@ public class USBReceiver extends BroadcastReceiver {
         String name = sourceApk.getName();
         String sanitized = name.replaceAll("[^A-Za-z0-9._-]", "_");
         return System.currentTimeMillis() + "_" + sanitized;
+    }
+
+    private boolean isInstallableApkFile(File file) {
+        if (file == null || !file.isFile()) {
+            return false;
+        }
+
+        String name = file.getName();
+        if (name == null || name.length() < 1) {
+            return false;
+        }
+
+        if (isIgnoredMetadataFileName(name)) {
+            return false;
+        }
+
+        return name.toLowerCase(Locale.US).endsWith(".apk");
+    }
+
+    private boolean isIgnoredMetadataFileName(String name) {
+        if (name == null || name.length() < 1) {
+            return true;
+        }
+
+        return name.startsWith(".")
+                || "thumbs.db".equalsIgnoreCase(name);
     }
 
     private void copyFile(File source, File target) throws IOException {
@@ -499,7 +550,7 @@ public class USBReceiver extends BroadcastReceiver {
         for (File file : list) {
             if (file.isDirectory()) {
                 collectApkFilesRecursive(file, result);
-            } else if (file.getName().toLowerCase().endsWith(".apk")) {
+            } else if (isInstallableApkFile(file)) {
                 result.add(file);
             }
         }

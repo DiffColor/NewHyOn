@@ -3,7 +3,6 @@ package kr.co.turtlelab.andowsignage;
 import android.app.Application;
 import android.content.Context;
 import android.graphics.Point;
-import android.os.Environment;
 import android.view.Display;
 import android.view.WindowManager;
 
@@ -26,8 +25,8 @@ public class AndoWSignageApp extends Application {
 	
     public enum RP_STATUS { playing, stopped, updating };
     public enum RP_ORDER { updatelist, updateschedule, upgrade, reboot, check, getmac, poweroff, wakeup, clearqueue };
-
-	String APP_ROOT = Environment.getExternalStorageDirectory().getPath() + "/AndoWSignage/";
+	
+	private static final String APP_ROOT_DIRNAME = "AndoWSignage";
 	
 	public static String PLAYER_ID = "";
 	public static String MANAGER_IP = "";
@@ -72,13 +71,26 @@ public class AndoWSignageApp extends Application {
 		super.onCreate();
 		sApp = this;
 		clearShutdownInProgress();
-		initRealm();
+		File appRootDir = prepareAppRoot();
+		setDirPath(appRootDir.getAbsolutePath());
+		initRealm(appRootDir);
 		init();
 	}
 
-	private void initRealm() {
+	private File prepareAppRoot() {
+		File appRootDir = resolveAppRootDir(this);
+		if (appRootDir == null) {
+			throw new IllegalStateException("앱 내부 저장소를 사용할 수 없습니다.");
+		}
+		if (!appRootDir.exists()) {
+			appRootDir.mkdirs();
+		}
+		return appRootDir;
+	}
+
+	private void initRealm(File appRootDir) {
 		Realm.init(this);
-		File realmDir = new File(APP_ROOT);
+		File realmDir = appRootDir;
 		if (!realmDir.exists()) {
 			realmDir.mkdirs();
 		}
@@ -143,8 +155,20 @@ public class AndoWSignageApp extends Application {
 	}
 	
 	private void checkOrCreateFolder() {
-		LocalPathUtils.checkTargetFolders(this, APP_ROOT);
-		setDirPath(APP_ROOT);
+		String appRootPath = getDirPath();
+		if (appRootPath == null || appRootPath.length() < 1) {
+			File appRootDir = getAppRootDir();
+			if (appRootDir != null) {
+				appRootPath = appRootDir.getAbsolutePath();
+				setDirPath(appRootPath);
+			}
+		}
+
+		if (appRootPath == null || appRootPath.length() < 1) {
+			return;
+		}
+
+		LocalPathUtils.checkTargetFolders(this, appRootPath);
 
 		LocalPathUtils.checkTargetFolders(this, LocalPathUtils.getContentsDirPath());
 		LocalPathUtils.checkTargetFolders(this, LocalPathUtils.getFontsDirPath());
@@ -157,6 +181,35 @@ public class AndoWSignageApp extends Application {
 	
 	public static String getDirPath() {
 		return sDir_Path;
+	}
+
+	public static File getAppRootDir() {
+		if (sDir_Path != null && sDir_Path.length() > 0) {
+			return new File(sDir_Path);
+		}
+
+		if (sApp == null) {
+			return null;
+		}
+
+		return resolveAppRootDir(sApp);
+	}
+
+	private static File resolveAppRootDir(Context context) {
+		if (context == null) {
+			return null;
+		}
+
+		File internalRoot = null;
+		try {
+			internalRoot = context.getFilesDir();
+		} catch (Throwable ignore) {
+		}
+		if (internalRoot != null) {
+			return new File(internalRoot, APP_ROOT_DIRNAME);
+		}
+
+		return null;
 	}
 
 	public static void beginShutdown() {

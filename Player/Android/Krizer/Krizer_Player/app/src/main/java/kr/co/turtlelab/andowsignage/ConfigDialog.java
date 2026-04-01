@@ -3,6 +3,8 @@ package kr.co.turtlelab.andowsignage;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.Context;
+import android.media.MediaScannerConnection;
+import android.os.Environment;
 import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
@@ -585,20 +587,22 @@ public class ConfigDialog extends Dialog implements View.OnClickListener {
 			Realm realm = null;
 			try {
 				realm = Realm.getDefaultInstance();
-				String dirPath = AndoWSignageApp.getDirPath();
-				if (dirPath == null || dirPath.isEmpty()) {
-					File fallback = ctx.getExternalFilesDir(null);
-					dirPath = fallback != null ? fallback.getAbsolutePath() : ctx.getFilesDir().getAbsolutePath();
+				File dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+				if (dir == null) {
+					throw new IllegalStateException("다운로드 폴더 경로를 확인할 수 없습니다.");
 				}
-				File dir = new File(dirPath);
-				if (!dir.exists()) {
-					dir.mkdirs();
+				if (!dir.exists() && !dir.mkdirs()) {
+					throw new IllegalStateException("다운로드 폴더를 생성할 수 없습니다: " + dir.getAbsolutePath());
 				}
 				File exportFile = new File(dir, "andow_export.realm");
 				if (exportFile.exists() && !exportFile.delete()) {
 					throw new IllegalStateException("Failed to replace " + exportFile.getAbsolutePath());
 				}
 				realm.writeCopyTo(exportFile);
+				MediaScannerConnection.scanFile(ctx,
+						new String[]{exportFile.getAbsolutePath()},
+						null,
+						null);
 				Toast.makeText(ctx,
 						ctx.getString(R.string.export_realm_success, exportFile.getAbsolutePath()),
 						Toast.LENGTH_LONG).show();

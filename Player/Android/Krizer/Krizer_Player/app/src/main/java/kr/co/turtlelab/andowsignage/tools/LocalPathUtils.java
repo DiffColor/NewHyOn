@@ -84,8 +84,8 @@ public class LocalPathUtils {
 		    }
 		    
 		    file.mkdirs();
-		    
-			AndoWSignage.act.mScanner.notify(file.getAbsolutePath(), false);
+
+			notifyMediaScannerIfNeeded(ctx, file, false);
 			
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -108,11 +108,31 @@ public class LocalPathUtils {
 		    
 		    folder.mkdirs();
 
-			AndoWSignage.act.mScanner.notify(folder.getAbsolutePath(), false);
+			notifyMediaScannerIfNeeded(ctx, folder, false);
 			
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
+	}
+
+	private static void notifyMediaScannerIfNeeded(Context ctx, File file, boolean isDeleted) {
+		if (ctx == null || file == null || AndoWSignage.act == null || AndoWSignage.act.mScanner == null) {
+			return;
+		}
+
+		try {
+			File internalRoot = ctx.getFilesDir();
+			if (internalRoot != null) {
+				String internalPath = internalRoot.getCanonicalPath();
+				String targetPath = file.getCanonicalPath();
+				if (targetPath.equals(internalPath) || targetPath.startsWith(internalPath + File.separator)) {
+					return;
+				}
+			}
+		} catch (Exception ignore) {
+		}
+
+		AndoWSignage.act.mScanner.notify(file.getAbsolutePath(), isDeleted);
 	}
 	
 	public static String convertPathWinToLinux(String path) {
@@ -178,4 +198,3 @@ public class LocalPathUtils {
 		return combinePath(getUSBContentsDirPath(), fname);
 	}
 }
-

@@ -463,13 +463,13 @@ public class LocalSettingsProvider {
         if (rootDir == null) {
             AndoWSignageApp app = AndoWSignageApp.getApplication();
             if (app != null) {
-                File externalRoot = null;
+                File internalRoot = null;
                 try {
-                    externalRoot = app.getExternalFilesDir(null);
+                    internalRoot = app.getFilesDir();
                 } catch (Throwable ignore) {
                 }
-                if (externalRoot != null) {
-                    rootDir = new File(externalRoot, "AndoWSignage");
+                if (internalRoot != null) {
+                    rootDir = new File(internalRoot, "AndoWSignage");
                 }
             }
         }
