@@ -1,6 +1,6 @@
 apply plugin: 'com.android.application'
 
-def defaultKeystoreFile = rootProject.file("../../_shared/platformkeys/krizer/platform.jks")
+def defaultKeystoreFile = rootProject.file("../../../_shared/platformkeys/krizer/platform.jks")
 def keystorePath = System.getenv("ANDROID_KEYSTORE_PATH") ?: defaultKeystoreFile.path
 def keystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: "android"
 def keyAliasValue = System.getenv("ANDROID_KEY_ALIAS") ?: "androiddebugkey"
