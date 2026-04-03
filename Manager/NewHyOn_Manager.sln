@@ -1,15 +1,15 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.2.11415.280 d18.0
+VisualStudioVersion = 18.2.11415.280
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ContentViewer", "ContentViewer\ContentViewer.csproj", "{4C2C4176-D70A-41D5-A615-A7BE2802DE8D}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PageViewer", "PageViewer\PageViewer.csproj", "{78E1A749-D9D9-4E5C-A8BB-4EC348EE59C7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NewHyOn Manager", "C:\Mac\Home\Documents\Workspaces\Products\NewHyOn\Manager\NewHyOn_Manager\NewHyOn Manager.csproj", "{259A5EC2-BBF4-489E-B71D-65B361F4CFFB}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NewHyOn Manager", "NewHyOn_Manager\NewHyOn Manager.csproj", "{259A5EC2-BBF4-489E-B71D-65B361F4CFFB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NewHyOn Settings", "C:\Mac\Home\Documents\Workspaces\Products\NewHyOn\Manager\NewHyOn_Settings\NewHyOn Settings.csproj", "{268F8FD4-FC2E-4F92-AE42-EE6E2D371F0E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NewHyOn Settings", "NewHyOn_Settings\NewHyOn Settings.csproj", "{268F8FD4-FC2E-4F92-AE42-EE6E2D371F0E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

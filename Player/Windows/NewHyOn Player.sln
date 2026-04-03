@@ -1,13 +1,13 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.2.11415.280 d18.0
+VisualStudioVersion = 18.2.11415.280
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConfigPlayer", "ConfigPlayer\ConfigPlayer.csproj", "{D17CE89C-2EC2-46EB-8CF1-E2EC8B38AF23}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mpv.NET", "Mpv.NET\Mpv.NET.csproj", "{B29A6DAA-CB3E-93C7-52D0-AA7F0A53787B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NewHyOn Player", "C:\Mac\Home\Documents\Workspaces\Products\NewHyOn\Player\Windows\NewHyOn_Player\NewHyOn Player.csproj", "{D8609F9F-C4E8-4B44-93BE-454C46F4690D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NewHyOn Player", "NewHyOn_Player\NewHyOn Player.csproj", "{D8609F9F-C4E8-4B44-93BE-454C46F4690D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
