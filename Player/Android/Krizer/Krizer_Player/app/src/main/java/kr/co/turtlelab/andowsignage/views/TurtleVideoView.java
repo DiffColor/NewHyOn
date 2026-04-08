@@ -30,6 +30,7 @@ public class TurtleVideoView extends VideoView {
     private boolean mKeepRatio = true;
     private boolean mLoop = true;
     private MediaPlayer.OnPreparedListener mUserPreparedListener;
+    private MediaPlayer.OnInfoListener mUserInfoListener;
     private MediaPlayer mPreparedPlayer;
     private int mDuration = 0;
     private boolean mMuted = true;
@@ -42,6 +43,7 @@ public class TurtleVideoView extends VideoView {
                 mDuration = mp.getDuration();
                 mp.setLooping(mLoop);
                 applyMutedState(mp);
+                mp.setOnInfoListener(mUserInfoListener);
             } catch (Exception ignored) {
             }
             if (mUserPreparedListener != null) {
@@ -103,6 +105,17 @@ public class TurtleVideoView extends VideoView {
     public void setOnPreparedListener(MediaPlayer.OnPreparedListener l) {
         mUserPreparedListener = l;
         super.setOnPreparedListener(mInternalPreparedListener);
+    }
+
+    public void setMediaInfoListener(MediaPlayer.OnInfoListener l) {
+        mUserInfoListener = l;
+        MediaPlayer player = mPreparedPlayer;
+        if (player != null) {
+            try {
+                player.setOnInfoListener(l);
+            } catch (Exception ignored) {
+            }
+        }
     }
 
     @Override

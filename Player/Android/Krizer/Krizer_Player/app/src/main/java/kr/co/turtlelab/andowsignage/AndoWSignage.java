@@ -139,8 +139,22 @@ public class AndoWSignage extends Activity {
 	private String pendingSchedulePlaylistName = "";
 	private long pendingScheduleSwitchAtMillis = -1L;
 	private long currentPageDeadlineAtMillis = -1L;
+	private long nextStageAllowedAtMillis = 0L;
 	private PageRuntime activePageRuntime;
 	private PageRuntime stagedPageRuntime;
+	private static final long NEXT_LAYOUT_STAGE_DELAY_MS = 600L;
+	private boolean stageNextDeferredPending = false;
+	private final Runnable deferredStageNextRunnable = new Runnable() {
+		@Override
+		public void run() {
+			stageNextDeferredPending = false;
+			if (System.currentTimeMillis() < nextStageAllowedAtMillis) {
+				scheduleDeferredStageNextPlayback(Math.max(0L, nextStageAllowedAtMillis - System.currentTimeMillis()));
+				return;
+			}
+			stageNextPlaybackTarget();
+		}
+	};
 
 	public List<String> usbflist = new ArrayList<>();
 	public List<MediaDataModel> usbmedialist = new ArrayList<>();
@@ -153,7 +167,9 @@ public class AndoWSignage extends Activity {
 		List<ElementDataModel> elements = new ArrayList<>();
 		List<View> views = new ArrayList<>();
 		int pendingPreparationCount = 0;
+		int pendingPlaybackStartCount = 0;
 		boolean prepared = false;
+		boolean startInProgress = false;
 		boolean activateWhenPrepared = false;
 		int nextPageIndexAfterActivate = 0;
 	}
@@ -955,6 +971,8 @@ public class AndoWSignage extends Activity {
 		if (layout_root == null) {
 			return;
 		}
+		layout_root.setClipChildren(true);
+		layout_root.setClipToPadding(true);
 		if (activePageContainer == null) {
 			activePageContainer = createPageContainer();
 		}
@@ -972,8 +990,47 @@ public class AndoWSignage extends Activity {
 		}
 		activePageContainer.setVisibility(View.VISIBLE);
 		stagedPageContainer.setVisibility(View.VISIBLE);
-		stagedPageContainer.setAlpha(0f);
+		moveContainerOnScreen(activePageContainer);
+		moveContainerOffScreen(stagedPageContainer);
 		activePageContainer.bringToFront();
+	}
+
+	private float getOffscreenTranslationX() {
+		int width = layout_root != null ? layout_root.getWidth() : 0;
+		if (width <= 0) {
+			width = AndoWSignageApp.getDeviceWidth();
+		}
+		if (width <= 0) {
+			width = 1920;
+		}
+		return width + 32f;
+	}
+
+	private void moveContainerOnScreen(RelativeLayout container) {
+		if (container == null) {
+			return;
+		}
+		container.setTranslationX(0f);
+		container.setTranslationY(0f);
+		container.setAlpha(1f);
+	}
+
+	private void moveContainerOffScreen(RelativeLayout container) {
+		if (container == null) {
+			return;
+		}
+		container.setTranslationX(getOffscreenTranslationX());
+		container.setTranslationY(0f);
+		container.setAlpha(1f);
+	}
+
+	private void hideContainerImmediately(RelativeLayout container) {
+		if (container == null) {
+			return;
+		}
+		container.setVisibility(View.INVISIBLE);
+		moveContainerOffScreen(container);
+		container.setVisibility(View.VISIBLE);
 	}
 
 	private RelativeLayout createPageContainer() {
@@ -986,6 +1043,7 @@ public class AndoWSignage extends Activity {
 	}
 
 	private void clearPlaybackRuntimeState() {
+		cancelDeferredStageNextPlayback();
 		clearRuntime(activePageRuntime);
 		clearRuntime(stagedPageRuntime);
 		activePageRuntime = null;
@@ -994,6 +1052,7 @@ public class AndoWSignage extends Activity {
 		elementViewList.clear();
 		currentPageName = "";
 		currentPageDeadlineAtMillis = -1L;
+		nextStageAllowedAtMillis = 0L;
 	}
 
 	private void updateLayoutScales(List<ElementDataModel> targetElements, PageDataModel currentPage) {
@@ -1039,7 +1098,7 @@ public class AndoWSignage extends Activity {
 			addElement(runtime.container, runtime.pageName, runtime.views, edm);
 		}
 		runtime.container.setVisibility(View.VISIBLE);
-		runtime.container.setAlpha(0f);
+		moveContainerOffScreen(runtime.container);
 		prepareRuntime(runtime);
 		return runtime;
     }
@@ -1080,10 +1139,7 @@ public class AndoWSignage extends Activity {
 		if (runtime.activateWhenPrepared) {
 			runtime.activateWhenPrepared = false;
 			stopAnim();
-			activateRuntime(runtime);
-			configurePageTimers(runtime.pageData);
-			pageIdx = runtime.nextPageIndexAfterActivate;
-			stageNextPlaybackTarget();
+			beginRuntimeActivation(runtime);
 		}
 	}
 
@@ -1204,6 +1260,17 @@ public class AndoWSignage extends Activity {
 		}
 		for (View view: runtime.views) {
 			if(view instanceof MediaView) {
+				((MediaView) view).showPreparedContent();
+			}
+		}
+	}
+
+	private void startRuntimePlayback(PageRuntime runtime) {
+		if (runtime == null || !runtime.startInProgress) {
+			return;
+		}
+		for (View view: runtime.views) {
+			if(view instanceof MediaView) {
 				((MediaView) view).startPreparedPlayback();
 			}
 		}
@@ -1228,38 +1295,53 @@ public class AndoWSignage extends Activity {
 		if (runtime.container != null) {
 			runtime.container.removeAllViews();
 			runtime.container.setVisibility(View.VISIBLE);
-			runtime.container.setAlpha(0f);
+			moveContainerOffScreen(runtime.container);
 		}
 		runtime.views.clear();
 		runtime.elements.clear();
 		runtime.pendingPreparationCount = 0;
+		runtime.pendingPlaybackStartCount = 0;
 		runtime.prepared = false;
+		runtime.startInProgress = false;
 		runtime.activateWhenPrepared = false;
 	}
 
-	private void activateRuntime(PageRuntime nextRuntime) {
+	private void beginRuntimeActivation(PageRuntime nextRuntime) {
+		if (nextRuntime == null || nextRuntime.startInProgress) {
+			return;
+		}
+		nextRuntime.startInProgress = true;
+		startRuntime(nextRuntime);
+		completeRuntimeActivation(nextRuntime);
+	}
+
+	private void completeRuntimeActivation(PageRuntime nextRuntime) {
 		if (nextRuntime == null) {
 			return;
 		}
 		PageRuntime previousRuntime = activePageRuntime;
-		if (previousRuntime != null) {
-			stopRuntime(previousRuntime);
-		}
 		if (nextRuntime == stagedPageRuntime) {
 			RelativeLayout previousContainer = activePageContainer;
 			activePageContainer = stagedPageContainer;
 			stagedPageContainer = previousContainer;
 			stagedPageRuntime = null;
 		}
-		nextRuntime.container.setAlpha(1f);
 		nextRuntime.container.setVisibility(View.VISIBLE);
+		moveContainerOnScreen(nextRuntime.container);
 		nextRuntime.container.bringToFront();
 		activePageRuntime = nextRuntime;
 		syncActiveViews(activePageRuntime);
-		startRuntime(activePageRuntime);
-		if (stagedPageContainer != null) {
-			stagedPageContainer.setVisibility(View.VISIBLE);
-			stagedPageContainer.setAlpha(0f);
+		configurePageTimers(nextRuntime.pageData);
+		pageIdx = nextRuntime.nextPageIndexAfterActivate;
+		if (previousRuntime == null || previousRuntime == nextRuntime) {
+			startRuntimePlayback(nextRuntime);
+		} else {
+			startRuntimePlayback(nextRuntime);
+			hideContainerImmediately(previousRuntime.container);
+			stopRuntime(previousRuntime);
+		}
+		if (previousRuntime != null && previousRuntime != nextRuntime && stagedPageContainer != null) {
+			moveContainerOffScreen(stagedPageContainer);
 			stagedPageContainer.removeAllViews();
 		}
 		if (previousRuntime != null && previousRuntime != nextRuntime) {
@@ -1267,9 +1349,24 @@ public class AndoWSignage extends Activity {
 			previousRuntime.views.clear();
 			previousRuntime.elements.clear();
 			previousRuntime.prepared = false;
+			previousRuntime.startInProgress = false;
 			previousRuntime.activateWhenPrepared = false;
 			previousRuntime.pendingPreparationCount = 0;
+			previousRuntime.pendingPlaybackStartCount = 0;
 		}
+		nextStageAllowedAtMillis = 0L;
+		nextRuntime.startInProgress = false;
+	}
+
+	private void cancelDeferredStageNextPlayback() {
+		stageNextDeferredPending = false;
+		mPostRunHandler.removeCallbacks(deferredStageNextRunnable);
+	}
+
+	private void scheduleDeferredStageNextPlayback(long delayMs) {
+		cancelDeferredStageNextPlayback();
+		stageNextDeferredPending = true;
+		mPostRunHandler.postDelayed(deferredStageNextRunnable, Math.max(0L, delayMs));
 	}
 
 	private void requestRuntimeActivation(PageRuntime runtime, int nextPageIndex) {
@@ -1279,10 +1376,7 @@ public class AndoWSignage extends Activity {
 		runtime.nextPageIndexAfterActivate = nextPageIndex;
 		if (runtime.prepared) {
 			stopAnim();
-			activateRuntime(runtime);
-			configurePageTimers(runtime.pageData);
-			pageIdx = nextPageIndex;
-			stageNextPlaybackTarget();
+			beginRuntimeActivation(runtime);
 			return;
 		}
 		runtime.activateWhenPrepared = true;
@@ -1373,9 +1467,7 @@ public class AndoWSignage extends Activity {
 			}
 		}
 		refreshSchedulePlaybackState(System.currentTimeMillis());
-		if (!maybeSwitchScheduledPlayback(System.currentTimeMillis())) {
-			stageNextPlaybackTarget();
-		}
+		maybeSwitchScheduledPlayback(System.currentTimeMillis());
 		checkReadyQueue();
 		if (debugOverlayVisible) {
 			refreshDebugOverlay();
@@ -1410,7 +1502,6 @@ public class AndoWSignage extends Activity {
 			}
 
 			if(pageDataList.size() == 1 && pageIdx == 1 && activePageRuntime != null) {
-				stageNextPlaybackTarget();
 				return;
 			}
 

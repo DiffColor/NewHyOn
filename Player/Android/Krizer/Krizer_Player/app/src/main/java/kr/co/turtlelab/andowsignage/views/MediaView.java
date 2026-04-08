@@ -41,6 +41,10 @@ public class MediaView extends RelativeLayout {
         void onPrepared(MediaView view);
     }
 
+    public interface PlaybackReadyCallback {
+        void onPlaybackReady(MediaView view);
+    }
+
     List<MediaDataModel> cdmList;
 
     long tick = 0;
@@ -62,6 +66,7 @@ public class MediaView extends RelativeLayout {
     boolean s_isFirst = true;
     private static final long IMAGE_CROSSFADE_DURATION_MS = 240;
     private boolean initialPrepared = false;
+    private boolean preparedContentShown = false;
     private boolean preparedPlaybackStarted = false;
     private boolean waitingForPreparedAdvance = false;
     private CONTENT_TYPE preparedInitialType = CONTENT_TYPE.Image;
@@ -70,6 +75,15 @@ public class MediaView extends RelativeLayout {
     private CONTENT_TYPE preparedNextType = CONTENT_TYPE.Image;
     private String preparedNextPath = "";
     private PreparationCallback pendingPreparationCallback;
+    private PlaybackReadyCallback pendingPlaybackReadyCallback;
+    private boolean playbackReadyNotified = false;
+    private static final long PLAYBACK_READY_FALLBACK_MS = 300L;
+    private final Runnable playbackReadyFallbackRunnable = new Runnable() {
+        @Override
+        public void run() {
+            notifyPlaybackReady();
+        }
+    };
 
     DisplayImageOptions imgOpt;
     private static final ExecutorService loopExecutor = Executors.newCachedThreadPool();
@@ -125,6 +139,7 @@ public class MediaView extends RelativeLayout {
         addView(imgView1, params);
         addView(imgView2, params);
         addView(webView, params);
+        restoreVisibleOutputs();
     }
 
     private void setViewEvents() {
@@ -181,9 +196,13 @@ public class MediaView extends RelativeLayout {
     }
 
     public void runPlaylist() {
+        preparedContentShown = false;
         preparedPlaybackStarted = false;
         waitingForPreparedAdvance = false;
         initialPrepared = false;
+        pendingPlaybackReadyCallback = null;
+        playbackReadyNotified = false;
+        removeCallbacks(playbackReadyFallbackRunnable);
         s_isFirst = true;
         mLoopPlay = new LoopPlay();
         mLoopPlay.executeOnExecutor(loopExecutor);
@@ -192,8 +211,12 @@ public class MediaView extends RelativeLayout {
     public void prepareInitialContent(PreparationCallback callback) {
         pendingPreparationCallback = callback;
         initialPrepared = false;
+        preparedContentShown = false;
         preparedPlaybackStarted = false;
         waitingForPreparedAdvance = false;
+        pendingPlaybackReadyCallback = null;
+        playbackReadyNotified = false;
+        removeCallbacks(playbackReadyFallbackRunnable);
         tick = 0;
         contentIdx = 0;
         s_isFirst = true;
@@ -231,30 +254,34 @@ public class MediaView extends RelativeLayout {
     }
 
     public void startPreparedPlayback() {
+        startPreparedPlayback(null);
+    }
+
+    public void startPreparedPlayback(PlaybackReadyCallback callback) {
         if (preparedPlaybackStarted) {
+            if (callback != null) {
+                callback.onPlaybackReady(this);
+            }
             return;
         }
         preparedPlaybackStarted = true;
+        pendingPlaybackReadyCallback = callback;
+        playbackReadyNotified = false;
+        removeCallbacks(playbackReadyFallbackRunnable);
         tick = 0;
         manual = false;
         s_isFirst = false;
         s_usedType = preparedInitialType;
 
-        switch (preparedInitialType) {
-            case Image:
-                showPreparedImage();
-                break;
-
-            case Video:
-                showPreparedVideo();
-                break;
-
-            default:
-                break;
+        if (cdmList == null || cdmList.isEmpty()) {
+            notifyPlaybackReady();
+            return;
         }
 
-        if (cdmList == null || cdmList.isEmpty()) {
-            return;
+        if (preparedInitialType == CONTENT_TYPE.Video) {
+            startPreparedVideoPlayback();
+        } else {
+            notifyPlaybackReady();
         }
 
         if (cdmList.size() == 1) {
@@ -271,6 +298,33 @@ public class MediaView extends RelativeLayout {
         mLoopPlay.executeOnExecutor(loopExecutor);
     }
 
+    public void showPreparedContent() {
+        if (preparedContentShown) {
+            return;
+        }
+        setVisibility(View.VISIBLE);
+        resetViewPosition(this);
+        restoreVisibleOutputs();
+        preparedContentShown = true;
+        tick = 0;
+        manual = false;
+        s_isFirst = false;
+        s_usedType = preparedInitialType;
+
+        switch (preparedInitialType) {
+            case Image:
+                showPreparedImage();
+                break;
+
+            case Video:
+                showPreparedVideoFrame();
+                break;
+
+            default:
+                break;
+        }
+    }
+
     public void stopPlaylist() {
         try {
             if (videoView.isPlaying()) {
@@ -282,9 +336,13 @@ public class MediaView extends RelativeLayout {
             mStopTaskRunnable.run();
             mPopContentRunnable.run();
             initialPrepared = false;
+            preparedContentShown = false;
             preparedPlaybackStarted = false;
             waitingForPreparedAdvance = false;
             pendingPreparationCallback = null;
+            pendingPlaybackReadyCallback = null;
+            playbackReadyNotified = false;
+            removeCallbacks(playbackReadyFallbackRunnable);
         }
     }
 
@@ -576,6 +634,7 @@ public class MediaView extends RelativeLayout {
     }
 
     private void showImageWithCrossfade(final String filePath, boolean immediate, final CONTENT_TYPE nextType, final String nextPath, boolean fadeOverVideo, final Runnable endAction) {
+        restoreVisibleOutputs();
         final ImageView currentView = getVisibleImageView();
         final ImageView preloadedView = findPreloadedImageView(filePath, currentView);
         final ImageView nextView = preloadedView != null ? preloadedView : getHiddenImageView(currentView);
@@ -782,14 +841,17 @@ public class MediaView extends RelativeLayout {
 
     private void stopVideoPlayback() {
         try {
+            videoView.setMediaInfoListener(null);
             videoView.stopPlayback();
         } catch (Exception e) {
         } finally {
             videoView.setVisibility(View.GONE);
+            resetViewPosition(videoView);
         }
     }
 
     private void showVideoWithImageFade(final String videoPath, final boolean muted, final CONTENT_TYPE nextType, final String nextPath) {
+        restoreVisibleOutputs();
         String normalizedPath = normalizeLocalVideoPath(videoPath);
         if (!isPlayableLocalVideo(normalizedPath)) {
             Log.w(TAG, "showVideoWithImageFade: invalid video file. path=" + normalizedPath);
@@ -911,6 +973,7 @@ public class MediaView extends RelativeLayout {
     }
 
     private void prepareInitialImage(final String filePath, final CONTENT_TYPE nextType, final String nextPath) {
+        restoreVisibleOutputs();
         final ImageView target = imgView1;
         final ImageView preloadTarget = imgView2;
         if (target == null) {
@@ -950,6 +1013,7 @@ public class MediaView extends RelativeLayout {
                                      final boolean muted,
                                      final CONTENT_TYPE nextType,
                                      final String nextPath) {
+        restoreVisibleOutputs();
         String normalizedPath = normalizeLocalVideoPath(videoPath);
         if (!isPlayableLocalVideo(normalizedPath)) {
             initialPrepared = true;
@@ -957,6 +1021,7 @@ public class MediaView extends RelativeLayout {
             return;
         }
 
+        videoView.setMediaInfoListener(null);
         videoView.setAlpha(0f);
         videoView.setVisibility(View.VISIBLE);
         videoView.setMuted(muted);
@@ -981,7 +1046,9 @@ public class MediaView extends RelativeLayout {
     }
 
     private void showPreparedImage() {
+        restoreVisibleOutputs();
         hideAllImageOverlays();
+        videoView.setMediaInfoListener(null);
         stopVideoPlayback();
         if (imgView1 != null) {
             imgView1.setAlpha(1f);
@@ -990,15 +1057,32 @@ public class MediaView extends RelativeLayout {
         }
     }
 
-    private void showPreparedVideo() {
+    private void showPreparedVideoFrame() {
+        restoreVisibleOutputs();
         hideAllImageOverlays();
+        videoView.setMediaInfoListener(null);
         videoView.setVisibility(View.VISIBLE);
         videoView.setAlpha(1f);
         try {
+            videoView.pause();
             videoView.seekTo(1);
         } catch (Exception ignored) {
         }
+    }
+
+    private void startPreparedVideoPlayback() {
+        restoreVisibleOutputs();
+        videoView.setMediaInfoListener(new MediaPlayer.OnInfoListener() {
+            @Override
+            public boolean onInfo(MediaPlayer mp, int what, int extra) {
+                if (what == MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START) {
+                    notifyPlaybackReady();
+                }
+                return false;
+            }
+        });
         videoView.start();
+        schedulePlaybackReadyFallback();
     }
 
     private void notifyPrepared() {
@@ -1007,6 +1091,41 @@ public class MediaView extends RelativeLayout {
         if (callback != null) {
             callback.onPrepared(this);
         }
+    }
+
+    private void schedulePlaybackReadyFallback() {
+        removeCallbacks(playbackReadyFallbackRunnable);
+        postDelayed(playbackReadyFallbackRunnable, PLAYBACK_READY_FALLBACK_MS);
+    }
+
+    private void notifyPlaybackReady() {
+        if (playbackReadyNotified) {
+            return;
+        }
+        playbackReadyNotified = true;
+        removeCallbacks(playbackReadyFallbackRunnable);
+        PlaybackReadyCallback callback = pendingPlaybackReadyCallback;
+        pendingPlaybackReadyCallback = null;
+        if (callback != null) {
+            callback.onPlaybackReady(this);
+        }
+    }
+
+    private void restoreVisibleOutputs() {
+        setVisibility(View.VISIBLE);
+        resetViewPosition(this);
+        resetViewPosition(videoView);
+        resetViewPosition(imgView1);
+        resetViewPosition(imgView2);
+        resetViewPosition(webView);
+    }
+
+    private void resetViewPosition(View view) {
+        if (view == null) {
+            return;
+        }
+        view.setTranslationX(0f);
+        view.setTranslationY(0f);
     }
 
 }
