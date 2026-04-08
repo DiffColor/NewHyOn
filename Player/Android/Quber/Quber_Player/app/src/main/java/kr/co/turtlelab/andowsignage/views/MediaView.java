@@ -37,6 +37,10 @@ import kr.co.turtlelab.andowsignage.tools.SystemUtils;
 public class MediaView extends RelativeLayout {
     private static final String TAG = "MediaView";
 
+    public interface PreparationCallback {
+        void onPrepared(MediaView view);
+    }
+
     List<MediaDataModel> cdmList;
 
     long tick = 0;
@@ -57,6 +61,15 @@ public class MediaView extends RelativeLayout {
 
     boolean s_isFirst = true;
     private static final long IMAGE_CROSSFADE_DURATION_MS = 240;
+    private boolean initialPrepared = false;
+    private boolean preparedPlaybackStarted = false;
+    private boolean waitingForPreparedAdvance = false;
+    private CONTENT_TYPE preparedInitialType = CONTENT_TYPE.Image;
+    private boolean preparedInitialMuted = true;
+    private String preparedInitialPath = "";
+    private CONTENT_TYPE preparedNextType = CONTENT_TYPE.Image;
+    private String preparedNextPath = "";
+    private PreparationCallback pendingPreparationCallback;
 
     DisplayImageOptions imgOpt;
     private static final ExecutorService loopExecutor = Executors.newCachedThreadPool();
@@ -168,7 +181,92 @@ public class MediaView extends RelativeLayout {
     }
 
     public void runPlaylist() {
+        preparedPlaybackStarted = false;
+        waitingForPreparedAdvance = false;
+        initialPrepared = false;
         s_isFirst = true;
+        mLoopPlay = new LoopPlay();
+        mLoopPlay.executeOnExecutor(loopExecutor);
+    }
+
+    public void prepareInitialContent(PreparationCallback callback) {
+        pendingPreparationCallback = callback;
+        initialPrepared = false;
+        preparedPlaybackStarted = false;
+        waitingForPreparedAdvance = false;
+        tick = 0;
+        contentIdx = 0;
+        s_isFirst = true;
+
+        if (cdmList == null || cdmList.isEmpty()) {
+            notifyPrepared();
+            return;
+        }
+
+        int currentIndex = 0;
+        int nextIndex = cdmList.size() > 1 ? 1 : 0;
+        MediaDataModel current = cdmList.get(currentIndex);
+        MediaDataModel next = cdmList.get(nextIndex);
+        preparedInitialType = safeContentType(current);
+        preparedInitialMuted = current != null && current.isMuted();
+        preparedInitialPath = current == null ? "" : current.getFilePath();
+        preparedNextType = safeContentType(next);
+        preparedNextPath = next == null ? "" : next.getFilePath();
+        playTime = current == null ? 1 : current.getPlayTimeSec();
+
+        switch (preparedInitialType) {
+            case Image:
+                prepareInitialImage(preparedInitialPath, preparedNextType, preparedNextPath);
+                break;
+
+            case Video:
+                prepareInitialVideo(preparedInitialPath, preparedInitialMuted, preparedNextType, preparedNextPath);
+                break;
+
+            default:
+                initialPrepared = true;
+                notifyPrepared();
+                break;
+        }
+    }
+
+    public void startPreparedPlayback() {
+        if (preparedPlaybackStarted) {
+            return;
+        }
+        preparedPlaybackStarted = true;
+        tick = 0;
+        manual = false;
+        s_isFirst = false;
+        s_usedType = preparedInitialType;
+
+        switch (preparedInitialType) {
+            case Image:
+                showPreparedImage();
+                break;
+
+            case Video:
+                showPreparedVideo();
+                break;
+
+            default:
+                break;
+        }
+
+        if (cdmList == null || cdmList.isEmpty()) {
+            return;
+        }
+
+        if (cdmList.size() == 1) {
+            contentIdx = 0;
+            if (preparedInitialType == CONTENT_TYPE.Video) {
+                videoView.setLoop(true);
+            }
+            return;
+        }
+
+        contentIdx = 1;
+        waitingForPreparedAdvance = true;
         mLoopPlay = new LoopPlay();
         mLoopPlay.executeOnExecutor(loopExecutor);
     }
@@ -183,6 +281,10 @@ public class MediaView extends RelativeLayout {
         } finally {
             mStopTaskRunnable.run();
             mPopContentRunnable.run();
+            initialPrepared = false;
+            preparedPlaybackStarted = false;
+            waitingForPreparedAdvance = false;
+            pendingPreparationCallback = null;
         }
     }
 
@@ -255,6 +357,15 @@ public class MediaView extends RelativeLayout {
         @Override
         protected Void doInBackground(Void... params) {
             int j = 0;
+            if (waitingForPreparedAdvance) {
+                waitingForPreparedAdvance = false;
+                try {
+                    synchronized (mLoopPlay) {
+                        mLoopPlay.wait();
+                    }
+                } catch (Exception ignored) {
+                }
+            }
             while (!isCancelled()) {
                 synchronized (cdmList) {
 
@@ -786,6 +897,116 @@ public class MediaView extends RelativeLayout {
             return false;
         }
         return true;
+    }
+
+    private CONTENT_TYPE safeContentType(MediaDataModel model) {
+        if (model == null || TextUtils.isEmpty(model.getType())) {
+            return CONTENT_TYPE.Image;
+        }
+        try {
+            return CONTENT_TYPE.valueOf(model.getType());
+        } catch (Exception ignored) {
+            return CONTENT_TYPE.Image;
+        }
+    }
+
+    private void prepareInitialImage(final String filePath, final CONTENT_TYPE nextType, final String nextPath) {
+        final ImageView target = imgView1;
+        final ImageView preloadTarget = imgView2;
+        if (target == null) {
+            initialPrepared = true;
+            notifyPrepared();
+            return;
+        }
+        target.animate().cancel();
+        target.setAlpha(0f);
+        target.setVisibility(View.VISIBLE);
+        target.setTag(filePath);
+        ImageLoader.getInstance().displayImage(
+                LocalPathUtils.getUriStringFromAbsPath(filePath),
+                new SafeImageViewAware(target),
+                imgOpt,
+                new SimpleImageLoadingListener() {
+                    @Override
+                    public void onLoadingComplete(String imageUri, View view, Bitmap loadedImage) {
+                        if (nextType == CONTENT_TYPE.Image && preloadTarget != null) {
+                            preloadTarget.setAlpha(0f);
+                            preloadTarget.setVisibility(View.VISIBLE);
+                            preloadNextImageIfNeeded(nextType, nextPath, preloadTarget);
+                        }
+                        initialPrepared = true;
+                        notifyPrepared();
+                    }
+
+                    @Override
+                    public void onLoadingFailed(String imageUri, View view, FailReason failReason) {
+                        initialPrepared = true;
+                        notifyPrepared();
+                    }
+                });
+    }
+
+    private void prepareInitialVideo(final String videoPath,
+                                     final boolean muted,
+                                     final CONTENT_TYPE nextType,
+                                     final String nextPath) {
+        String normalizedPath = normalizeLocalVideoPath(videoPath);
+        if (!isPlayableLocalVideo(normalizedPath)) {
+            initialPrepared = true;
+            notifyPrepared();
+            return;
+        }
+
+        videoView.setAlpha(0f);
+        videoView.setVisibility(View.VISIBLE);
+        videoView.setMuted(muted);
+        videoView.setLoop(cdmList == null || cdmList.size() <= 1);
+        videoView.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
+            @Override
+            public void onPrepared(MediaPlayer mp) {
+                try {
+                    videoView.pause();
+                    videoView.seekTo(1);
+                } catch (Exception ignored) {
+                }
+                if (nextType == CONTENT_TYPE.Image) {
+                    preloadNextImageIfNeeded(nextType, nextPath, imgView1 == null ? null : imgView1 == getVisibleImageView() ? imgView2 : imgView1);
+                }
+                initialPrepared = true;
+                notifyPrepared();
+            }
+        });
+        videoView.setVideoPath(normalizedPath);
+        videoView.start();
+    }
+
+    private void showPreparedImage() {
+        hideAllImageOverlays();
+        stopVideoPlayback();
+        if (imgView1 != null) {
+            imgView1.setAlpha(1f);
+            imgView1.setVisibility(View.VISIBLE);
+            imgView1.bringToFront();
+        }
+    }
+
+    private void showPreparedVideo() {
+        hideAllImageOverlays();
+        videoView.setVisibility(View.VISIBLE);
+        videoView.setAlpha(1f);
+        try {
+            videoView.seekTo(1);
+        } catch (Exception ignored) {
+        }
+        videoView.start();
+    }
+
+    private void notifyPrepared() {
+        PreparationCallback callback = pendingPreparationCallback;
+        pendingPreparationCallback = null;
+        if (callback != null) {
+            callback.onPrepared(this);
+        }
     }
 
 }

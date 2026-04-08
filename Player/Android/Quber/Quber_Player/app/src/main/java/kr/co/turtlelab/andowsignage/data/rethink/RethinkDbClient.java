@@ -523,7 +523,11 @@ public class RethinkDbClient {
             } catch (Exception ex) {
             Log.e(TAG, "RethinkDbClient: operation failed", ex); }
             deleteQueueRecord(queueId, playerId);
-            updatePlayerUpdateFields(playerId, statusText, Math.max(0f, Math.min(1f, percent / 100f)), errorMessage, retryCount, nextRetryAt);
+            if (UpdateQueueContract.Status.DONE.equalsIgnoreCase(normalizedStatus)) {
+                clearPlayerUpdateFields(playerId);
+            } else {
+                updatePlayerUpdateFields(playerId, statusText, Math.max(0f, Math.min(1f, percent / 100f)), errorMessage, retryCount, nextRetryAt);
+            }
             return;
         }
         ensureUpdateQueueTable();
@@ -1282,6 +1286,28 @@ public class RethinkDbClient {
         long nextTicks = toDotNetLocalTicks(nextAttemptTicks);
         values.put("UpdateNext", nextTicks);
         values.put("UpdateNextEpochMillis", nextAttemptTicks);
+        try {
+            R.db(DATABASE)
+                    .table(TABLE_PLAYER)
+                    .get(playerId)
+                    .update(values)
+                    .runNoReply(getConnection());
+        } catch (Exception ex) {
+            Log.e(TAG, "RethinkDbClient: operation failed", ex);
+        }
+    }
+
+    private void clearPlayerUpdateFields(String playerId) {
+        if (TextUtils.isEmpty(playerId)) {
+            return;
+        }
+        Map<String, Object> values = new HashMap<>();
+        values.put("UpdateStatus", "");
+        values.put("UpdateProgress", 0f);
+        values.put("UpdateError", "");
+        values.put("UpdateRetry", 0);
+        values.put("UpdateNext", 0L);
+        values.put("UpdateNextEpochMillis", 0L);
         try {
             R.db(DATABASE)
                     .table(TABLE_PLAYER)

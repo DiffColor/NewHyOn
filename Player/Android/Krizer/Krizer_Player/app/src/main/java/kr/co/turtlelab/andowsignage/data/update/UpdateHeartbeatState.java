@@ -112,9 +112,10 @@ public final class UpdateHeartbeatState {
     }
 
     private static boolean shouldSendNormalHeartbeatNow(String normalizedStatus, boolean isScheduleQueue) {
-        // DONE/FAILED/CANCELLED 는 sendProgress()에서 이미 최종 상태를 별도로 올린다.
-        // 여기서 일반 heartbeat(process=0)를 즉시 다시 보내면 UI에서 진행률이 되감긴 것처럼 보일 수 있다.
-        return isScheduleQueue;
+        // 재생이 이미 복귀한 뒤에도 updating heartbeat가 유지되지 않도록
+        // 완료 시점에는 일반 heartbeat를 즉시 한 번 더 보낸다.
+        return isScheduleQueue
+                || UpdateQueueContract.Status.DONE.equalsIgnoreCase(normalizedStatus);
     }
 
     private static boolean isActiveUpdateStatus(String rawStatus) {
