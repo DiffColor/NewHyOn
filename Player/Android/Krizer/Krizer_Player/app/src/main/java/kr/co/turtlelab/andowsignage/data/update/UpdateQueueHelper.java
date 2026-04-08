@@ -108,6 +108,9 @@ public final class UpdateQueueHelper {
                 ref.set(r.copyFromRealm(queue));
                 UpdateQueueLogger.log("Queue #" + nextId + " enqueued type=" + type);
             });
+            if (ref.get() != null) {
+                sendStatus(ref.get());
+            }
             return ref.get();
         } finally {
             realm.close();
