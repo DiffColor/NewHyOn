@@ -1385,7 +1385,7 @@ public class AndoWSignage extends Activity {
 		DataSyncManager manager = new DataSyncManager();
 		boolean applied = false;
 		while (UpdateQueueProvider.hasReadyQueue()) {
-			if (manager.applyNextReadyQueue()) {
+			if (manager.applyNextReadyQueue(false)) {
 				applied = true;
 			} else {
 				break;
@@ -1404,7 +1404,7 @@ public class AndoWSignage extends Activity {
 			return;
 		}
 		DataSyncManager manager = new DataSyncManager();
-		boolean applied = manager.applyNextReadyQueue();
+		boolean applied = manager.applyNextReadyQueue(false);
 		if (applied) {
 			pendingUpdateReady = false;
 			SystemUtils.runOnUiThread(() -> updateAndRestart(true));

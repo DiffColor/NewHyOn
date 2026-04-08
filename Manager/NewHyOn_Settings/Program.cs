@@ -27,7 +27,6 @@ namespace AndoWSettings
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show("매니저 방화벽 허용앱 등록에 실패했습니다.\r\n" + ex.Message);
                 }
 
                 Application.EnableVisualStyles();

@@ -1005,6 +1005,10 @@ public class DataSyncManager {
     }
 
     private boolean applyQueueEntry(RealmUpdateQueue queue) {
+        return applyQueueEntry(queue, true);
+    }
+
+    private boolean applyQueueEntry(RealmUpdateQueue queue, boolean requestUiRestart) {
         if (queue == null) {
             return false;
         }
@@ -1068,11 +1072,13 @@ public class DataSyncManager {
                 if (!TextUtils.isEmpty(playlistName)) {
                     kr.co.turtlelab.andowsignage.dataproviders.PlayerDataProvider.updateCurrentPListName(playlistName);
                 }
-                SystemUtils.runOnUiThread(() -> {
-                    if (AndoWSignage.act != null) {
-                        AndoWSignage.act.updateAndRestart(true);
-                    }
-                });
+                if (requestUiRestart) {
+                    SystemUtils.runOnUiThread(() -> {
+                        if (AndoWSignage.act != null) {
+                            AndoWSignage.act.updateAndRestart(true);
+                        }
+                    });
+                }
             }
         } else {
             long delay = UpdateQueueContract.RetryPolicy.getDelayMs(queue.getRetryCount() + 1);
@@ -1091,6 +1097,10 @@ public class DataSyncManager {
 
     public boolean applyNextReadyQueue() {
         return UpdateQueueProvider.consumeNextReadyQueue(this::applyQueueEntry);
+    }
+
+    public boolean applyNextReadyQueue(boolean requestUiRestart) {
+        return UpdateQueueProvider.consumeNextReadyQueue(queue -> applyQueueEntry(queue, requestUiRestart));
     }
 
     public void resumePendingQueues() {
