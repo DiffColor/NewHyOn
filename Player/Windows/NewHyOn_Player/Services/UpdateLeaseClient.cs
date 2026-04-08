@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using AndoW.Shared;
 using RethinkDb.Driver;
 using RethinkDb.Driver.Ast;
@@ -16,6 +17,7 @@ namespace NewHyOnPlayer
         private readonly object syncRoot = new object();
         private readonly string host;
         private Connection connection;
+        private bool ensuredTable;
 
         public UpdateLeaseClient(string managerHost)
         {
@@ -207,8 +209,38 @@ namespace NewHyOnPlayer
                     .Port(28015)
                     .User("admin", "turtle04!9")
                     .Connect();
+                EnsureTable();
 
                 return connection;
+            }
+        }
+
+        private void EnsureTable()
+        {
+            if (ensuredTable)
+            {
+                return;
+            }
+
+            try
+            {
+                var conn = connection;
+                if (conn == null || !conn.Open)
+                {
+                    return;
+                }
+
+                var tables = R.Db(DatabaseName).TableList().Run<List<string>>(conn);
+                if (tables == null || !tables.Contains(TableName))
+                {
+                    R.Db(DatabaseName).TableCreate(TableName).Run(conn);
+                }
+
+                ensuredTable = true;
+            }
+            catch
+            {
+                ensuredTable = false;
             }
         }
 
@@ -228,6 +260,8 @@ namespace NewHyOnPlayer
                     }
                     connection = null;
                 }
+
+                ensuredTable = false;
             }
         }
     }

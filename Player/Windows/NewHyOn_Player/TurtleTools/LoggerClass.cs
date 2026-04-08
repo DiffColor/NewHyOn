@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 
 
@@ -6,6 +7,18 @@ namespace TurtleTools
 {
     public class Logger
     {
+        private static void WriteDebugLine(string message)
+        {
+            try
+            {
+                Debug.WriteLine(message);
+                Trace.WriteLine(message);
+            }
+            catch
+            {
+            }
+        }
+
         public static string GetLogFileName()
         {
             DateTime dt = DateTime.Now;
@@ -47,6 +60,7 @@ namespace TurtleTools
         public static void WriteErrorLog(string msg, string logpath)
         {
             string logMsg = string.Format("[{0}] {1} ------------------- <Error Reported> ------------------.", DateTime.Now, msg);
+            WriteDebugLine(logMsg);
 
             StreamWriter logStream = null;
 
@@ -78,6 +92,7 @@ namespace TurtleTools
         public static void WriteLog(string msg, string logpath)
         {
             string logMsg = string.Format("[{0}] {1}", DateTime.Now, msg);
+            WriteDebugLine(logMsg);
 
             StreamWriter logStream = null;
 
@@ -145,6 +160,7 @@ namespace TurtleTools
             }
 
             string logMsg = string.Format("[{0}] {1}", DateTime.Now, msg);
+            WriteDebugLine(logMsg);
             logStream.WriteLine(logMsg);
             logStream.WriteLine();
             logStream.Flush();

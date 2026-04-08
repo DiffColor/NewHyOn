@@ -1332,8 +1332,11 @@ namespace NewHyOnPlayer
                         g_PageInfoManager.LoadData(playerInfo.PIF_DefaultPlayList);
                         g_PageIndex = 0;
                     }
-
-                    PopPage();
+                    this.Dispatcher.Invoke(DispatcherPriority.Normal,
+                    new Action(() =>
+                    {
+                        PopPage();
+                    }));
                 }
             }
             catch (Exception ex)
@@ -1436,7 +1439,11 @@ namespace NewHyOnPlayer
             g_PageInfoManager.LoadData(playerInfo.PIF_CurrentPlayList);
             g_PageIndex = 0;
             StopTickTimer();
-            PopPage();
+            this.Dispatcher.Invoke(DispatcherPriority.Normal,
+                    new Action(() =>
+                    {
+                        PopPage();
+                    }));
             ApplyScheduleTransition();
             isScheduleSwitching = false;
             return true;
@@ -1451,6 +1458,21 @@ namespace NewHyOnPlayer
 
             pendingPlaylistReload = playlistName;
             pendingPlaylistReloadReason = reason ?? string.Empty;
+            string timing = g_LocalSettingsManager?.Settings?.SwitchTiming ?? "Immediately";
+
+            if (timing.Equals("Immediately", StringComparison.OrdinalIgnoreCase))
+            {
+                pendingPlaylistReload = string.Empty;
+                pendingPlaylistReloadReason = string.Empty;
+                UpdateCurrentPageListName(playlistName);
+                StopTickTimer();
+                this.Dispatcher.Invoke(DispatcherPriority.Normal,
+                    new Action(() =>
+                    {
+                        PopPage();
+                    }));
+                return;
+            }
 
             string stateKey = $"PENDING|{pendingPlaylistReload}|{pendingPlaylistReloadReason}";
             if (!string.Equals(lastPlaylistReloadStateKey, stateKey, StringComparison.Ordinal))
@@ -1505,7 +1527,11 @@ namespace NewHyOnPlayer
             g_PageInfoManager.LoadData(current);
             g_PageIndex = 0;
             StopTickTimer();
-            PopPage();
+            this.Dispatcher.Invoke(DispatcherPriority.Normal,
+                    new Action(() =>
+                    {
+                        PopPage();
+                    }));
             ApplyScheduleTransition();
             return true;
         }
@@ -1892,6 +1918,7 @@ namespace NewHyOnPlayer
                             {
                                 return;
                             }
+
                             PopPage();
 
                             return;

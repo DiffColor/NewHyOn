@@ -750,8 +750,6 @@ namespace NewHyOnPlayer
                         playerInfoManager.g_PlayerInfo.PIF_DefaultPlayList = payload.PageList.PLI_PageListName;
                         playerInfoManager.SaveData();
                         owner?.RequestPlaylistReload(payload.PageList.PLI_PageListName, "schedule-update");
-                        owner.UpdateCurrentPageListName(payload.PageList.PLI_PageListName);
-                        owner.PlayFirstPage();
                     }
                     else
                     {
