@@ -576,9 +576,7 @@ public class AndoWSignage extends Activity {
 		//wm.updateViewLayout(orientationChanger, orientationLayout);
 		//orientationChanger.setVisibility(View.VISIBLE);
 	}
-	
-	
-	
+
 	private void getPrefValues() {
 		LocalSettingsModel localSettings = LocalSettingsProvider.getLocalSettings().get(0);
 		if(localSettings != null) {
@@ -909,15 +907,33 @@ public class AndoWSignage extends Activity {
 		
 		layout_root.removeAllViews();
 		elementViewList.clear();
-		updateLayoutScales();
+		updateLayoutScales(findCurrentPageData());
 		setLayout();
     }
 
 
-	private void updateLayoutScales() {
+	private void updateLayoutScales(PageDataModel currentPage) {
+		float[] scales = currentPage == null
+				? AndoWSignageApp.getScaleFactorsForCanvas(1920, 1080)
+				: AndoWSignageApp.getScaleFactorsForCanvas(currentPage.getCanvasWidth(), currentPage.getCanvasHeight());
 		for (ElementDataModel elementValue : elementDataList) {
-			elementValue.updateScales(AndoWSignageApp.getScale(), AndoWSignageApp.getScaleX(), AndoWSignageApp.getScaleY());
+			elementValue.updateScales(scales[0], scales[1], scales[2]);
 		}
+	}
+
+	private PageDataModel findCurrentPageData() {
+		if (currentPageName == null || currentPageName.isEmpty()) {
+			if (pageDataList == null || pageDataList.isEmpty() || pageIdx < 0 || pageIdx >= pageDataList.size()) {
+				return null;
+			}
+			return pageDataList.get(pageIdx);
+		}
+		for (PageDataModel page : pageDataList) {
+			if (page != null && currentPageName.equals(page.getPageName())) {
+				return page;
+			}
+		}
+		return null;
 	}
 	
 	void setLayout() {
@@ -1021,6 +1037,7 @@ public class AndoWSignage extends Activity {
 			currentPageName = pdm.getPageName();
 			
 			elementDataList = ElementDataProvider.getPageElementList(currentPageName);
+			updateLayoutScales(pdm);
 	
 			stopAllElement();
 			layout_root.removeAllViews();

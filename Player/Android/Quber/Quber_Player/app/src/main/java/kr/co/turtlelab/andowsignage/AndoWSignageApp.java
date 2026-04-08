@@ -123,10 +123,29 @@ public class AndoWSignageApp extends Application {
 	}
 	
 	private static void setScaleFactors() {
-        float[] scales = CanvasUtils.getScaleFactors(fixed_base_width, fixed_base_height, sDevice_Width, sDevice_Height);
+		boolean isLandscapeDevice = sDevice_Width >= sDevice_Height;
+		int baseWidth = isLandscapeDevice ? fixed_base_width : fixed_base_height;
+		int baseHeight = isLandscapeDevice ? fixed_base_height : fixed_base_width;
+        float[] scales = CanvasUtils.getScaleFactors(baseWidth, baseHeight, sDevice_Width, sDevice_Height);
         sScale = scales[0];
         sScale_X = scales[1];
         sScale_Y = scales[2];
+	}
+
+	public static float[] getScaleFactorsForCanvas(double baseWidth, double baseHeight) {
+		int safeBaseWidth = (int)Math.round(baseWidth);
+		int safeBaseHeight = (int)Math.round(baseHeight);
+		if (safeBaseWidth <= 0 || safeBaseHeight <= 0) {
+			safeBaseWidth = fixed_base_width;
+			safeBaseHeight = fixed_base_height;
+		}
+		float scaleXFactor = safeBaseWidth / (fixed_base_width * 1.0f);
+		float scaleYFactor = safeBaseHeight / (fixed_base_height * 1.0f);
+		float scaleFactor = Math.max(scaleXFactor, scaleYFactor);
+		if (scaleFactor <= 0f) {
+			scaleFactor = 1.0f;
+		}
+		return new float[] { scaleFactor, scaleXFactor, scaleYFactor };
 	}
 	
 	public static float getScale() {

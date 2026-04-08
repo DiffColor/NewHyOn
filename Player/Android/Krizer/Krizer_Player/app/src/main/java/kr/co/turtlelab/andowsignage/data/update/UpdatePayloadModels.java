@@ -78,6 +78,8 @@ public final class UpdatePayloadModels {
         public int PlaySecond;
         public int Volume;
         public boolean Landscape;
+        public double CanvasWidth = 1920;
+        public double CanvasHeight = 1080;
         public List<ContractElementPayload> Elements = new ArrayList<>();
     }
 

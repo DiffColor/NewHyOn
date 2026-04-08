@@ -6,6 +6,7 @@ import android.media.MediaPlayer;
 import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.text.TextUtils;
+import android.util.Log;
 import android.util.AttributeSet;
 import android.widget.VideoView;
 
@@ -69,23 +70,25 @@ public class TurtleVideoView extends VideoView {
 
     @Override
     public void setVideoPath(String path) {
-        fpath = path;
+        String normalizedPath = normalizeLocalVideoPath(path);
+        fpath = normalizedPath;
         Uri uri = null;
         mDuration = 0;
         try {
-            Uri parsed = TextUtils.isEmpty(path) ? null : Uri.parse(path);
+            Uri parsed = TextUtils.isEmpty(normalizedPath) ? null : Uri.parse(normalizedPath);
             String scheme = parsed == null ? null : parsed.getScheme();
-            if (TextUtils.isEmpty(scheme) && !TextUtils.isEmpty(path) && path.startsWith("/")) {
-                uri = Uri.fromFile(new File(path));
+            if (TextUtils.isEmpty(scheme) && !TextUtils.isEmpty(normalizedPath) && normalizedPath.startsWith("/")) {
+                uri = Uri.fromFile(new File(normalizedPath));
                 super.setVideoURI(uri);
             } else {
-                super.setVideoPath(path);
+                super.setVideoPath(normalizedPath);
             }
         } catch (Exception ex) {
-            super.setVideoPath(path);
+            Log.w(TAG, "setVideoPath: fallback to raw path. path=" + normalizedPath, ex);
+            super.setVideoPath(normalizedPath);
         }
         fUri = uri;
-        onMediaPlayerChanged(uri, path);
+        onMediaPlayerChanged(uri, normalizedPath);
     }
 
     @Override
@@ -238,5 +241,19 @@ public class TurtleVideoView extends VideoView {
         }
 
         setMeasuredDimension(width, height);
+    }
+
+    private String normalizeLocalVideoPath(String path) {
+        if (TextUtils.isEmpty(path)) {
+            return path;
+        }
+        try {
+            Uri parsed = Uri.parse(path);
+            if ("file".equalsIgnoreCase(parsed.getScheme()) && !TextUtils.isEmpty(parsed.getPath())) {
+                return parsed.getPath();
+            }
+        } catch (Exception ignored) {
+        }
+        return path;
     }
 }

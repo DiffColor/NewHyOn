@@ -33,6 +33,8 @@ public class PlaylistDataProvider {
                         String.valueOf(realmPage.getPlaySecond()));
                 pdm.setVolume(String.valueOf(realmPage.getVolume()));
                 pdm.setGUID(realmPage.getPageId());
+                pdm.setLandscape(realmPage.isLandscape());
+                pdm.setCanvasSize(realmPage.getCanvasWidth(), realmPage.getCanvasHeight());
                 pageList.add(pdm);
             }
         } finally {

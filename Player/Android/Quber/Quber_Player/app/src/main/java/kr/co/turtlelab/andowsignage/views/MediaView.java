@@ -9,6 +9,8 @@ import android.media.MediaPlayer;
 import android.media.MediaPlayer.OnCompletionListener;
 import android.media.MediaPlayer.OnErrorListener;
 import android.os.AsyncTask;
+import android.text.TextUtils;
+import android.util.Log;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.ImageView.ScaleType;
@@ -20,6 +22,7 @@ import com.nostra13.universalimageloader.core.assist.FailReason;
 import com.nostra13.universalimageloader.core.assist.ImageScaleType;
 import com.nostra13.universalimageloader.core.listener.SimpleImageLoadingListener;
 
+import java.io.File;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -32,6 +35,7 @@ import kr.co.turtlelab.andowsignage.tools.LocalPathUtils;
 import kr.co.turtlelab.andowsignage.tools.SystemUtils;
 
 public class MediaView extends RelativeLayout {
+    private static final String TAG = "MediaView";
 
     List<MediaDataModel> cdmList;
 
@@ -675,6 +679,15 @@ public class MediaView extends RelativeLayout {
     }
 
     private void showVideoWithImageFade(final String videoPath, final boolean muted, final CONTENT_TYPE nextType, final String nextPath) {
+        String normalizedPath = normalizeLocalVideoPath(videoPath);
+        if (!isPlayableLocalVideo(normalizedPath)) {
+            Log.w(TAG, "showVideoWithImageFade: invalid video file. path=" + normalizedPath);
+            hideAllImageOverlays();
+            stopVideoPlayback();
+            popContent();
+            return;
+        }
+
         final ImageView overlay = getVisibleImageView();
         final boolean useFakeOverlay = overlay == null;
         final ImageView fakeOverlay;
@@ -730,7 +743,7 @@ public class MediaView extends RelativeLayout {
             }
         });
 
-        videoView.setVideoPath(videoPath);
+        videoView.setVideoPath(normalizedPath);
         videoView.start();
 
         if (nextType == CONTENT_TYPE.Image) {
@@ -740,6 +753,39 @@ public class MediaView extends RelativeLayout {
             }
             preloadNextImageIfNeeded(nextType, nextPath, target);
         }
+    }
+
+    private String normalizeLocalVideoPath(String videoPath) {
+        if (TextUtils.isEmpty(videoPath)) {
+            return videoPath;
+        }
+        try {
+            android.net.Uri parsed = android.net.Uri.parse(videoPath);
+            if ("file".equalsIgnoreCase(parsed.getScheme()) && !TextUtils.isEmpty(parsed.getPath())) {
+                return parsed.getPath();
+            }
+        } catch (Exception ignored) {
+        }
+        return videoPath;
+    }
+
+    private boolean isPlayableLocalVideo(String videoPath) {
+        if (TextUtils.isEmpty(videoPath)) {
+            return false;
+        }
+        if (!videoPath.startsWith("/")) {
+            return true;
+        }
+        File file = new File(videoPath);
+        if (!file.exists()) {
+            Log.w(TAG, "isPlayableLocalVideo: file missing. path=" + videoPath);
+            return false;
+        }
+        if (file.length() <= 0) {
+            Log.w(TAG, "isPlayableLocalVideo: file empty. path=" + videoPath);
+            return false;
+        }
+        return true;
     }
 
 }

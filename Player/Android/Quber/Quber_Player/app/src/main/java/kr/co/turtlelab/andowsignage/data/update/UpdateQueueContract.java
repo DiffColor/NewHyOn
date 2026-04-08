@@ -79,6 +79,8 @@ public final class UpdateQueueContract {
         public int playSecond;
         public int volume;
         public boolean landscape;
+        public double canvasWidth;
+        public double canvasHeight;
         public List<ElementPayload> elements = new ArrayList<>();
     }
 

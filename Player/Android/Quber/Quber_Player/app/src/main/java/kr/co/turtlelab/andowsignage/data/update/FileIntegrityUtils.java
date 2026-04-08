@@ -19,6 +19,9 @@ public final class FileIntegrityUtils {
         if (file == null || !file.exists()) {
             return false;
         }
+        if (file.length() <= 0L) {
+            return false;
+        }
         if (expectedSize > 0 && file.length() != expectedSize) {
             return false;
         }

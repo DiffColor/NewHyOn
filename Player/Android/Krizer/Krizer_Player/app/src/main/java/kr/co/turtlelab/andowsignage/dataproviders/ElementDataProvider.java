@@ -30,6 +30,7 @@ public class ElementDataProvider {
                 return elementList;
             }
             RealmPage detached = realm.copyFromRealm(realmPage);
+            float[] scales = AndoWSignageApp.getScaleFactorsForCanvas(detached.getCanvasWidth(), detached.getCanvasHeight());
             List<RealmElement> realmElements = detached.getElements();
             Collections.sort(realmElements, new Comparator<RealmElement>() {
                 @Override
@@ -39,7 +40,7 @@ public class ElementDataProvider {
             });
             for (RealmElement realmElement : realmElements) {
                 ElementDataModel evm = new ElementDataModel();
-                evm.setScales(AndoWSignageApp.getScale(), AndoWSignageApp.getScaleX(), AndoWSignageApp.getScaleY());
+                evm.setScales(scales[0], scales[1], scales[2]);
                 evm.setid(String.valueOf(elementList.size()));
                 evm.setName(realmElement.getName());
                 evm.setType(realmElement.getType());

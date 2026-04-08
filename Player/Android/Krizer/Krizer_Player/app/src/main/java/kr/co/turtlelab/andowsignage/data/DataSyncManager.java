@@ -369,6 +369,8 @@ public class DataSyncManager {
                 realmPage.setPlaySecond(page.getPlaySecond());
                 realmPage.setVolume(page.getVolume());
                 realmPage.setLandscape(page.isLandscape());
+                realmPage.setCanvasWidth(page.getCanvasWidth() > 0 ? page.getCanvasWidth() : (page.isLandscape() ? 1920 : 1080));
+                realmPage.setCanvasHeight(page.getCanvasHeight() > 0 ? page.getCanvasHeight() : (page.isLandscape() ? 1080 : 1920));
 
                 RealmList<RealmElement> realmElements = new RealmList<>();
                         if (page.getElements() != null) {
@@ -657,6 +659,7 @@ public class DataSyncManager {
             result.playerLandscape = contract.PlayerLandscape;
             result.playlistId = contract.PlaylistId;
             result.playlistName = contract.PlaylistName;
+            Map<String, UpdatePayloadModels.PageInfoClass> payloadPages = indexPayloadPages(payload);
             if (contract.Pages != null) {
                 for (UpdatePayloadModels.ContractPagePayload page : contract.Pages) {
                     UpdateQueueContract.PagePayload pageEntry = new UpdateQueueContract.PagePayload();
@@ -668,6 +671,9 @@ public class DataSyncManager {
                     pageEntry.playSecond = page.PlaySecond;
                     pageEntry.volume = page.Volume;
                     pageEntry.landscape = page.Landscape;
+                    UpdatePayloadModels.PageInfoClass rawPage = payloadPages.get(page.PageId);
+                    pageEntry.canvasWidth = page.CanvasWidth > 0 ? page.CanvasWidth : getCanvasWidth(rawPage, page.Landscape);
+                    pageEntry.canvasHeight = page.CanvasHeight > 0 ? page.CanvasHeight : getCanvasHeight(rawPage, page.Landscape);
                     if (page.Elements != null) {
                         for (UpdatePayloadModels.ContractElementPayload element : page.Elements) {
                             UpdateQueueContract.ElementPayload elementEntry = new UpdateQueueContract.ElementPayload();
@@ -740,6 +746,8 @@ public class DataSyncManager {
             pageEntry.playSecond = page.PIC_PlaytimeSecond;
             pageEntry.volume = page.PIC_Volume;
             pageEntry.landscape = page.PIC_IsLandscape;
+            pageEntry.canvasWidth = getCanvasWidth(page, page.PIC_IsLandscape);
+            pageEntry.canvasHeight = getCanvasHeight(page, page.PIC_IsLandscape);
             if (page.PIC_Elements != null) {
                 for (UpdatePayloadModels.ElementInfoClass element : page.PIC_Elements) {
                     UpdateQueueContract.ElementPayload elementEntry = new UpdateQueueContract.ElementPayload();
@@ -1223,6 +1231,8 @@ public class DataSyncManager {
                 realmPage.setPlaySecond(page.playSecond);
                 realmPage.setVolume(page.volume);
                 realmPage.setLandscape(page.landscape);
+                realmPage.setCanvasWidth(page.canvasWidth > 0 ? page.canvasWidth : (page.landscape ? 1920 : 1080));
+                realmPage.setCanvasHeight(page.canvasHeight > 0 ? page.canvasHeight : (page.landscape ? 1080 : 1920));
 
                 RealmList<RealmElement> realmElements = new RealmList<>();
                 if (page.elements != null) {
@@ -1503,6 +1513,33 @@ public class DataSyncManager {
             return LocalPathUtils.getContentsDirPath();
         }
         return LocalPathUtils.getContentPath(fileName);
+    }
+
+    private Map<String, UpdatePayloadModels.PageInfoClass> indexPayloadPages(UpdatePayloadModels.UpdatePayload payload) {
+        Map<String, UpdatePayloadModels.PageInfoClass> index = new HashMap<>();
+        if (payload == null || payload.Pages == null) {
+            return index;
+        }
+        for (UpdatePayloadModels.PageInfoClass page : payload.Pages) {
+            if (page != null && !TextUtils.isEmpty(page.PIC_GUID)) {
+                index.put(page.PIC_GUID, page);
+            }
+        }
+        return index;
+    }
+
+    private double getCanvasWidth(UpdatePayloadModels.PageInfoClass page, boolean landscape) {
+        if (page != null && page.PIC_CanvasWidth > 0) {
+            return page.PIC_CanvasWidth;
+        }
+        return landscape ? 1920 : 1080;
+    }
+
+    private double getCanvasHeight(UpdatePayloadModels.PageInfoClass page, boolean landscape) {
+        if (page != null && page.PIC_CanvasHeight > 0) {
+            return page.PIC_CanvasHeight;
+        }
+        return landscape ? 1080 : 1920;
     }
 
     private ApplyBackup createApplyBackup() {

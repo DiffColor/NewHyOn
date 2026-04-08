@@ -9,6 +9,9 @@ public class PageDataModel {
 	String PIC_PlaytimeSecond = "0";
 	String PIC_Volume = "0";
 	String PIC_GUID = "";
+	double PIC_CanvasWidth = 1920;
+	double PIC_CanvasHeight = 1080;
+	boolean PIC_IsLandscape = true;
 	
 	long playTimeSec = 0;
 	
@@ -48,6 +51,15 @@ public class PageDataModel {
 	public void setGUID(String guid) {
 		PIC_GUID = guid;
 	}
+
+	public void setCanvasSize(double width, double height) {
+		PIC_CanvasWidth = width > 0 ? width : 1920;
+		PIC_CanvasHeight = height > 0 ? height : 1080;
+	}
+
+	public void setLandscape(boolean landscape) {
+		PIC_IsLandscape = landscape;
+	}
 	
 	/*
 	 * Getter Methods
@@ -70,5 +82,17 @@ public class PageDataModel {
 	
 	public String getGUID() {
 		return PIC_GUID;
+	}
+
+	public double getCanvasWidth() {
+		return PIC_CanvasWidth > 0 ? PIC_CanvasWidth : (PIC_IsLandscape ? 1920 : 1080);
+	}
+
+	public double getCanvasHeight() {
+		return PIC_CanvasHeight > 0 ? PIC_CanvasHeight : (PIC_IsLandscape ? 1080 : 1920);
+	}
+
+	public boolean isLandscape() {
+		return PIC_IsLandscape;
 	}
 }

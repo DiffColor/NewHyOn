@@ -16,6 +16,8 @@ public class RealmPage extends RealmObject {
     private int playSecond;
     private int volume;
     private boolean landscape;
+    private double canvasWidth = 1920;
+    private double canvasHeight = 1080;
     private RealmList<RealmElement> elements;
 
     public String getPageId() {
@@ -88,6 +90,22 @@ public class RealmPage extends RealmObject {
 
     public void setLandscape(boolean landscape) {
         this.landscape = landscape;
+    }
+
+    public double getCanvasWidth() {
+        return canvasWidth;
+    }
+
+    public void setCanvasWidth(double canvasWidth) {
+        this.canvasWidth = canvasWidth;
+    }
+
+    public double getCanvasHeight() {
+        return canvasHeight;
+    }
+
+    public void setCanvasHeight(double canvasHeight) {
+        this.canvasHeight = canvasHeight;
     }
 
     public RealmList<RealmElement> getElements() {

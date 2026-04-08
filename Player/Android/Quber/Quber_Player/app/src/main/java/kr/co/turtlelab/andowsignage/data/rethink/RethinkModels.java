@@ -95,6 +95,10 @@ public final class RethinkModels {
         private int volume;
         @SerializedName("PIC_IsLandscape")
         private boolean landscape;
+        @SerializedName("PIC_CanvasWidth")
+        private double canvasWidth = 1920;
+        @SerializedName("PIC_CanvasHeight")
+        private double canvasHeight = 1080;
         @SerializedName("PIC_Elements")
         private List<ElementInfoRecord> elements = new ArrayList<>();
 
@@ -124,6 +128,14 @@ public final class RethinkModels {
 
         public boolean isLandscape() {
             return landscape;
+        }
+
+        public double getCanvasWidth() {
+            return canvasWidth;
+        }
+
+        public double getCanvasHeight() {
+            return canvasHeight;
         }
 
         public List<ElementInfoRecord> getElements() {

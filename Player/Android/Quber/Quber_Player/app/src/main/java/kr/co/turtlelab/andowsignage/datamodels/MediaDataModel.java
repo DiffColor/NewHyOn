@@ -1,5 +1,8 @@
 package kr.co.turtlelab.andowsignage.datamodels;
 
+import android.net.Uri;
+import android.text.TextUtils;
+
 import java.io.File;
 
 import kr.co.turtlelab.andowsignage.tools.LocalPathUtils;
@@ -26,8 +29,18 @@ public class MediaDataModel {
 	}
 
 	public void setFilePath(String fpath) {
-		fileName = new File(fpath).getName();
-		filePath = fpath;
+		String normalizedPath = fpath;
+		if (!TextUtils.isEmpty(fpath)) {
+			try {
+				Uri parsed = Uri.parse(fpath);
+				if ("file".equalsIgnoreCase(parsed.getScheme()) && !TextUtils.isEmpty(parsed.getPath())) {
+					normalizedPath = parsed.getPath();
+				}
+			} catch (Exception ignored) {
+			}
+		}
+		fileName = new File(normalizedPath).getName();
+		filePath = normalizedPath;
 	}
 
 	public void setFileNamePath(String fname, String fpath) {
