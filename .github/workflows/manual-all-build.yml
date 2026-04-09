@@ -263,11 +263,11 @@ jobs:
             "platform-tools" "platforms;android-22" "build-tools;29.0.2"
           echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
 
-      - name: Setup JDK 11 for Gradle
+      - name: Setup JDK 17 for Gradle
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '11'
+          java-version: '17'
 
       - name: Build Player Android release assets
         run: |
@@ -324,11 +324,11 @@ jobs:
             "platform-tools" "platforms;android-22" "build-tools;29.0.2"
           echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
 
-      - name: Setup JDK 11 for Gradle
+      - name: Setup JDK 17 for Gradle
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '11'
+          java-version: '17'
 
       - name: Build Notifier Android release assets
         run: |
@@ -385,11 +385,11 @@ jobs:
             "platform-tools" "platforms;android-22" "build-tools;29.0.2"
           echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
 
-      - name: Setup JDK 11 for Gradle
+      - name: Setup JDK 17 for Gradle
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '11'
+          java-version: '17'
 
       - name: Build USBInstaller Android release assets
         run: |
@@ -446,11 +446,11 @@ jobs:
             "platform-tools" "platforms;android-22" "build-tools;29.0.2"
           echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
 
-      - name: Setup JDK 11 for Gradle
+      - name: Setup JDK 17 for Gradle
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '11'
+          java-version: '17'
 
       - name: Build TurtleLauncher Android release asset
         run: |
@@ -507,11 +507,11 @@ jobs:
             "platform-tools" "platforms;android-22" "build-tools;29.0.2"
           echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
 
-      - name: Setup JDK 11 for Gradle
+      - name: Setup JDK 17 for Gradle
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '11'
+          java-version: '17'
 
       - name: Build WatchDog Android release asset
         run: |
