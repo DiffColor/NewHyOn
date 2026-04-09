@@ -930,6 +930,7 @@ public class AndoWSignage extends Activity {
 	
 	public void stopAndRemoveAllViews() {
 		stopTimerAndElements();
+		stopAnim();
 		layout_root.removeAllViews();
 		clearPlaybackRuntimeState();
 		pageIdx = 0;
@@ -1019,6 +1020,7 @@ public class AndoWSignage extends Activity {
 		View decorView = act.getWindow().getDecorView();
 		AndoWSignageApp.updateDisplaySize(decorView.getWidth(), decorView.getHeight());
 
+		stopAnim();
 		layout_root.removeAllViews();
 		clearPlaybackRuntimeState();
 		ensurePageContainersAttached();
@@ -1882,6 +1884,7 @@ public class AndoWSignage extends Activity {
 
 	void RunUSBP() {
 		stopAllElement();
+		stopAnim();
 		layout_root.removeAllViews();
 		clearPlaybackRuntimeState();
 		System.gc();

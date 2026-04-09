@@ -327,9 +327,7 @@ public class MediaView extends RelativeLayout {
 
     public void stopPlaylist() {
         try {
-            if (videoView.isPlaying()) {
-                videoView.stopPlayback();
-            }
+            stopVideoPlayback();
         } catch (Exception e) {
 
         } finally {
@@ -344,6 +342,12 @@ public class MediaView extends RelativeLayout {
             playbackReadyNotified = false;
             removeCallbacks(playbackReadyFallbackRunnable);
         }
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        stopPlaylist();
+        super.onDetachedFromWindow();
     }
 
     public void count() {
