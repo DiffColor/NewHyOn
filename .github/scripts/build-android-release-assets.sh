@@ -106,11 +106,13 @@ build_gradle_release_from_find() {
   cp "$apk_path" "$output_dir/$output_name"
 }
 
-build_quber_and_krizer_pair() {
+build_quber_quber4k_krizer_triplet() {
   local quber_root="$1"
-  local krizer_root="$2"
-  local pair_prefix="$3"
+  local quber4k_root="$2"
+  local krizer_root="$3"
+  local pair_prefix="$4"
   local quber_keystore="Player/Android/_shared/platformkeys/quber/platform.jks"
+  local quber4k_keystore="Player/Android/_shared/platformkeys/quber4k/platform.jks"
   local krizer_keystore="Player/Android/_shared/platformkeys/krizer/platform.jks"
 
   build_gradle_release \
@@ -119,6 +121,16 @@ build_quber_and_krizer_pair() {
     "app/build/outputs/apk/release/app-release.apk" \
     "${pair_prefix}-quber.apk" \
     "$quber_keystore" \
+    "zbqj2636" \
+    "quber" \
+    "zbqj2636"
+
+  build_gradle_release \
+    "$quber4k_root" \
+    ":app:assembleRelease" \
+    "app/build/outputs/apk/release/app-release.apk" \
+    "${pair_prefix}-quber4k.apk" \
+    "$quber4k_keystore" \
     "zbqj2636" \
     "quber" \
     "zbqj2636"
@@ -136,20 +148,23 @@ build_quber_and_krizer_pair() {
 
 case "$target" in
   player)
-    build_quber_and_krizer_pair \
+    build_quber_quber4k_krizer_triplet \
       "Player/Android/Quber/Quber_Player" \
+      "Player/Android/Quber4k/Quber_Player" \
       "Player/Android/Krizer/Krizer_Player" \
       "$artifact_prefix"
     ;;
   notifier)
-    build_quber_and_krizer_pair \
+    build_quber_quber4k_krizer_triplet \
       "Player/Android/Quber/Notifier" \
+      "Player/Android/Quber4k/Notifier" \
       "Player/Android/Krizer/Notifier" \
       "$artifact_prefix"
     ;;
   usbinstaller)
-    build_quber_and_krizer_pair \
+    build_quber_quber4k_krizer_triplet \
       "Player/Android/Quber/USBInstaller_4launcher" \
+      "Player/Android/Quber4k/USBInstaller_4launcher" \
       "Player/Android/Krizer/USBInstaller_4launcher" \
       "$artifact_prefix"
     ;;

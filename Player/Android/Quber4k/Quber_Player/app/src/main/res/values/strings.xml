@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+	<string name="app_version">v2.56</string>
+	
+    <string name="app_name">NewHyOn Signage</string>
+
+	<string name="settings1">기기 설정</string>
+	<string name="settings2">운영 시간 설정</string>
+	<string name="settings3">기기 등록 설정</string>
+	<string name="ps_item1">기기 이름 : </string>
+	<string name="ps_item2">연결 주소 : </string>
+	<string name="ps_item3">기기 주소\r\n(직접 입력) : </string>
+	<string name="ps_item5">화면 비율 유지</string>
+	<string name="ps_item_switch_content">현재 콘텐츠가 끝난 뒤 전환</string>
+	<string name="ps_item6">기기 코드 : </string>
+	<string name="ps_item7">확인 번호 : </string>
+
+	<string name="config_noti_name">NewHyOn Configuration</string>
+	<string name="config_noti_desc">Touch Me!!</string>
+	
+	<string name="confirm">적용</string>
+	<string name="hint1">Player_123</string>
+	<string name="hint_server_address">주소 입력</string>
+	<string name="export_realm_button">설정 백업</string>
+	<string name="export_realm_success">설정 백업 완료: %1$s</string>
+	<string name="export_realm_fail">설정 백업 실패: %1$s</string>
+
+</resources>

@@ -1,0 +1,68 @@
+apply plugin: 'com.android.application'
+apply plugin: 'realm-android'
+
+def defaultKeystoreFile = rootProject.file("../../_shared/platformkeys/quber4k/platform.jks")
+def keystorePath = System.getenv("ANDROID_KEYSTORE_PATH") ?: defaultKeystoreFile.path
+def keystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: "zbqj2636"
+def keyAliasValue = System.getenv("ANDROID_KEY_ALIAS") ?: "quber"
+def keyPasswordValue = System.getenv("ANDROID_KEY_PASSWORD") ?: "zbqj2636"
+
+android {
+    ndkVersion "26.1.10909125"
+    namespace "kr.co.turtlelab.andowsignage"
+    signingConfigs {
+        debug {
+            storeFile file(keystorePath)
+            storePassword keystorePassword
+            keyAlias keyAliasValue
+            keyPassword keyPasswordValue
+        }
+        release {
+            storeFile file(keystorePath)
+            storePassword keystorePassword
+            keyAlias keyAliasValue
+            keyPassword keyPasswordValue
+        }
+    }
+    compileSdk 22
+
+    defaultConfig {
+        applicationId "kr.co.turtlelab.andowsignage"
+        minSdk 17
+        targetSdk 17
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
+        }
+    }
+    buildFeatures {
+        aidl true
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    lint {
+        disable += 'ExpiredTargetSdkVersion'
+    }
+}
+
+repositories {
+    flatDir {
+        dirs 'libs'
+    }
+}
+
+dependencies {
+    implementation 'com.android.support:support-v4:22.0.0'
+    implementation 'com.google.code.gson:gson:2.8.5'
+    implementation files('libs/ftp4j-1.7.2.jar')
+    implementation files('libs/universal-image-loader-1.9.3.jar')
+    implementation files('libs/commons-io-2.6.jar')
+    implementation 'com.rethinkdb:rethinkdb-driver:2.4.4'
+    implementation 'com.microsoft.signalr:signalr:7.0.20'
+}
