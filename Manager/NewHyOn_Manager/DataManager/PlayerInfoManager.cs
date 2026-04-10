@@ -241,6 +241,43 @@ namespace AndoW_Manager
             }
         }
 
+        public void ClearPlaylistReferences(string playlistName)
+        {
+            if (string.IsNullOrWhiteSpace(playlistName))
+            {
+                return;
+            }
+
+            foreach (PlayerInfoClass item in g_PlayerInfoClassList)
+            {
+                if (item == null)
+                {
+                    continue;
+                }
+
+                bool changed = false;
+
+                if (!string.IsNullOrWhiteSpace(item.PIF_CurrentPlayList)
+                    && item.PIF_CurrentPlayList.Equals(playlistName, StringComparison.CurrentCultureIgnoreCase))
+                {
+                    item.PIF_CurrentPlayList = string.Empty;
+                    changed = true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(item.PIF_DefaultPlayList)
+                    && item.PIF_DefaultPlayList.Equals(playlistName, StringComparison.CurrentCultureIgnoreCase))
+                {
+                    item.PIF_DefaultPlayList = string.Empty;
+                    changed = true;
+                }
+
+                if (changed)
+                {
+                    SavePlayer(item);
+                }
+            }
+        }
+
         public void DeleteDataClassInfo(PlayerInfoClass oldCls)
         {
 

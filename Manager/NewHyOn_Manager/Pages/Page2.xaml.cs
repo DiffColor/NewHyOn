@@ -234,6 +234,7 @@ namespace AndoW_Manager
             RefreshPageNameList();
             RefreshPageListOfSelectedPageList();
             MainWindow.Instance.RefreshSavedPageList();
+            Page3.Instance.UpdatePlayListForPlayer();
         }
 
         void UserControl1_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)

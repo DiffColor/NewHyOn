@@ -138,6 +138,8 @@ namespace AndoW_Manager
                 return;
             }
 
+            DataShop.Instance.g_PlayerInfoManager.ClearPlaylistReferences(playListName);
+
             int idx = 0;
 
             foreach (PageListInfoClass item in g_PageListInfoClassList)
@@ -165,6 +167,8 @@ namespace AndoW_Manager
             {
                 return;
             }
+
+            DataShop.Instance.g_PlayerInfoManager.ClearPlaylistReferences(paramCls.PLI_PageListName);
 
             int idx = 0;
 
