@@ -18,9 +18,9 @@ if [[ -z "$sdk_root" ]]; then
   exit 1
 fi
 
-apksigner="$sdk_root/build-tools/29.0.2/apksigner"
-if [[ ! -x "$apksigner" ]]; then
-  echo "apksigner not found: $apksigner" >&2
+apksigner="$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)"
+if [[ -z "$apksigner" || ! -x "$apksigner" ]]; then
+  echo "apksigner not found under: $sdk_root/build-tools" >&2
   exit 1
 fi
 
