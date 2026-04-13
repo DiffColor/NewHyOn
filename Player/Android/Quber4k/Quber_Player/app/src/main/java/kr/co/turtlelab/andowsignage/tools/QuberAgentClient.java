@@ -41,6 +41,7 @@ public final class QuberAgentClient {
     private static final long RESPONSE_TIMEOUT_MS = 6000L;
 
     private static final String CMD_REBOOT = "215001";
+    private static final String CMD_DEVICE_ID_READ = "211036";
     private static final String CMD_SLEEP_MODE_SET = "213017";
     private static final String CMD_SLEEP_MODE_READ = "211028";
     private static final String CMD_ETHERNET_MAC_READ = "211012";
@@ -95,6 +96,18 @@ public final class QuberAgentClient {
             params.put("systemSleepMode", enabled);
         } catch (JSONException ignore) { }
         return sendCommand(CMD_SLEEP_MODE_SET, params, false).success;
+    }
+
+    public String readDeviceId() {
+        QuberResponse resp = sendCommand(CMD_DEVICE_ID_READ, null, true);
+        if (!resp.success || resp.body == null) {
+            return "";
+        }
+        JSONObject params = resp.body.optJSONObject("params");
+        if (params == null) {
+            return "";
+        }
+        return normalizeDeviceId(params.optString("deviceId", ""));
     }
 
     public Boolean readSleepMode() {
@@ -346,6 +359,13 @@ public final class QuberAgentClient {
             return "";
         }
         return mac.trim().toUpperCase(Locale.US);
+    }
+
+    private static String normalizeDeviceId(String deviceId) {
+        if (TextUtils.isEmpty(deviceId)) {
+            return "";
+        }
+        return deviceId.trim();
     }
 
     private static final class QuberResponse {

@@ -40,6 +40,7 @@ import kr.co.turtlelab.andowsignage.data.DataSyncManager;
 import kr.co.turtlelab.andowsignage.data.realm.RealmPlayer;
 import kr.co.turtlelab.andowsignage.data.update.UpdateQueueContract;
 import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
+import kr.co.turtlelab.andowsignage.tools.QuberAgentClient;
 
 /**
  * RethinkDB 에 직접 연결하여 필요한 데이터를 조회한다.
@@ -768,7 +769,11 @@ public class RethinkDbClient {
                 return;
             }
             String ip = resolveLocalIpAddress();
-            String mac = NetworkUtils.getMACAddress();
+            String mac = resolveDeviceUniqueId();
+            if (TextUtils.isEmpty(mac)) {
+                Log.w(TAG, "updateDeviceInfoIfNeeded: device unique id is empty. will retry.");
+                return;
+            }
             String os = "Android " + Build.VERSION.RELEASE;
             updatePlayerDeviceInfo(playerId, ip, mac, os);
             synchronized (deviceInfoLock) {
@@ -781,6 +786,15 @@ public class RethinkDbClient {
             }
         }
     }
+
+    private String resolveDeviceUniqueId() {
+        String deviceId = QuberAgentClient.get().readDeviceId();
+        if (!TextUtils.isEmpty(deviceId)) {
+            return deviceId.trim();
+        }
+        return "";
+    }
+
     public boolean isDeviceInfoSynced() {
         synchronized (deviceInfoLock) {
             return deviceInfoSynced;
@@ -965,7 +979,7 @@ public class RethinkDbClient {
         if (!TextUtils.isEmpty(ip)) {
             payload.put("PIF_IPAddress", ip);
         }
-        String mac = NetworkUtils.getMACAddress();
+        String mac = resolveDeviceUniqueId();
         if (!TextUtils.isEmpty(mac)) {
             payload.put("PIF_MacAddress", mac);
         }
@@ -1234,7 +1248,15 @@ public class RethinkDbClient {
     }
 
     public void fetchInitialWeeklySchedule() {
-        RethinkModels.PlayerInfoRecord player = fetchPlayer(AndoWSignageApp.PLAYER_ID);
+        String ensuredGuid = ensurePlayerGuid();
+        if (TextUtils.isEmpty(ensuredGuid)) {
+            return;
+        }
+
+        RethinkModels.PlayerInfoRecord player = fetchPlayerByGuid(ensuredGuid);
+        if (player == null) {
+            player = fetchPlayer(AndoWSignageApp.PLAYER_ID);
+        }
         if (player == null) {
             return;
         }

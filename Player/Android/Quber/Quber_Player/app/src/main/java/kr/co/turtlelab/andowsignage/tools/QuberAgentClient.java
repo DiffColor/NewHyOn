@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.IBinder;
 import android.os.RemoteException;
+import android.text.TextUtils;
 import android.util.Log;
 
 import net.quber.qubersignageagent.IQuberCallback;
@@ -39,6 +40,7 @@ public final class QuberAgentClient {
     private static final long RESPONSE_TIMEOUT_MS = 2500L;
 
     private static final String CMD_REBOOT = "215001";
+    private static final String CMD_DEVICE_ID_READ = "211036";
     private static final String CMD_SLEEP_MODE_SET = "213017";
     private static final String CMD_SLEEP_MODE_READ = "211028";
     private static final String CMD_HDMI_CABLE_STATE_READ = "211024";
@@ -91,6 +93,14 @@ public final class QuberAgentClient {
             params.put("systemSleepMode", enabled);
         } catch (JSONException ignore) { }
         return sendCommand(CMD_SLEEP_MODE_SET, params, false).success;
+    }
+
+    public String readDeviceId() {
+        QuberResponse resp = sendCommand(CMD_DEVICE_ID_READ, null, true);
+        if (!resp.success || resp.body == null) return "";
+        JSONObject params = resp.body.optJSONObject("params");
+        if (params == null) return "";
+        return normalizeDeviceId(params.optString("deviceId", ""));
     }
 
     public Boolean readSleepMode() {
@@ -306,6 +316,13 @@ public final class QuberAgentClient {
 
     private static String formatTime(int hour, int minute) {
         return String.format(Locale.US, "%02d:%02d", hour, minute);
+    }
+
+    private static String normalizeDeviceId(String deviceId) {
+        if (TextUtils.isEmpty(deviceId)) {
+            return "";
+        }
+        return deviceId.trim();
     }
 
     private static final class QuberResponse {

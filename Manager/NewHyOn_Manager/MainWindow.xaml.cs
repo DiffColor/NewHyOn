@@ -11,6 +11,8 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using AndoW.Shared;
 using TurtleTools;
+using SharedDaySchedule = AndoW.Shared.DaySchedule;
+using SharedWeeklyPlayScheduleInfo = AndoW.Shared.WeeklyPlayScheduleInfo;
 
 
 namespace AndoW_Manager
@@ -427,7 +429,8 @@ namespace AndoW_Manager
                 PlayerName = playerName,
                 GeneratedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
                 SpecialSchedules = schedules,
-                Playlists = playlistPayloads
+                Playlists = playlistPayloads,
+                WeeklySchedule = LoadWeeklyScheduleSnapshot(player.PIF_GUID, playerName)
             };
 
             var payload = new UpdatePayload
@@ -456,6 +459,52 @@ namespace AndoW_Manager
             }
 
             return map.Values.ToList();
+        }
+
+        private static SharedWeeklyPlayScheduleInfo LoadWeeklyScheduleSnapshot(string playerId, string playerName)
+        {
+            var weeklyManager = new WeeklyInfoManagerClass();
+            weeklyManager.InitPlayerInfoListFromDataTable(playerId, playerName);
+            return CloneWeeklySchedule(weeklyManager.CurrentSchedule);
+        }
+
+        private static SharedWeeklyPlayScheduleInfo CloneWeeklySchedule(AndoW_Manager.WeeklyPlayScheduleInfo source)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            return new SharedWeeklyPlayScheduleInfo
+            {
+                Id = source.Id,
+                PlayerID = source.PlayerID,
+                PlayerName = source.PlayerName,
+                MonSch = CloneDaySchedule(source.MonSch),
+                TueSch = CloneDaySchedule(source.TueSch),
+                WedSch = CloneDaySchedule(source.WedSch),
+                ThuSch = CloneDaySchedule(source.ThuSch),
+                FriSch = CloneDaySchedule(source.FriSch),
+                SatSch = CloneDaySchedule(source.SatSch),
+                SunSch = CloneDaySchedule(source.SunSch)
+            };
+        }
+
+        private static SharedDaySchedule CloneDaySchedule(AndoW_Manager.DaySchedule source)
+        {
+            if (source == null)
+            {
+                return SharedDaySchedule.CreateDefault();
+            }
+
+            return new SharedDaySchedule
+            {
+                StartHour = source.StartHour,
+                StartMinute = source.StartMinute,
+                EndHour = source.EndHour,
+                EndMinute = source.EndMinute,
+                IsOnAir = source.IsOnAir
+            };
         }
 
         private static SpecialSchedulePayload MapSpecialSchedule(SpecialScheduleInfoClass schedule)

@@ -11,6 +11,7 @@ namespace AndoW_Manager
     public partial class WeekSchInfoElement : UserControl
     {
         WeeklyDayScheduleInfo g_WeeklyPlayScheduleInfo = new WeeklyDayScheduleInfo();
+        private bool suppressTimeSync = false;
 
         public delegate void UpdateWIFD(WeeklyDayScheduleInfo paramCls);              // Contents Play
         public event UpdateWIFD EventUpdateWIFD;
@@ -19,6 +20,7 @@ namespace AndoW_Manager
         {
             InitializeComponent();
             InitComboBoxes();
+            InitEventHandler();
             WeekStackPanel1.Visibility = Visibility.Visible;
         }
 
@@ -39,6 +41,7 @@ namespace AndoW_Manager
 
         public void DisplayThisElement()
         {
+            suppressTimeSync = true;
             DisplaytimeText.Text = string.Format("{0:D2}:{1:D2} ~ {2:D2}:{3:D2}",
                 g_WeeklyPlayScheduleInfo.StartHour,
                 g_WeeklyPlayScheduleInfo.StartMinute,
@@ -60,7 +63,47 @@ namespace AndoW_Manager
             {
                 DisplaytimeText_Copy.Text = "방송안함";
             }
+            suppressTimeSync = false;
         }
+
+        private void InitEventHandler()
+        {
+            DispStartHourCombo.SelectionChanged += TimeCombo_SelectionChanged;
+            DispStartMinCombo.SelectionChanged += TimeCombo_SelectionChanged;
+            DispEndHourCombo.SelectionChanged += TimeCombo_SelectionChanged;
+            DispEndMinCombo.SelectionChanged += TimeCombo_SelectionChanged;
+        }
+
+        private void TimeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (suppressTimeSync)
+            {
+                return;
+            }
+
+            SyncCurrentSelection();
+        }
+
+        private void SyncCurrentSelection()
+        {
+            if (DispStartHourCombo.SelectedIndex >= 0)
+            {
+                g_WeeklyPlayScheduleInfo.StartHour = DispStartHourCombo.SelectedIndex;
+            }
+            if (DispStartMinCombo.SelectedIndex >= 0)
+            {
+                g_WeeklyPlayScheduleInfo.StartMinute = DispStartMinCombo.SelectedIndex;
+            }
+            if (DispEndHourCombo.SelectedIndex >= 0)
+            {
+                g_WeeklyPlayScheduleInfo.EndHour = DispEndHourCombo.SelectedIndex;
+            }
+            if (DispEndMinCombo.SelectedIndex >= 0)
+            {
+                g_WeeklyPlayScheduleInfo.EndMinute = DispEndMinCombo.SelectedIndex;
+            }
+        }
+
         public void ApplyCurrentTimeTo(WeeklyDayScheduleInfo target)
         {
             if (target == null)
@@ -68,22 +111,13 @@ namespace AndoW_Manager
                 return;
             }
 
-            if (DispStartHourCombo.SelectedIndex >= 0)
-            {
-                target.StartHour = DispStartHourCombo.SelectedIndex;
-            }
-            if (DispStartMinCombo.SelectedIndex >= 0)
-            {
-                target.StartMinute = DispStartMinCombo.SelectedIndex;
-            }
-            if (DispEndHourCombo.SelectedIndex >= 0)
-            {
-                target.EndHour = DispEndHourCombo.SelectedIndex;
-            }
-            if (DispEndMinCombo.SelectedIndex >= 0)
-            {
-                target.EndMinute = DispEndMinCombo.SelectedIndex;
-            }
+            DispStartHourCombo.IsDropDownOpen = false;
+            DispStartMinCombo.IsDropDownOpen = false;
+            DispEndHourCombo.IsDropDownOpen = false;
+            DispEndMinCombo.IsDropDownOpen = false;
+
+            SyncCurrentSelection();
+            target.CopyData(g_WeeklyPlayScheduleInfo, true);
         }
 
         public void UpdateWeekInfo(WeeklyDayScheduleInfo paramCls, bool onlyTime = false)

@@ -591,6 +591,10 @@ public class UpdateManagerService extends Service implements SignalRClientServic
         boolean guidChanged = !isFirstSync && !ensuredGuid.equalsIgnoreCase(previousGuid);
         cachedPlayerGuid = ensuredGuid;
 
+        if (isFirstSync || guidChanged) {
+            client.fetchInitialWeeklySchedule();
+        }
+
         if (guidChanged) {
             syncManager.releasePlayerLease(previousGuid);
             if (recoverCommunication && signalRClient != null) {

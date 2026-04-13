@@ -1234,7 +1234,15 @@ public class RethinkDbClient {
     }
 
     public void fetchInitialWeeklySchedule() {
-        RethinkModels.PlayerInfoRecord player = fetchPlayer(AndoWSignageApp.PLAYER_ID);
+        String ensuredGuid = ensurePlayerGuid();
+        if (TextUtils.isEmpty(ensuredGuid)) {
+            return;
+        }
+
+        RethinkModels.PlayerInfoRecord player = fetchPlayerByGuid(ensuredGuid);
+        if (player == null) {
+            player = fetchPlayer(AndoWSignageApp.PLAYER_ID);
+        }
         if (player == null) {
             return;
         }
