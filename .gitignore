@@ -214,6 +214,7 @@ coverage*.info
 **/.gradle/
 **/build/
 **/.idea/
+**/local.properties
 Test/
 
 # Misc
