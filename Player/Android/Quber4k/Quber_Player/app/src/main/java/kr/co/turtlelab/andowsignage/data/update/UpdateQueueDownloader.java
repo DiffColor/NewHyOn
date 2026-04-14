@@ -186,6 +186,9 @@ public class UpdateQueueDownloader {
         String stagingPath = UpdateQueueHelper.getTempContentPath(localFileName);
         ensureParentDir(stagingPath);
         File stagingFile = new File(stagingPath);
+        if (FileIntegrityUtils.verifyFile(stagingFile, entry.SizeBytes, entry.Checksum)) {
+            return true;
+        }
         // 기존 파일이 유효하면 다운로드를 건너뛴다.
         if (FileIntegrityUtils.verifyFile(finalFile, entry.SizeBytes, entry.Checksum)) {
             return true;
@@ -256,31 +259,6 @@ public class UpdateQueueDownloader {
         }
         if (!FileIntegrityUtils.verifyFile(stagingFile, entry.SizeBytes, entry.Checksum)) {
             entry.LastError = "HASH_MISMATCH";
-            return false;
-        }
-        try {
-            if (finalFile.exists() && !finalFile.delete()) {
-                entry.LastError = "FINAL_DELETE_FAIL";
-                return false;
-            }
-            File parent = finalFile.getParentFile();
-            if (parent != null && !parent.exists()) {
-                parent.mkdirs();
-            }
-            if (!stagingFile.renameTo(finalFile)) {
-                // rename 실패 시 스트림 복사로 대체
-                try (java.io.InputStream in = new java.io.FileInputStream(stagingFile);
-                     java.io.OutputStream out = new java.io.FileOutputStream(finalFile)) {
-                    byte[] buf = new byte[8192];
-                    int read;
-                    while ((read = in.read(buf)) > 0) {
-                        out.write(buf, 0, read);
-                    }
-                }
-                stagingFile.delete();
-            }
-        } catch (Exception ex) {
-            entry.LastError = "MOVE_FAIL";
             return false;
         }
         return true;

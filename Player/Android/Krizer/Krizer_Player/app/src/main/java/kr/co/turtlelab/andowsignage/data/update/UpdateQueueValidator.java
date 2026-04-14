@@ -46,15 +46,13 @@ public class UpdateQueueValidator {
                     continue;
                 }
             }
+            String tempPath = UpdateQueueHelper.getTempContentPath(fileName);
+            File tempFile = new File(tempPath);
             String finalPath = UpdateQueueHelper.getFinalContentPath(fileName);
             File finalFile = new File(finalPath);
-            if (!FileIntegrityUtils.verifyFile(finalFile, entry.SizeBytes, entry.Checksum)) {
+            File targetFile = tempFile.exists() ? tempFile : finalFile;
+            if (!FileIntegrityUtils.verifyFile(targetFile, entry.SizeBytes, entry.Checksum)) {
                 try {
-                    if (finalFile.exists()) {
-                        finalFile.delete();
-                    }
-                    String tempPath = UpdateQueueHelper.getTempContentPath(fileName);
-                    File tempFile = new File(tempPath);
                     if (tempFile.exists()) {
                         tempFile.delete();
                     }
