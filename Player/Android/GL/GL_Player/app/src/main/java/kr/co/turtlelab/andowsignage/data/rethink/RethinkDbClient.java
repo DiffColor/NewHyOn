@@ -422,13 +422,10 @@ public class RethinkDbClient {
         }
     }
 
-    private String resolveDeviceUniqueId() {
-        String storedPlayerName = getStoredPlayerName();
-        if (!TextUtils.isEmpty(storedPlayerName)) {
-            return storedPlayerName.trim();
-        }
-        if (!TextUtils.isEmpty(AndoWSignageApp.PLAYER_ID)) {
-            return AndoWSignageApp.PLAYER_ID.trim();
+    private String resolveDeviceMacAddress() {
+        String mac = NetworkUtils.getMACAddress();
+        if (!TextUtils.isEmpty(mac)) {
+            return mac.trim();
         }
         return "";
     }
@@ -779,9 +776,9 @@ public class RethinkDbClient {
                 return;
             }
             String ip = resolveLocalIpAddress();
-            String mac = resolveDeviceUniqueId();
+            String mac = resolveDeviceMacAddress();
             if (TextUtils.isEmpty(mac)) {
-                Log.w(TAG, "updateDeviceInfoIfNeeded: device unique id is empty. will retry.");
+                Log.w(TAG, "updateDeviceInfoIfNeeded: device mac address is empty. will retry.");
                 return;
             }
             String os = "Android " + Build.VERSION.RELEASE;
@@ -980,7 +977,7 @@ public class RethinkDbClient {
         if (!TextUtils.isEmpty(ip)) {
             payload.put("PIF_IPAddress", ip);
         }
-        String mac = resolveDeviceUniqueId();
+        String mac = resolveDeviceMacAddress();
         if (!TextUtils.isEmpty(mac)) {
             payload.put("PIF_MacAddress", mac);
         }
