@@ -1,0 +1,52 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>NewHyOn.Player.Settings</RootNamespace>
+    <AssemblyName>ConfigPlayer</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Platforms>AnyCPU;x64</Platforms>
+    <ApplicationIcon>hyon_p_install.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LiteDB" Version="5.0.21" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="System.Management" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\SharedLiteDb\LiteDbContext.cs">
+      <Link>Infrastructure\LiteDbContext.cs</Link>
+    </Compile>
+    <Compile Include="..\SharedLiteDb\LiteDbRepository.cs">
+      <Link>Infrastructure\LiteDbRepository.cs</Link>
+    </Compile>
+    <Compile Include="..\SharedModels\Enums.cs">
+      <Link>Shared\Models\Enums.cs</Link>
+    </Compile>
+    <Compile Include="..\SharedModels\PlayerModels.cs">
+      <Link>Shared\Models\PlayerModels.cs</Link>
+    </Compile>
+    <Compile Include="..\SharedModels\WeeklyModels.cs">
+      <Link>Shared\Models\WeeklyModels.cs</Link>
+    </Compile>
+    <Compile Include="..\..\..\Shared\Windows\FirewallRuleSynchronizer.cs">
+      <Link>Shared\FirewallRuleSynchronizer.cs</Link>
+    </Compile>
+  </ItemGroup>
+
+</Project>

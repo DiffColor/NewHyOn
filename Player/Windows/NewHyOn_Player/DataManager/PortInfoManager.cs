@@ -97,8 +97,6 @@ namespace NewHyOnPlayer
         [JsonProperty("id")]
         public int Id { get; set; } = 0; // 한개의 데이터만 저장하기 위한 필드
 
-        public int AIF_AgentSVCPort { get; set; } = NetworkTools.AGENT_PORT;
-        public int AIF_OperaterSVCPort { get; set; } = NetworkTools.OPERATOR_PORT;
         public int AIF_FTP { get; set; } = NetworkTools.FTP_PORT;
         public int AIF_FTP_PasvMinPort { get; set; } = NetworkTools.FTP_PASV_MIN_PORT;
         public int AIF_FTP_PasvMaxPort { get; set; } = NetworkTools.FTP_PASV_MAX_PORT;
@@ -106,8 +104,6 @@ namespace NewHyOnPlayer
 
         public void CopyData(PortInfoClass paramCls)
         {
-            AIF_AgentSVCPort = paramCls.AIF_AgentSVCPort;
-            AIF_OperaterSVCPort = paramCls.AIF_OperaterSVCPort;
             AIF_FTP = paramCls.AIF_FTP;
             AIF_FTP_PasvMinPort = paramCls.AIF_FTP_PasvMinPort;
             AIF_FTP_PasvMaxPort = paramCls.AIF_FTP_PasvMaxPort;
@@ -116,8 +112,6 @@ namespace NewHyOnPlayer
 
         public void CleanDataField()
         {
-            AIF_AgentSVCPort = NetworkTools.AGENT_PORT;
-            AIF_OperaterSVCPort = NetworkTools.OPERATOR_PORT;
             AIF_FTP = NetworkTools.FTP_PORT;
             AIF_FTP_PasvMinPort = NetworkTools.FTP_PASV_MIN_PORT;
             AIF_FTP_PasvMaxPort = NetworkTools.FTP_PASV_MAX_PORT;

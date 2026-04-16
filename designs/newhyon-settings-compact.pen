@@ -1,0 +1,671 @@
+{
+  "version": "2.10",
+  "children": [
+    {
+      "type": "frame",
+      "id": "NHSettingsModern",
+      "x": 5220,
+      "y": 0,
+      "name": "NewHyOn Settings Compact Avalonia",
+      "width": 1360,
+      "height": 960,
+      "fill": "#F4F6F8",
+      "cornerRadius": 24,
+      "layout": "none",
+      "children": [
+        {
+          "type": "ellipse",
+          "id": "NHAura1",
+          "x": 1030,
+          "y": -90,
+          "name": "aura1",
+          "fill": {
+            "type": "gradient",
+            "gradientType": "radial",
+            "enabled": true,
+            "rotation": 0,
+            "size": {
+              "width": 1,
+              "height": 1
+            },
+            "colors": [
+              {
+                "color": "#D8EEF6",
+                "position": 0
+              },
+              {
+                "color": "#D8EEF600",
+                "position": 1
+              }
+            ]
+          },
+          "width": 300,
+          "height": 300
+        },
+        {
+          "type": "frame",
+          "id": "NHShell",
+          "x": 42,
+          "y": 121,
+          "name": "windowShell",
+          "width": 475,
+          "height": 398,
+          "fill": "#FCFDFE",
+          "cornerRadius": 18,
+          "stroke": {
+            "align": "inside",
+            "thickness": 1,
+            "fill": "#D9E0E6"
+          },
+          "effect": {
+            "type": "shadow",
+            "shadowType": "outer",
+            "color": "#0F172A10",
+            "offset": {
+              "x": 0,
+              "y": 18
+            },
+            "blur": 42
+          },
+          "layout": "none",
+          "children": [
+            {
+              "type": "frame",
+              "id": "NHMain",
+              "x": 3,
+              "y": 11,
+              "name": "content",
+              "width": 470,
+              "height": 380,
+              "fill": "#FCFDFE",
+              "cornerRadius": [
+                0,
+                18,
+                18,
+                0
+              ],
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "NHMainHeader",
+                  "x": 16,
+                  "y": 12,
+                  "name": "header",
+                  "width": 438,
+                  "justifyContent": "space_between",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "NHHeaderTextWrap",
+                      "name": "headerText",
+                      "width": 200,
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "NHBrand",
+                          "name": "brand",
+                          "width": "fill_container",
+                          "gap": 6,
+                          "padding": [
+                            2,
+                            2,
+                            8,
+                            2
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "NHBrandText",
+                              "name": "brandText",
+                              "layout": "vertical",
+                              "gap": 3,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "NHBrandName",
+                                  "name": "brandName",
+                                  "fill": "#12202F",
+                                  "content": "NewHyOn",
+                                  "fontFamily": "Segoe UI",
+                                  "fontSize": 24,
+                                  "fontWeight": "700"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "NHBrandSub",
+                                  "name": "brandSub",
+                                  "fill": "#6B7C8C",
+                                  "content": "Settings Console",
+                                  "fontFamily": "Segoe UI",
+                                  "fontSize": 14,
+                                  "fontWeight": "500"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "NHHeaderActions",
+                      "name": "actions",
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "NHGhostBtn",
+                          "name": "ghostButton",
+                          "width": 84,
+                          "height": 32,
+                          "fill": "#FFFFFF",
+                          "cornerRadius": 8,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D7DEE5"
+                          },
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "NHGhostBtnText",
+                              "name": "text",
+                              "fill": "#20303F",
+                              "content": "IP 확인",
+                              "fontFamily": "Segoe UI",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "NHPrimaryBtn",
+                          "name": "primaryButton",
+                          "width": 104,
+                          "height": 32,
+                          "fill": "#177E89",
+                          "cornerRadius": 8,
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "NHPrimaryBtnText",
+                              "name": "text",
+                              "fill": "#FFFFFF",
+                              "content": "저장",
+                              "fontFamily": "Segoe UI",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "NHCardGrid",
+                  "x": 16,
+                  "y": 84,
+                  "name": "cardGrid",
+                  "width": 438,
+                  "gap": 12,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "NHNetworkCard",
+                      "name": "networkCard",
+                      "width": 206,
+                      "fill": "#FFFFFF",
+                      "cornerRadius": 12,
+                      "stroke": {
+                        "align": "inside",
+                        "thickness": 1,
+                        "fill": "#DCE3EA"
+                      },
+                      "layout": "vertical",
+                      "gap": 10,
+                      "padding": 14,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "NHNetworkTitle",
+                          "name": "title",
+                          "fill": "#12202F",
+                          "content": "서버 연결",
+                          "fontFamily": "Segoe UI",
+                          "fontSize": 16,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "NHField1",
+                          "name": "dataServerField",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 5,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "NHField1Label",
+                              "name": "label",
+                              "fill": "#2B3F50",
+                              "content": "데이터 서버 IP",
+                              "fontFamily": "Segoe UI",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "NHField1Input",
+                              "name": "input",
+                              "width": "fill_container",
+                              "height": 42,
+                              "fill": "#F8FAFC",
+                              "cornerRadius": 10,
+                              "stroke": {
+                                "align": "inside",
+                                "thickness": 1,
+                                "fill": "#D7DEE5"
+                              },
+                              "padding": [
+                                0,
+                                12
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "NHField1Value",
+                                  "name": "value",
+                                  "fill": "#43596B",
+                                  "content": "192.168.0.100",
+                                  "fontFamily": "Segoe UI",
+                                  "fontSize": 13,
+                                  "fontWeight": "500"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "NHField2",
+                          "name": "messageServerField",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 5,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "NHField2Label",
+                              "name": "label",
+                              "fill": "#2B3F50",
+                              "content": "메시지 서버 IP",
+                              "fontFamily": "Segoe UI",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "NHField2Input",
+                              "name": "input",
+                              "width": "fill_container",
+                              "height": 42,
+                              "fill": "#F8FAFC",
+                              "cornerRadius": 10,
+                              "stroke": {
+                                "align": "inside",
+                                "thickness": 1,
+                                "fill": "#D7DEE5"
+                              },
+                              "padding": [
+                                0,
+                                12
+                              ],
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "NHField2Value",
+                                  "name": "value",
+                                  "fill": "#43596B",
+                                  "content": "192.168.0.101",
+                                  "fontFamily": "Segoe UI",
+                                  "fontSize": 13,
+                                  "fontWeight": "500"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "NHRightCards",
+                      "name": "rightCards",
+                      "width": 220,
+                      "layout": "vertical",
+                      "gap": 12,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "NHPortCard",
+                          "name": "portCard",
+                          "width": 220,
+                          "fill": "#FFFFFF",
+                          "cornerRadius": 12,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#DCE3EA"
+                          },
+                          "layout": "vertical",
+                          "gap": 10,
+                          "padding": 14,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "NHPortTitle",
+                              "name": "title",
+                              "fill": "#12202F",
+                              "textGrowth": "fixed-width",
+                              "width": 80,
+                              "content": "전송 설정",
+                              "fontFamily": "Segoe UI",
+                              "fontSize": 17,
+                              "fontWeight": "700"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "NHFtpPortField",
+                              "name": "ftpPortField",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 7,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "NHFtpPortLabel",
+                                  "name": "label",
+                                  "fill": "#2B3F50",
+                                  "content": "FTP Port",
+                                  "fontFamily": "Segoe UI",
+                                  "fontSize": 12,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "NHFtpPortInput",
+                                  "name": "input",
+                                  "width": "fill_container",
+                                  "height": 42,
+                                  "fill": "#F8FAFC",
+                                  "cornerRadius": 10,
+                                  "stroke": {
+                                    "align": "inside",
+                                    "thickness": 1,
+                                    "fill": "#D7DEE5"
+                                  },
+                                  "padding": [
+                                    0,
+                                    12
+                                  ],
+                                  "justifyContent": "center",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "NHFtpPortValue",
+                                      "name": "value",
+                                      "fill": "#43596B",
+                                      "content": "2100",
+                                      "fontFamily": "Segoe UI",
+                                      "fontSize": 13,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "NHPasvField",
+                              "name": "pasvField",
+                              "width": 185,
+                              "layout": "vertical",
+                              "gap": 7,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "NHPasvLabel",
+                                  "name": "label",
+                                  "fill": "#2B3F50",
+                                  "content": "패시브 포트 범위",
+                                  "fontFamily": "Segoe UI",
+                                  "fontSize": 12,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "NHPasvRow",
+                                  "name": "pasvRow",
+                                  "width": 186,
+                                  "gap": 8,
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "NHPasvMinInput",
+                                      "name": "minInput",
+                                      "width": 80,
+                                      "height": 42,
+                                      "fill": "#F8FAFC",
+                                      "cornerRadius": 10,
+                                      "stroke": {
+                                        "align": "inside",
+                                        "thickness": 1,
+                                        "fill": "#D7DEE5"
+                                      },
+                                      "justifyContent": "center",
+                                      "alignItems": "center",
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "NHPasvMinValue",
+                                          "name": "value",
+                                          "fill": "#43596B",
+                                          "content": "50000",
+                                          "fontFamily": "Segoe UI",
+                                          "fontSize": 13,
+                                          "fontWeight": "600"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "NHPasvTilde",
+                                      "name": "tilde",
+                                      "fill": "#8695A3",
+                                      "content": "~",
+                                      "fontFamily": "Segoe UI",
+                                      "fontSize": 14,
+                                      "fontWeight": "600"
+                                    },
+                                    {
+                                      "type": "frame",
+                                      "id": "NHPasvMaxInput",
+                                      "name": "maxInput",
+                                      "width": 80,
+                                      "height": 42,
+                                      "fill": "#F8FAFC",
+                                      "cornerRadius": 10,
+                                      "stroke": {
+                                        "align": "inside",
+                                        "thickness": 1,
+                                        "fill": "#D7DEE5"
+                                      },
+                                      "justifyContent": "center",
+                                      "alignItems": "center",
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "NHPasvMaxValue",
+                                          "name": "value",
+                                          "fill": "#43596B",
+                                          "content": "50100",
+                                          "fontFamily": "Segoe UI",
+                                          "fontSize": 13,
+                                          "fontWeight": "600"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "EvRax",
+                              "name": "ftpRootField",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 7,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "mRT5W",
+                                  "name": "label",
+                                  "fill": "#2B3F50",
+                                  "content": "FTP Root Path",
+                                  "fontFamily": "Segoe UI",
+                                  "fontSize": 12,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "Wzz60",
+                                  "name": "input",
+                                  "width": "fill_container",
+                                  "height": 42,
+                                  "fill": "#F8FAFC",
+                                  "cornerRadius": 10,
+                                  "stroke": {
+                                    "align": "inside",
+                                    "thickness": 1,
+                                    "fill": "#D7DEE5"
+                                  },
+                                  "padding": [
+                                    0,
+                                    12
+                                  ],
+                                  "justifyContent": "center",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "Yawpf",
+                                      "name": "value",
+                                      "fill": "#43596B",
+                                      "content": "/NewHyOn/contents",
+                                      "fontFamily": "Segoe UI",
+                                      "fontSize": 13,
+                                      "fontWeight": "500"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "hDmnh",
+                  "x": 16,
+                  "y": 307,
+                  "name": "toggleCard",
+                  "width": 206,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 12,
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#DCE3EA"
+                  },
+                  "layout": "vertical",
+                  "gap": 10,
+                  "padding": 14,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "szXPz",
+                      "name": "toggleRow",
+                      "width": "fill_container",
+                      "padding": [
+                        2,
+                        0
+                      ],
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "RGM0c",
+                          "name": "toggleLabel",
+                          "fill": "#2B3F50",
+                          "content": "컨텐츠 비율대로 표시",
+                          "fontFamily": "Inter",
+                          "fontSize": 12,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "nk036",
+                          "name": "toggleTrack",
+                          "width": 44,
+                          "height": 24,
+                          "fill": "#177E89",
+                          "cornerRadius": 999,
+                          "padding": 2,
+                          "justifyContent": "end",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "ellipse",
+                              "id": "8gdr8",
+                              "name": "toggleKnob",
+                              "fill": "#FFFFFF",
+                              "width": 20,
+                              "height": 20
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

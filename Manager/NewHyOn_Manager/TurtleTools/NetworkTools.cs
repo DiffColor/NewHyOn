@@ -22,9 +22,6 @@ namespace TurtleTools
     { 
         #region FTP
 
-        public const int AGENT_PORT = 8001;
-        public const int ANDROID_MSG_PORT = 8002;
-        public const int OPERATOR_PORT = 8008;
         public const int FTP_PORT = 10021;
         public const int FTP_PASV_MIN_PORT = 24000;
         public const int FTP_PASV_MAX_PORT = 24240;

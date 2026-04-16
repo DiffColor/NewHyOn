@@ -1,0 +1,871 @@
+<Window x:Class="NewHyOn.Player.Settings.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="NewHyOn Player Settings"
+        WindowStartupLocation="CenterScreen"
+        Width="1073"
+        ResizeMode="NoResize"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent">
+    <Window.Resources>
+        <DataTemplate x:Key="TwoDigitNumberTemplate">
+            <TextBlock Text="{Binding StringFormat={}{0:00}}"
+                       FontSize="13"
+                       FontWeight="SemiBold"
+                       Foreground="{StaticResource PrimaryBrush}" />
+        </DataTemplate>
+
+        <Style x:Key="CardBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="#E2E8F0" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="18" />
+            <Setter Property="Padding" Value="16" />
+        </Style>
+
+        <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+
+        <Style x:Key="CompactFieldLabelStyle" TargetType="TextBlock" BasedOn="{StaticResource FieldLabelStyle}">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+
+        <Style x:Key="CardTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}" />
+        </Style>
+
+        <Style x:Key="TextInputStyle" TargetType="TextBox">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+            <Setter Property="BorderBrush" Value="#E2E8F0" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Margin="{TemplateBinding Padding}" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="CompactTextInputStyle" TargetType="TextBox" BasedOn="{StaticResource TextInputStyle}">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+
+        <Style x:Key="PasswordInputStyle" TargetType="PasswordBox">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+            <Setter Property="BorderBrush" Value="#E2E8F0" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="PasswordBox">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Margin="{TemplateBinding Padding}" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ComboToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+            <Setter Property="BorderBrush" Value="#E2E8F0" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6">
+                            <Grid>
+                                <ContentPresenter Margin="10,0,32,0"
+                                                  VerticalAlignment="Center"
+                                                  HorizontalAlignment="Left"
+                                                  Content="{TemplateBinding Content}" />
+                                <Path Width="8"
+                                      Height="5"
+                                      Margin="0,0,12,0"
+                                      HorizontalAlignment="Right"
+                                      VerticalAlignment="Center"
+                                      Data="M 0 0 L 4 4 L 8 0"
+                                      Stroke="#64748B"
+                                      StrokeThickness="1.5" />
+                            </Grid>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ComboBoxStyle" TargetType="ComboBox">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+            <Setter Property="BorderBrush" Value="#E2E8F0" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton x:Name="ToggleButton"
+                                          Background="{TemplateBinding Background}"
+                                          BorderBrush="{TemplateBinding BorderBrush}"
+                                          BorderThickness="{TemplateBinding BorderThickness}"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                          Style="{StaticResource ComboToggleStyle}">
+                                <ContentPresenter Content="{TemplateBinding SelectionBoxItem}"
+                                                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                                  ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}" />
+                            </ToggleButton>
+                            <Popup x:Name="PART_Popup"
+                                   AllowsTransparency="True"
+                                   Focusable="False"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   Placement="Bottom">
+                                <Border Margin="0,4,0,0"
+                                        MinWidth="{Binding ActualWidth, ElementName=ToggleButton}"
+                                        Background="{StaticResource PanelBackgroundBrush}"
+                                        BorderBrush="#E2E8F0"
+                                        BorderThickness="1"
+                                        CornerRadius="8">
+                                    <ScrollViewer Margin="4"
+                                                  SnapsToDevicePixels="True">
+                                        <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="NumberComboBoxStyle" TargetType="ComboBox" BasedOn="{StaticResource ComboBoxStyle}">
+            <Setter Property="Width" Value="72" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="ItemStringFormat" Value="00" />
+        </Style>
+
+        <Style x:Key="RoundedButtonBaseStyle" TargetType="Button">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="16,10" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.92" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.84" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource RoundedButtonBaseStyle}">
+            <Setter Property="Background" Value="{StaticResource PrimaryBrush}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+
+        <Style x:Key="CompactPrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+
+        <Style x:Key="SecondaryButtonStyle" TargetType="Button" BasedOn="{StaticResource RoundedButtonBaseStyle}">
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}" />
+            <Setter Property="BorderBrush" Value="#D9E2EC" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+
+        <Style x:Key="SwitchCheckBoxStyle" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="44" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="Track"
+                                    Grid.Column="0"
+                                    Width="44"
+                                    Height="24"
+                                    CornerRadius="12"
+                                    Background="#CBD5E1">
+                                <Ellipse x:Name="Thumb"
+                                         Width="18"
+                                         Height="18"
+                                         Margin="3"
+                                         HorizontalAlignment="Left"
+                                         VerticalAlignment="Center"
+                                         Fill="White" />
+                            </Border>
+                            <ContentPresenter Grid.Column="2"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Track" Property="Background" Value="{StaticResource PrimaryBrush}" />
+                                <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ScheduleCheckBoxStyle" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="10" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="Box"
+                                    Grid.Column="0"
+                                    Width="16"
+                                    Height="16"
+                                    VerticalAlignment="Center"
+                                    Background="{StaticResource SurfaceBrush}"
+                                    BorderBrush="#CBD5E1"
+                                    BorderThickness="1"
+                                    CornerRadius="4">
+                                <TextBlock x:Name="CheckMark"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           FontSize="11"
+                                           FontWeight="Bold"
+                                           Foreground="White"
+                                           Text="✓"
+                                           Visibility="Collapsed" />
+                            </Border>
+                            <ContentPresenter Grid.Column="2"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Box" Property="Background" Value="{StaticResource PrimaryBrush}" />
+                                <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource PrimaryBrush}" />
+                                <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PanelListBoxStyle" TargetType="ListBox">
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+            <Setter Property="BorderBrush" Value="#E2E8F0" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}" />
+            <Setter Property="Padding" Value="12" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBox">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="14"
+                                Padding="{TemplateBinding Padding}">
+                            <ScrollViewer Focusable="False">
+                                <ItemsPresenter />
+                            </ScrollViewer>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PanelListBoxItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="0,0,0,8" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <ContentPresenter />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SetAllButtonStyle" TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+            <Setter Property="Width" Value="86" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="12,4" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ContentPresenter}, Path=(ItemsControl.AlternationIndex)}"
+                             Value="0">
+                    <Setter Property="Visibility" Value="Visible" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Border>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="34" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Border Grid.Row="0"
+                Background="#F8FAFC"
+                BorderBrush="#E5EBF0"
+                BorderThickness="1"
+                CornerRadius="24,24,0,0"
+                MouseLeftButtonDown="TitleBar_OnMouseLeftButtonDown">
+                <Grid Margin="12,0,12,0"
+                    Background="Transparent"
+                    MouseLeftButtonDown="TitleBar_OnMouseLeftButtonDown">
+                    <StackPanel Orientation="Horizontal"
+                            VerticalAlignment="Center">
+                        <Button Style="{StaticResource TrafficCloseButton}"
+                            Click="CloseButton_OnClick" />
+                        <Button Margin="8,0,0,0"
+                            Style="{StaticResource TrafficMinimizeButton}"
+                            Click="MinimizeButton_OnClick" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Border  Grid.Row="1"
+                        Height="812"
+                        Background="{StaticResource PanelBackgroundBrush}"
+                        BorderBrush="{StaticResource PanelBorderBrush}"
+                        CornerRadius="0,0,24,24">
+                <Canvas ClipToBounds="True">
+                    <Border Canvas.Left="30"
+                                Canvas.Top="23"
+                                Width="1021"
+                                Height="75"
+                                Background="Transparent"
+                                MouseLeftButtonDown="Header_MouseLeftButtonDown">
+                        <Canvas>
+                            <StackPanel Canvas.Left="0"
+                                            Canvas.Top="0">
+                                <TextBlock Text="NewHyOn Player Settings"
+                                               FontFamily="Segoe UI"
+                                               FontSize="26"
+                                               FontWeight="Bold"
+                                               Foreground="{StaticResource PrimaryBrush}" />
+                            </StackPanel>
+
+                            <Button x:Name="ShowIpButton"
+                                        Canvas.Left="671"
+                                        Canvas.Top="16"
+                                        Width="113"
+                                        Height="40"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Content="Show IP"
+                                        Click="ShowIpButton_Click" />
+
+                            <StackPanel Canvas.Left="826"
+                                            Canvas.Top="14"
+                                            Orientation="Horizontal">
+                                <Button x:Name="ExitButton"
+                                            Width="84"
+                                            Height="40"
+                                            Margin="0,0,9,0"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            Content="종료"
+                                            Click="ExitButton_Click" />
+                                <Button x:Name="SaveButton"
+                                            Width="84"
+                                            Height="40"
+                                            Style="{StaticResource PrimaryButtonStyle}"
+                                            Content="저 장"
+                                            Click="SaveButton_Click" />
+                            </StackPanel>
+                        </Canvas>
+                    </Border>
+
+                    <Canvas Canvas.Left="7"
+                                Canvas.Top="100"
+                                Width="260"
+                                Height="709"
+                                ClipToBounds="True">
+                        <Border Canvas.Left="13"
+                                    Canvas.Top="0"
+                                    Width="242"
+                                    Style="{StaticResource CardBorderStyle}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource CardTitleStyle}"
+                                               Text="네트워크 설정" />
+
+                                <StackPanel Margin="0,14,0,0">
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="서버 IP" />
+                                    <TextBox x:Name="ManagerIpTextBox" Style="{StaticResource TextInputStyle}" />
+                                </StackPanel>
+
+                                <StackPanel Margin="0,12,0,0">
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="플레이어 IP" />
+                                    <TextBox x:Name="PlayerIpTextBox" Style="{StaticResource TextInputStyle}" />
+                                </StackPanel>
+
+                                <StackPanel Margin="0,12,0,12">
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="플레이어 이름" />
+                                    <TextBox x:Name="PlayerNameTextBox" Style="{StaticResource TextInputStyle}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Canvas.Left="15"
+                                    Canvas.Top="294"
+                                    Width="240"
+                                    Height="138"
+                                    Style="{StaticResource CardBorderStyle}">
+                            <Canvas>
+                                <TextBlock Canvas.Left="0"
+                                               Canvas.Top="0"
+                                               Style="{StaticResource CardTitleStyle}"
+                                               Text="네트워크 포트 설정" />
+
+                                <Grid Canvas.Left="0"
+                                          Canvas.Top="42"
+                                          Width="208">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="98" />
+                                        <ColumnDefinition Width="12" />
+                                        <ColumnDefinition Width="98" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Style="{StaticResource CompactFieldLabelStyle}" Text="SignalR 포트" />
+                                        <TextBox x:Name="SignalRPortTextBox"
+                                                 Style="{StaticResource CompactTextInputStyle}"
+                                                 IsReadOnly="True"
+                                                 IsTabStop="False" />
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Style="{StaticResource CompactFieldLabelStyle}" Text="전송 포트" />
+                                        <TextBox x:Name="FtpPortTextBox" Style="{StaticResource CompactTextInputStyle}" />
+                                    </StackPanel>
+                                </Grid>
+
+                            </Canvas>
+                        </Border>
+
+                        <Border Canvas.Left="15"
+                                    Canvas.Top="462"
+                                    Width="242"
+                                    Height="200"
+                                    Style="{StaticResource CardBorderStyle}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock x:Name="AuthStatusTextBlock"
+                                               FontSize="16"
+                                               FontWeight="Bold"
+                                               Foreground="{StaticResource SuccessBrush}" />
+
+                                <StackPanel Grid.Row="1"
+                                                Margin="0,14,0,0">
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="승인키" />
+                                    <TextBox x:Name="SourceKeyTextBox"
+                                                 Style="{StaticResource TextInputStyle}"
+                                                 IsReadOnly="True" />
+                                </StackPanel>
+
+                                <Canvas Grid.Row="2"
+                                            Margin="0,12,0,0"
+                                            Height="82">
+                                    <StackPanel Canvas.Left="0"
+                                                    Canvas.Top="0"
+                                                    Width="102">
+                                        <TextBlock Style="{StaticResource FieldLabelStyle}" Text="인증 암호" />
+                                        <PasswordBox x:Name="AuthPasswordBox"
+                                                         Width="100"
+                                                         Style="{StaticResource PasswordInputStyle}" />
+                                    </StackPanel>
+
+                                    <Button x:Name="AuthButton"
+                                                Canvas.Left="123"
+                                                Canvas.Top="14"
+                                                Width="88"
+                                                Height="38"
+                                                Style="{StaticResource PrimaryButtonStyle}"
+                                                Content="인 증"
+                                                Click="AuthButton_Click" />
+                                </Canvas>
+                            </Grid>
+                        </Border>
+                    </Canvas>
+
+                    <Border Canvas.Left="277"
+                                Canvas.Top="98"
+                                Width="546"
+                                Height="202"
+                                Style="{StaticResource CardBorderStyle}">
+                        <Canvas>
+                            <TextBlock Canvas.Left="0"
+                                           Canvas.Top="0"
+                                           Style="{StaticResource CardTitleStyle}"
+                                           Text="플레이어 옵션" />
+
+                            <StackPanel Canvas.Left="316"
+                                            Canvas.Top="12"
+                                            Width="200">
+                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="플레이리스트 전환 타이밍" />
+                                <ComboBox x:Name="SwitchTimingComboBox"
+                                              Style="{StaticResource ComboBoxStyle}"
+                                              ItemsSource="{Binding SwitchTimingOptions}" />
+                            </StackPanel>
+
+                            <Grid Canvas.Left="5"
+                                      Canvas.Top="90"
+                                      Width="509"
+                                      Height="32">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="182" />
+                                    <ColumnDefinition Width="200" />
+                                    <ColumnDefinition Width="127" />
+                                </Grid.ColumnDefinitions>
+                                <CheckBox x:Name="PreserveAspectRatioCheckBox"
+                                              Grid.Column="0"
+                                              Style="{StaticResource SwitchCheckBoxStyle}"
+                                              Content="컨텐츠 비율 유지" />
+                                <CheckBox x:Name="SubOutputModeCheckBox"
+                                              Grid.Column="1"
+                                              Style="{StaticResource SwitchCheckBoxStyle}"
+                                              Content="서브모니터 출력" />
+                                <CheckBox x:Name="HideCursorCheckBox"
+                                              Grid.Column="2"
+                                              Style="{StaticResource SwitchCheckBoxStyle}"
+                                              Content="커서 숨김" />
+                            </Grid>
+
+                            <Grid Canvas.Left="5"
+                                      Canvas.Top="130"
+                                      Width="511"
+                                      Height="37">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="180" />
+                                    <ColumnDefinition Width="202" />
+                                    <ColumnDefinition Width="129" />
+                                </Grid.ColumnDefinitions>
+                                <CheckBox x:Name="HwAccelerationCheckBox"
+                                              Grid.Column="0"
+                                              Style="{StaticResource SwitchCheckBoxStyle}"
+                                              Content="HW 가속" />
+                                <CheckBox x:Name="MonitorBlockCheckBox"
+                                              Grid.Column="1"
+                                              Style="{StaticResource SwitchCheckBoxStyle}"
+                                              Content="종료 시 모니터 차단" />
+                                <CheckBox x:Name="TestModeCheckBox"
+                                              Grid.Column="2"
+                                              Style="{StaticResource SwitchCheckBoxStyle}"
+                                              Content="테스트 모드" />
+                            </Grid>
+                        </Canvas>
+                    </Border>
+
+                    <Border Canvas.Left="839"
+                                Canvas.Top="99"
+                                Width="212"
+                                Height="202"
+                                Style="{StaticResource CardBorderStyle}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource CardTitleStyle}"
+                                           Text="LED 속성" />
+
+                            <Canvas Margin="0,14,0,0"
+                                        Width="180"
+                                        Height="150">
+                                <StackPanel Canvas.Left="0"
+                                                Canvas.Top="0"
+                                                Width="78">
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="Left" />
+                                    <TextBox x:Name="LedLeftTextBox" Style="{StaticResource TextInputStyle}" />
+                                </StackPanel>
+
+                                <StackPanel Canvas.Left="96"
+                                                Canvas.Top="0"
+                                                Width="78">
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="Top" />
+                                    <TextBox x:Name="LedTopTextBox" Style="{StaticResource TextInputStyle}" />
+                                </StackPanel>
+
+                                <StackPanel Canvas.Left="0"
+                                                Canvas.Top="75"
+                                                Width="78">
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="Width" />
+                                    <TextBox x:Name="LedWidthTextBox" Style="{StaticResource TextInputStyle}" />
+                                </StackPanel>
+
+                                <StackPanel Canvas.Left="96"
+                                                Canvas.Top="75"
+                                                Width="78">
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="Height" />
+                                    <TextBox x:Name="LedHeightTextBox" Style="{StaticResource TextInputStyle}" />
+                                </StackPanel>
+                            </Canvas>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Canvas.Left="839"
+                                Canvas.Top="323"
+                                Width="211"
+                                Height="466"
+                                Style="{StaticResource CardBorderStyle}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource CardTitleStyle}"
+                                           Text="동기화 설정" />
+
+                            <StackPanel Margin="0,14,0,0">
+                                <CheckBox x:Name="SyncEnabledCheckBox"
+                                              Style="{StaticResource SwitchCheckBoxStyle}"
+                                              Content="동기화 사용"
+                                              Checked="SyncStateChanged"
+                                              Unchecked="SyncStateChanged" />
+                                <CheckBox x:Name="IsLeadingCheckBox"
+                                              Margin="0,12,0,0"
+                                              Style="{StaticResource SwitchCheckBoxStyle}"
+                                              Content="리더 모드"
+                                              Checked="SyncStateChanged"
+                                              Unchecked="SyncStateChanged" />
+                            </StackPanel>
+
+                            <StackPanel Margin="0,12,0,0">
+                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="동기화 포트" />
+                                <TextBox x:Name="SyncPortTextBox" Style="{StaticResource CompactTextInputStyle}" />
+                            </StackPanel>
+
+                            <TextBlock Margin="0,12,0,0"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           Foreground="#334155"
+                                           Text="[ 동기화 클라이언트 ]" />
+
+                            <ListBox x:Name="SyncIpListBox"
+                                         Margin="0,12,0,0"
+                                         Height="106"
+                                         Style="{StaticResource PanelListBoxStyle}"
+                                         ItemContainerStyle="{StaticResource PanelListBoxItemStyle}"
+                                         ItemsSource="{Binding SyncClientIps}"
+                                         SelectionChanged="SyncIpListBox_SelectionChanged" />
+
+                            <StackPanel Margin="0,12,0,0">
+                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="클라이언트 IP" />
+                                <TextBox x:Name="SyncIpTextBox" Style="{StaticResource TextInputStyle}" />
+                            </StackPanel>
+
+                            <StackPanel Margin="0,12,0,0"
+                                            Orientation="Horizontal">
+                                <Button x:Name="SyncIpAddButton"
+                                            Width="84"
+                                            Height="38"
+                                            Margin="0,0,10,0"
+                                            Style="{StaticResource PrimaryButtonStyle}"
+                                            Content="추가"
+                                            Click="SyncIpAddButton_Click" />
+                                <Button x:Name="SyncIpDeleteButton"
+                                            Width="84"
+                                            Height="38"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            Content="삭제"
+                                            Click="SyncIpDeleteButton_Click" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Canvas.Left="277"
+                                Canvas.Top="322"
+                                Width="546"
+                                Height="467"
+                                Background="{StaticResource PanelBackgroundBrush}"
+                                BorderBrush="#E2E8F0"
+                                BorderThickness="1"
+                                CornerRadius="20"
+                                Padding="18">
+                        <StackPanel>
+                            <Canvas     Width="510"
+                                        Height="55">
+                                <TextBlock Canvas.Left="0"
+                                               Canvas.Top="0"
+                                               FontSize="17"
+                                               FontWeight="Bold"
+                                               Foreground="{StaticResource PrimaryBrush}"
+                                               Text="방송시간" />
+
+                                <StackPanel Canvas.Left="342"
+                                                Canvas.Top="7"
+                                                Width="160">
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="종료시 동작" />
+                                    <ComboBox x:Name="EndTimeActionComboBox"
+                                                  Style="{StaticResource ComboBoxStyle}"
+                                                  ItemsSource="{Binding EndTimeActions}" />
+                                </StackPanel>
+                            </Canvas>
+
+                            <ItemsControl Margin="7,34,0,0" ItemsSource="{Binding ScheduleRows}"
+                                              AlternationCount="7">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,0,0,17"
+                                                  Height="33">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="100" />
+                                                <ColumnDefinition Width="67" />
+                                                <ColumnDefinition Width="70" />
+                                                <ColumnDefinition Width="18" />
+                                                <ColumnDefinition Width="70" />
+                                                <ColumnDefinition Width="83" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <CheckBox Grid.Column="0"
+                                                          VerticalAlignment="Center"
+                                                          Style="{StaticResource ScheduleCheckBoxStyle}"
+                                                          Content="{Binding DayLabel}"
+                                                          IsChecked="{Binding IsOnAir}" />
+
+                                            <ComboBox Grid.Column="1"
+                                                          Width="60"
+                                                          Style="{StaticResource NumberComboBoxStyle}"
+                                                          ItemsSource="{Binding DataContext.HourOptions, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                          SelectedItem="{Binding StartHour}" />
+                                            <ComboBox Grid.Column="2"
+                                                          Width="60"
+                                                          Style="{StaticResource NumberComboBoxStyle}"
+                                                          ItemsSource="{Binding DataContext.MinuteOptions, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                          SelectedItem="{Binding StartMinute}" />
+
+                                            <TextBlock Grid.Column="3"
+                                                           VerticalAlignment="Center"
+                                                           HorizontalAlignment="Center"
+                                                           FontSize="15"
+                                                           FontWeight="Bold"
+                                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                                           Text="~" />
+
+                                            <ComboBox Grid.Column="4"
+                                                          Width="60"
+                                                          Style="{StaticResource NumberComboBoxStyle}"
+                                                          ItemsSource="{Binding DataContext.HourOptions, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                          SelectedItem="{Binding EndHour}" />
+                                            <ComboBox Grid.Column="5"
+                                                          Width="60"
+                                                          Style="{StaticResource NumberComboBoxStyle}"
+                                                          ItemsSource="{Binding DataContext.MinuteOptions, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                          SelectedItem="{Binding EndMinute}" />
+
+                                            <Button x:Name="SetAllButton"
+                                                        Grid.Column="6"
+                                                        Style="{StaticResource SetAllButtonStyle}"
+                                                        Content="일괄 설정"
+                                                        Click="SetAllButton_Click" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBox x:Name="LedTransferPortTextBox"
+                                 Visibility="Collapsed" />
+                </Canvas>
+            </Border>
+
+            <Grid x:Name="DialogOverlay"
+                  Grid.RowSpan="2"
+                  Panel.ZIndex="100"
+                  Visibility="Collapsed"
+                  IsHitTestVisible="False">
+                <Border Grid.Row="0"
+                        Background="#660F172A"
+                        CornerRadius="24,24,0,0" />
+                <Border Grid.Row="1"
+                        Background="#660F172A"
+                        CornerRadius="0,0,24,24" />
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

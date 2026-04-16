@@ -1,0 +1,2157 @@
+{
+  "version": "2.11",
+  "children": [
+    {
+      "type": "frame",
+      "id": "bJtT9",
+      "x": -3851,
+      "y": -916,
+      "name": "ConfigPlayer Full Controls",
+      "width": 1205,
+      "height": 937,
+      "fill": "#F3F6FB",
+      "cornerRadius": 28,
+      "layout": "none",
+      "children": [
+        {
+          "type": "frame",
+          "id": "6xNrl",
+          "x": 68,
+          "y": 63,
+          "name": "shell",
+          "width": 1070,
+          "height": 812,
+          "fill": "#FFFFFF",
+          "cornerRadius": 24,
+          "stroke": {
+            "align": "inside",
+            "thickness": 1,
+            "fill": "#D9E2EC"
+          },
+          "layout": "none",
+          "children": [
+            {
+              "type": "frame",
+              "id": "QNVh3",
+              "x": 30,
+              "y": 23,
+              "name": "header",
+              "width": "fill_container(1021)",
+              "height": 75,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "3i2G8",
+                  "x": 0,
+                  "y": 0,
+                  "name": "headerLeft",
+                  "layout": "vertical",
+                  "gap": 6,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "AXNxu",
+                      "name": "title",
+                      "fill": "#0F172A",
+                      "content": "ConfigPlayer",
+                      "fontFamily": "Inter",
+                      "fontSize": 26,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "ZnYhC",
+                      "name": "status",
+                      "fill": "#166534",
+                      "content": "현재 인증 상태 : 정품 인증 완료",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "500"
+                    }
+                  ]
+                },
+                {
+                  "id": "AH7R6",
+                  "type": "ref",
+                  "ref": "r:C10zH",
+                  "name": "showIpBtn",
+                  "width": 113,
+                  "height": "fit_content",
+                  "flipX": false,
+                  "flipY": false,
+                  "x": 671,
+                  "y": 16,
+                  "descendants": {
+                    "r:l8v2I": {
+                      "children": []
+                    },
+                    "r:poRwU": {
+                      "content": "Show IP"
+                    }
+                  }
+                },
+                {
+                  "type": "frame",
+                  "id": "6b85n",
+                  "x": 826,
+                  "y": 14,
+                  "name": "headerActions",
+                  "width": "fill_container(186)",
+                  "height": "fit_content(40)",
+                  "layout": "none",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "eUX7Q",
+                      "x": 0,
+                      "y": 0,
+                      "name": "exitBtn",
+                      "width": 84,
+                      "fill": "#F8FAFC",
+                      "cornerRadius": 10,
+                      "stroke": {
+                        "align": "inside",
+                        "thickness": 1,
+                        "fill": "#D9E2EC"
+                      },
+                      "padding": [
+                        10,
+                        16
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "XOBFs",
+                          "name": "exitText",
+                          "fill": "#334155",
+                          "content": "종료",
+                          "fontFamily": "Inter",
+                          "fontSize": 14,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "hsGlP",
+                      "x": 93,
+                      "y": 0,
+                      "name": "saveBtn",
+                      "width": 84,
+                      "fill": "#0F172A",
+                      "cornerRadius": 10,
+                      "padding": [
+                        10,
+                        18
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "Oxytn",
+                          "name": "saveText",
+                          "fill": "#FFFFFF",
+                          "content": "저 장",
+                          "fontFamily": "Inter",
+                          "fontSize": 14,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "LcZfy",
+              "x": 277,
+              "y": 322,
+              "name": "scheduleCard",
+              "width": 546,
+              "height": 466,
+              "fill": "#FFFFFF",
+              "cornerRadius": 20,
+              "stroke": {
+                "align": "inside",
+                "thickness": 1,
+                "fill": "#E2E8F0"
+              },
+              "layout": "vertical",
+              "gap": 16,
+              "padding": 18,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "Fo0iM",
+                  "name": "Frame 2",
+                  "clip": true,
+                  "width": 517,
+                  "height": 55,
+                  "fill": "#FFFFFF",
+                  "layout": "none",
+                  "children": [
+                    {
+                      "id": "69sOM",
+                      "type": "ref",
+                      "ref": "r:w5c1O",
+                      "width": 215,
+                      "name": "powerField",
+                      "x": 302.1144160709696,
+                      "y": 7,
+                      "flipX": false,
+                      "flipY": false,
+                      "height": 47,
+                      "layout": "horizontal",
+                      "descendants": {
+                        "r:c8G05": {
+                          "flipX": false,
+                          "flipY": false,
+                          "width": 77,
+                          "height": 43,
+                          "x": 0,
+                          "y": 0
+                        },
+                        "r:Yd2lV": {
+                          "content": "종료시 동작"
+                        },
+                        "r:V1STL": {
+                          "content": "SystemOff"
+                        }
+                      }
+                    },
+                    {
+                      "type": "frame",
+                      "id": "5Z7iZ",
+                      "x": 0,
+                      "y": 0,
+                      "name": "scheduleHead",
+                      "width": 155,
+                      "height": 55,
+                      "layout": "none",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "8HXYW",
+                          "x": 0,
+                          "y": 15,
+                          "name": "scheduleTitle",
+                          "fill": "#0F172A",
+                          "content": "방송시간",
+                          "fontFamily": "Inter",
+                          "fontSize": 17,
+                          "fontWeight": "700"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "7rngk",
+                  "name": "scheduleBody",
+                  "width": "fill_container",
+                  "height": 356,
+                  "layout": "vertical",
+                  "gap": 10,
+                  "justifyContent": "space_between",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "xFU59",
+                      "name": "rowSun",
+                      "width": "fill_container",
+                      "gap": 12,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "s4ZrE",
+                          "type": "ref",
+                          "ref": "r:ovuDP",
+                          "name": "sunCheck",
+                          "descendants": {
+                            "r:15v9d": {
+                              "content": "일요일"
+                            }
+                          }
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Fp7oM",
+                          "name": "sunStartHour",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "xkI67",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "qHOww",
+                          "name": "sunStartMin",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "ixPDp",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "aLcZ1",
+                          "name": "sunGap",
+                          "fill": "#64748B",
+                          "content": "~",
+                          "fontFamily": "Inter",
+                          "fontSize": 15,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "KBMe9",
+                          "name": "sunEndHour",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "FKZFo",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "P0M1j",
+                          "name": "sunEndMin",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "xPtcl",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "2Iefs",
+                          "name": "setAllBtn",
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            8,
+                            14
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "UpLKA",
+                              "name": "setAllText",
+                              "fill": "#334155",
+                              "content": "일괄 설정",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "2lyhN",
+                      "name": "monRow",
+                      "width": "fill_container",
+                      "gap": 12,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "QY0Ps",
+                          "type": "ref",
+                          "ref": "r:ovuDP",
+                          "name": "sunCheck",
+                          "descendants": {
+                            "r:15v9d": {
+                              "content": "월요일"
+                            }
+                          }
+                        },
+                        {
+                          "type": "frame",
+                          "id": "sUngJ",
+                          "name": "sunStartHour",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "qXce3",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ghD4Y",
+                          "name": "sunStartMin",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "dsnLE",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "NT8Yi",
+                          "name": "sunGap",
+                          "fill": "#64748B",
+                          "content": "~",
+                          "fontFamily": "Inter",
+                          "fontSize": 15,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "hA4ju",
+                          "name": "sunEndHour",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "XNeoF",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Z9y2w",
+                          "name": "sunEndMin",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "6YU8G",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "SQIsG",
+                      "name": "tueRow",
+                      "width": "fill_container",
+                      "gap": 12,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "yjtNY",
+                          "type": "ref",
+                          "ref": "r:ovuDP",
+                          "name": "sunCheck",
+                          "descendants": {
+                            "r:15v9d": {
+                              "content": "화요일"
+                            }
+                          }
+                        },
+                        {
+                          "type": "frame",
+                          "id": "wC3mH",
+                          "name": "sunStartHour",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "9Ptsz",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "tnbdY",
+                          "name": "sunStartMin",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "vPaKL",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "Z4oGD",
+                          "name": "sunGap",
+                          "fill": "#64748B",
+                          "content": "~",
+                          "fontFamily": "Inter",
+                          "fontSize": 15,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "TkL4c",
+                          "name": "sunEndHour",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "B8CVH",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "oH08D",
+                          "name": "sunEndMin",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "yMEeY",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "pPefp",
+                      "name": "wedRow",
+                      "width": "fill_container",
+                      "gap": 12,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "eoZK8",
+                          "type": "ref",
+                          "ref": "r:ovuDP",
+                          "name": "sunCheck",
+                          "descendants": {
+                            "r:15v9d": {
+                              "content": "수요일"
+                            }
+                          }
+                        },
+                        {
+                          "type": "frame",
+                          "id": "A4G6Z",
+                          "name": "sunStartHour",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "40RvO",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "yrVld",
+                          "name": "sunStartMin",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "CZOqq",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "av6tQ",
+                          "name": "sunGap",
+                          "fill": "#64748B",
+                          "content": "~",
+                          "fontFamily": "Inter",
+                          "fontSize": 15,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "bzIN8",
+                          "name": "sunEndHour",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "eBMSz",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "mCIid",
+                          "name": "sunEndMin",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "yGVfZ",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "DECW9",
+                      "name": "thuRow",
+                      "width": "fill_container",
+                      "gap": 12,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "qUKUP",
+                          "type": "ref",
+                          "ref": "r:ovuDP",
+                          "name": "sunCheck",
+                          "descendants": {
+                            "r:15v9d": {
+                              "content": "목요일"
+                            }
+                          }
+                        },
+                        {
+                          "type": "frame",
+                          "id": "i0VxY",
+                          "name": "sunStartHour",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "8DK48",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ghf7H",
+                          "name": "sunStartMin",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "FBzfm",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "q6Owj",
+                          "name": "sunGap",
+                          "fill": "#64748B",
+                          "content": "~",
+                          "fontFamily": "Inter",
+                          "fontSize": 15,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "CbHKJ",
+                          "name": "sunEndHour",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Xv0Yq",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "qRtSB",
+                          "name": "sunEndMin",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "7mNiw",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "7sner",
+                      "name": "friRow",
+                      "width": "fill_container",
+                      "gap": 12,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "EHief",
+                          "type": "ref",
+                          "ref": "r:ovuDP",
+                          "name": "sunCheck",
+                          "descendants": {
+                            "r:15v9d": {
+                              "content": "금요일"
+                            }
+                          }
+                        },
+                        {
+                          "type": "frame",
+                          "id": "EWumt",
+                          "name": "sunStartHour",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "kM6M4",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "8dNaw",
+                          "name": "sunStartMin",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "0qP6v",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "JxwJV",
+                          "name": "sunGap",
+                          "fill": "#64748B",
+                          "content": "~",
+                          "fontFamily": "Inter",
+                          "fontSize": 15,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "zQddY",
+                          "name": "sunEndHour",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Bt2KN",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "rBCKa",
+                          "name": "sunEndMin",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "6I70r",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "4uoeP",
+                      "name": "satRow",
+                      "width": "fill_container",
+                      "gap": 12,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "id": "TX1fX",
+                          "type": "ref",
+                          "ref": "r:ovuDP",
+                          "name": "sunCheck",
+                          "descendants": {
+                            "r:15v9d": {
+                              "content": "토요일"
+                            }
+                          }
+                        },
+                        {
+                          "type": "frame",
+                          "id": "J8VW7",
+                          "name": "sunStartHour",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "QnXLX",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "08",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "XETks",
+                          "name": "sunStartMin",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Zapze",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "YYCta",
+                          "name": "sunGap",
+                          "fill": "#64748B",
+                          "content": "~",
+                          "fontFamily": "Inter",
+                          "fontSize": 15,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "vO26j",
+                          "name": "sunEndHour",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "l1eLv",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "bQ9tw",
+                          "name": "sunEndMin",
+                          "width": 72,
+                          "fill": "#F8FAFC",
+                          "cornerRadius": 10,
+                          "stroke": {
+                            "align": "inside",
+                            "thickness": 1,
+                            "fill": "#D9E2EC"
+                          },
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "l1zXC",
+                              "name": "sunStartHourText",
+                              "fill": "#0F172A",
+                              "content": "06",
+                              "fontFamily": "Inter",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "YtELI",
+              "x": 277,
+              "y": 98,
+              "name": "optionCard",
+              "width": "fill_container(546)",
+              "height": 202,
+              "fill": "#FFFFFF",
+              "cornerRadius": 18,
+              "stroke": {
+                "align": "inside",
+                "thickness": 1,
+                "fill": "#E2E8F0"
+              },
+              "layout": "none",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "N98RQ",
+                  "x": 16,
+                  "y": 16,
+                  "name": "optionHead",
+                  "fill": "#0F172A",
+                  "content": "플레이어 옵션",
+                  "fontFamily": "Inter",
+                  "fontSize": 16,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "frame",
+                  "id": "6kZ1v",
+                  "x": 21,
+                  "y": 102,
+                  "name": "optionBody",
+                  "width": "fill_container(509)",
+                  "height": 32,
+                  "layout": "none",
+                  "children": [
+                    {
+                      "id": "7YHJs",
+                      "type": "ref",
+                      "ref": "r:fcMl6",
+                      "name": "subOutSwitch",
+                      "x": 182,
+                      "y": 0,
+                      "descendants": {
+                        "r:HsFun": {
+                          "content": "서브모니터 출력"
+                        }
+                      }
+                    },
+                    {
+                      "id": "WKNjE",
+                      "type": "ref",
+                      "ref": "r:c8fiq",
+                      "name": "hideCursorSwitch",
+                      "x": 382,
+                      "y": 0,
+                      "descendants": {
+                        "r:HsFun": {
+                          "content": "커서 숨김"
+                        }
+                      }
+                    },
+                    {
+                      "id": "CqYhG",
+                      "type": "ref",
+                      "ref": "r:fcMl6",
+                      "name": "ratioSwitch",
+                      "x": 0,
+                      "y": 0,
+                      "descendants": {
+                        "r:HsFun": {
+                          "content": "컨텐츠 비율 유지"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "id": "FmCNN",
+                  "type": "ref",
+                  "ref": "r:w5c1O",
+                  "width": "fill_container(214)",
+                  "name": "switchTimingField",
+                  "x": 316.13875991585667,
+                  "y": 28,
+                  "flipX": false,
+                  "flipY": false,
+                  "height": "fit_content",
+                  "descendants": {
+                    "r:Yd2lV": {
+                      "content": "플레이리스트 전환 타이밍"
+                    },
+                    "r:Ch62V": {
+                      "flipX": false,
+                      "flipY": false,
+                      "width": "fill_container",
+                      "height": 30,
+                      "x": 0,
+                      "y": 27
+                    },
+                    "r:V1STL": {
+                      "content": "Immediately"
+                    }
+                  }
+                },
+                {
+                  "type": "frame",
+                  "id": "X03CA",
+                  "x": 7,
+                  "y": 152,
+                  "name": "Frame 3",
+                  "width": 528,
+                  "height": 37,
+                  "fill": "#FFFFFF",
+                  "layout": "none",
+                  "children": [
+                    {
+                      "id": "npP1U",
+                      "type": "ref",
+                      "ref": "r:c8fiq",
+                      "name": "hwSwitch",
+                      "x": 17.000000000000114,
+                      "y": 1.0077411034268096,
+                      "rotation": 0.5064917901636171,
+                      "descendants": {
+                        "r:HsFun": {
+                          "content": "HW 가속 "
+                        }
+                      }
+                    },
+                    {
+                      "id": "CV3OY",
+                      "type": "ref",
+                      "ref": "r:fcMl6",
+                      "name": "blockSwitch",
+                      "x": 197.0000000000001,
+                      "y": 0,
+                      "justifyContent": "start",
+                      "alignItems": "start",
+                      "descendants": {
+                        "r:AgS9m": {
+                          "x": 0,
+                          "y": 0.00030141637842946326,
+                          "rotation": 0.00039249741727866773
+                        },
+                        "r:HsFun": {
+                          "content": "종료 시 모니터 차단"
+                        }
+                      }
+                    },
+                    {
+                      "id": "lxyph",
+                      "type": "ref",
+                      "ref": "r:fcMl6",
+                      "name": "testSwitch",
+                      "x": 399.06696715021394,
+                      "y": 0,
+                      "rotation": -0.15987250217492172,
+                      "descendants": {
+                        "r:HsFun": {
+                          "content": "테스트 모드"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "BhZSo",
+              "x": 839,
+              "y": 99,
+              "name": "ledCard",
+              "width": 212,
+              "height": 202,
+              "fill": "#FFFFFF",
+              "cornerRadius": 18,
+              "stroke": {
+                "align": "inside",
+                "thickness": 1,
+                "fill": "#E2E8F0"
+              },
+              "layout": "vertical",
+              "gap": 14,
+              "padding": 16,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "uRAua",
+                  "name": "ledHead",
+                  "fill": "#0F172A",
+                  "content": "LED 속성",
+                  "fontFamily": "Inter",
+                  "fontSize": 16,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "frame",
+                  "id": "6PLt4",
+                  "name": "ledBody",
+                  "width": "fill_container",
+                  "height": 150,
+                  "layout": "none",
+                  "children": [
+                    {
+                      "id": "jjwTC",
+                      "type": "ref",
+                      "ref": "r:1415a",
+                      "width": 78,
+                      "name": "leftField",
+                      "height": "fit_content",
+                      "flipX": false,
+                      "flipY": false,
+                      "x": 0,
+                      "y": 0,
+                      "descendants": {
+                        "r:BX0XX": {
+                          "content": "Left"
+                        },
+                        "r:SDRKn": {
+                          "content": "0"
+                        }
+                      }
+                    },
+                    {
+                      "id": "6y73v",
+                      "type": "ref",
+                      "ref": "r:1415a",
+                      "width": 78,
+                      "name": "widthField",
+                      "height": "fit_content",
+                      "flipX": false,
+                      "flipY": false,
+                      "x": 0,
+                      "y": 75,
+                      "descendants": {
+                        "r:BX0XX": {
+                          "content": "Width"
+                        },
+                        "r:SDRKn": {
+                          "content": "160"
+                        }
+                      }
+                    },
+                    {
+                      "id": "P7zPD",
+                      "type": "ref",
+                      "ref": "r:1415a",
+                      "width": "fill_container(78)",
+                      "name": "topField",
+                      "height": "fit_content",
+                      "flipX": false,
+                      "flipY": false,
+                      "x": 102,
+                      "y": 0,
+                      "descendants": {
+                        "r:BX0XX": {
+                          "content": "Top"
+                        },
+                        "r:SDRKn": {
+                          "content": "0"
+                        }
+                      }
+                    },
+                    {
+                      "id": "RuK9f",
+                      "type": "ref",
+                      "ref": "r:1415a",
+                      "width": "fill_container(78)",
+                      "name": "heightField",
+                      "flipX": false,
+                      "flipY": false,
+                      "height": "fit_content",
+                      "x": 102,
+                      "y": 75,
+                      "descendants": {
+                        "r:BX0XX": {
+                          "content": "Height"
+                        },
+                        "r:SDRKn": {
+                          "content": "90"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "WiMTG",
+              "x": 839,
+              "y": 323,
+              "name": "syncCard",
+              "width": 211,
+              "fill": "#FFFFFF",
+              "cornerRadius": 18,
+              "stroke": {
+                "align": "inside",
+                "thickness": 1,
+                "fill": "#E2E8F0"
+              },
+              "layout": "vertical",
+              "gap": 14,
+              "padding": 16,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "QVhyR",
+                  "name": "syncHead",
+                  "fill": "#0F172A",
+                  "content": "동기화 설정",
+                  "fontFamily": "Inter",
+                  "fontSize": 16,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "frame",
+                  "id": "bbU8m",
+                  "name": "syncBody",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 12,
+                  "children": [
+                    {
+                      "id": "WAItS",
+                      "type": "ref",
+                      "ref": "r:c8fiq",
+                      "name": "syncEnabled",
+                      "descendants": {
+                        "r:HsFun": {
+                          "content": "동기화 사용"
+                        }
+                      }
+                    },
+                    {
+                      "id": "34OOZ",
+                      "type": "ref",
+                      "ref": "r:fcMl6",
+                      "name": "leaderMode",
+                      "descendants": {
+                        "r:HsFun": {
+                          "content": "리더 모드"
+                        }
+                      }
+                    },
+                    {
+                      "id": "e2jYt",
+                      "type": "ref",
+                      "ref": "r:1415a",
+                      "width": "fill_container",
+                      "name": "syncPort",
+                      "descendants": {
+                        "r:BX0XX": {
+                          "content": "동기화 포트"
+                        },
+                        "r:SDRKn": {
+                          "content": "7200"
+                        }
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "id": "z9aNh",
+                      "name": "syncClientsTitle",
+                      "fill": "#334155",
+                      "content": "[ 동기화 클라이언트 ]",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "HOqa1",
+                      "name": "syncList",
+                      "width": "fill_container",
+                      "fill": "#F8FAFC",
+                      "cornerRadius": 14,
+                      "stroke": {
+                        "align": "inside",
+                        "thickness": 1,
+                        "fill": "#E2E8F0"
+                      },
+                      "layout": "vertical",
+                      "gap": 8,
+                      "padding": 12,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "F7XKg",
+                          "name": "syncItem1",
+                          "fill": "#0F172A",
+                          "content": "192.168.0.121",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "500"
+                        },
+                        {
+                          "type": "text",
+                          "id": "bzDvV",
+                          "name": "syncItem2",
+                          "fill": "#0F172A",
+                          "content": "192.168.0.122",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "500"
+                        },
+                        {
+                          "type": "text",
+                          "id": "lOxmZ",
+                          "name": "syncItem3",
+                          "fill": "#0F172A",
+                          "content": "192.168.0.123",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "S5J8I",
+                      "type": "ref",
+                      "ref": "r:1415a",
+                      "width": "fill_container",
+                      "name": "syncInput",
+                      "descendants": {
+                        "r:BX0XX": {
+                          "content": "클라이언트 IP"
+                        },
+                        "r:SDRKn": {
+                          "content": "192.168.0.124"
+                        }
+                      }
+                    },
+                    {
+                      "type": "frame",
+                      "id": "GT0EG",
+                      "name": "syncButtonRow",
+                      "gap": 10,
+                      "children": [
+                        {
+                          "id": "coAiX",
+                          "type": "ref",
+                          "ref": "r:VSnC2",
+                          "name": "addBtn",
+                          "descendants": {
+                            "r:8jVfJ": {
+                              "children": []
+                            },
+                            "r:8tnXG": {
+                              "content": "추가"
+                            }
+                          }
+                        },
+                        {
+                          "id": "mwATv",
+                          "type": "ref",
+                          "ref": "r:C10zH",
+                          "name": "delBtn",
+                          "descendants": {
+                            "r:l8v2I": {
+                              "children": []
+                            },
+                            "r:poRwU": {
+                              "content": "삭제"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "siqxI",
+              "x": 7,
+              "y": 99,
+              "name": "Frame 6",
+              "clip": true,
+              "width": 260,
+              "height": 709,
+              "fill": "#FFFFFF",
+              "layout": "none",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "9tyEw",
+                  "x": 13,
+                  "y": 0,
+                  "name": "networkCard",
+                  "width": 242,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 18,
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#E2E8F0"
+                  },
+                  "layout": "vertical",
+                  "gap": 14,
+                  "padding": 16,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "2ClKc",
+                      "name": "networkHead",
+                      "fill": "#0F172A",
+                      "content": "네트워크 설정",
+                      "fontFamily": "Inter",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "rjbm4",
+                      "name": "networkBody",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 12,
+                      "children": [
+                        {
+                          "id": "5U5N8",
+                          "type": "ref",
+                          "ref": "r:1415a",
+                          "width": "fill_container",
+                          "name": "serverField",
+                          "descendants": {
+                            "r:BX0XX": {
+                              "content": "서버 IP"
+                            },
+                            "r:SDRKn": {
+                              "content": "manager.local"
+                            }
+                          }
+                        },
+                        {
+                          "id": "3UDFl",
+                          "type": "ref",
+                          "ref": "r:1415a",
+                          "width": "fill_container",
+                          "name": "playerIpField",
+                          "descendants": {
+                            "r:BX0XX": {
+                              "content": "플레이어 IP"
+                            },
+                            "r:SDRKn": {
+                              "content": "192.168.0.120"
+                            }
+                          }
+                        },
+                        {
+                          "id": "Wo8Mw",
+                          "type": "ref",
+                          "ref": "r:1415a",
+                          "width": "fill_container",
+                          "name": "playerNameField",
+                          "descendants": {
+                            "r:BX0XX": {
+                              "content": "플레이어 이름"
+                            },
+                            "r:SDRKn": {
+                              "content": "Lobby A"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "xawPW",
+                  "x": 15,
+                  "y": 318,
+                  "name": "portCard",
+                  "width": 240,
+                  "height": 138,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 18,
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#E2E8F0"
+                  },
+                  "layout": "vertical",
+                  "gap": 14,
+                  "padding": 16,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "rotov",
+                      "name": "portHead",
+                      "fill": "#0F172A",
+                      "content": "네트워크 포트 설정",
+                      "fontFamily": "Inter",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "vl0Hz",
+                      "name": "portBody",
+                      "width": 205,
+                      "height": 72,
+                      "gap": 12,
+                      "children": [
+                        {
+                          "id": "tMRHK",
+                          "type": "ref",
+                          "ref": "r:1415a",
+                          "width": "fill_container",
+                          "name": "agentPortField",
+                          "descendants": {
+                            "r:BX0XX": {
+                              "content": "메시지 포트"
+                            },
+                            "r:SDRKn": {
+                              "content": "4000"
+                            }
+                          }
+                        },
+                        {
+                          "id": "BEDoE",
+                          "type": "ref",
+                          "ref": "r:1415a",
+                          "width": "fill_container",
+                          "name": "transferPortField",
+                          "descendants": {
+                            "r:BX0XX": {
+                              "content": "전송 포트"
+                            },
+                            "r:SDRKn": {
+                              "content": "10021"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "SF4wU",
+                  "x": 12,
+                  "y": 477,
+                  "name": "authCard",
+                  "width": 242,
+                  "height": 216,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 18,
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#E2E8F0"
+                  },
+                  "layout": "vertical",
+                  "gap": 14,
+                  "padding": 16,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "uErO7",
+                      "name": "authHead",
+                      "fill": "#166534",
+                      "content": "현재 인증 상태 : 정품 인증 완료",
+                      "fontFamily": "Inter",
+                      "fontSize": 16,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "PcKnz",
+                      "name": "authBody",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 12,
+                      "children": [
+                        {
+                          "id": "QT2FC",
+                          "type": "ref",
+                          "ref": "r:1415a",
+                          "width": "fill_container",
+                          "name": "sourceKeyField",
+                          "descendants": {
+                            "r:BX0XX": {
+                              "content": "승인키"
+                            },
+                            "r:SDRKn": {
+                              "content": "AB12CD34EF56"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "75ppw",
+                      "name": "Frame 4",
+                      "clip": true,
+                      "width": 211,
+                      "height": 80,
+                      "fill": "#FFFFFF",
+                      "layout": "none",
+                      "children": [
+                        {
+                          "id": "2aGoO",
+                          "type": "ref",
+                          "ref": "r:1415a",
+                          "width": 100,
+                          "name": "passwdField",
+                          "flipX": false,
+                          "flipY": false,
+                          "height": "fit_content",
+                          "x": 6,
+                          "y": 0,
+                          "descendants": {
+                            "r:BX0XX": {
+                              "content": "인증 암호"
+                            },
+                            "r:SDRKn": {
+                              "content": "********"
+                            }
+                          }
+                        },
+                        {
+                          "id": "TY8Zx",
+                          "type": "ref",
+                          "ref": "r:VSnC2",
+                          "name": "authButton",
+                          "x": 123,
+                          "y": 29,
+                          "flipX": false,
+                          "flipY": false,
+                          "width": "fit_content(88)",
+                          "height": 38,
+                          "justifyContent": "start",
+                          "alignItems": "start",
+                          "layout": "none",
+                          "descendants": {
+                            "r:8jVfJ": {
+                              "children": []
+                            },
+                            "r:8tnXG": {
+                              "content": "인 증",
+                              "textGrowth": "fixed-width",
+                              "width": 88,
+                              "height": 21,
+                              "flipX": false,
+                              "flipY": false,
+                              "x": 0,
+                              "y": 8
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "imports": {
+    "r": "pencil:shadcn.lib.pen",
+    "Z": "pencil:halo.lib.pen",
+    "Q": "pencil:lunaris.lib.pen",
+    "G": "pencil:nitro.lib.pen"
+  }
+}
