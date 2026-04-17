@@ -3,7 +3,7 @@
 
 namespace NewHyOnPlayer
 {
-    public enum WindowType { contentsPlayWindow, scrollTextWindow, welcomeBoardWindow}
+    public enum WindowType { contentsPlayWindow }
 
     public class WindowZIdxForTTClass
     {
@@ -18,22 +18,6 @@ namespace NewHyOnPlayer
             this.AI_Zorder = tmpData.AI_Zorder;
         }
     }
-
-
-    public class WindowIdxForZorderClass
-    {
-        public int AI_WindowIndex = 0;
-        public int AI_Zorder = 0;
-
-        public void CopyData(WindowIdxForZorderClass tmpData)
-        {
-            this.AI_WindowIndex = tmpData.AI_WindowIndex;
-            this.AI_Zorder = tmpData.AI_Zorder;
-        }
-    }
-
-   
-
     public class DataTableForParam
     {
         public DataTable g_DtUpdateFileInfo = new DataTable("TB_DtUpdateFileInfo");

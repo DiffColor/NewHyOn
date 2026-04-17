@@ -3,10 +3,127 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         LocationChanged="Window_LocationChanged"
         Title="NewHyOn Player" WindowStyle="None" ResizeMode="NoResize" WindowStartupLocation="Manual" Background="Black" >
+    <Window.Resources>
+        <Style x:Key="CuteLoadingDotStyle" TargetType="Ellipse">
+            <Setter Property="Width" Value="10"/>
+            <Setter Property="Height" Value="10"/>
+            <Setter Property="Margin" Value="5,0"/>
+            <Setter Property="Fill" Value="#FFFFFFFF"/>
+            <Setter Property="Opacity" Value="0.35"/>
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
+            <Setter Property="RenderTransform">
+                <Setter.Value>
+                    <ScaleTransform ScaleX="0.7" ScaleY="0.7"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
     <Grid x:Name="LayoutGrid" Background="Black">
         <ScrollViewer x:Name="MainScrollViewer" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Hidden">
             <Canvas x:Name="DesignerCanvas" SnapsToDevicePixels="True" />
         </ScrollViewer>
         <Image x:Name="EmgImg" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Hidden"/>
+        <Grid x:Name="InitialLoadingOverlay" Background="#CC000000" Visibility="Collapsed">
+            <Border HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Padding="28,20"
+                    Background="#1AFFFFFF"
+                    BorderBrush="#26FFFFFF"
+                    BorderThickness="1"
+                    CornerRadius="18">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <Ellipse Style="{StaticResource CuteLoadingDotStyle}">
+                            <Ellipse.Triggers>
+                                <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                                    <BeginStoryboard>
+                                        <Storyboard RepeatBehavior="Forever">
+                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                             From="0.35"
+                                                             To="1"
+                                                             Duration="0:0:0.45"
+                                                             AutoReverse="True"/>
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                             From="0.7"
+                                                             To="1"
+                                                             Duration="0:0:0.45"
+                                                             AutoReverse="True"/>
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                             From="0.7"
+                                                             To="1"
+                                                             Duration="0:0:0.45"
+                                                             AutoReverse="True"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </EventTrigger>
+                            </Ellipse.Triggers>
+                        </Ellipse>
+                        <Ellipse Style="{StaticResource CuteLoadingDotStyle}">
+                            <Ellipse.Triggers>
+                                <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                                    <BeginStoryboard>
+                                        <Storyboard RepeatBehavior="Forever">
+                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                             BeginTime="0:0:0.15"
+                                                             From="0.35"
+                                                             To="1"
+                                                             Duration="0:0:0.45"
+                                                             AutoReverse="True"/>
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                             BeginTime="0:0:0.15"
+                                                             From="0.7"
+                                                             To="1"
+                                                             Duration="0:0:0.45"
+                                                             AutoReverse="True"/>
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                             BeginTime="0:0:0.15"
+                                                             From="0.7"
+                                                             To="1"
+                                                             Duration="0:0:0.45"
+                                                             AutoReverse="True"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </EventTrigger>
+                            </Ellipse.Triggers>
+                        </Ellipse>
+                        <Ellipse Style="{StaticResource CuteLoadingDotStyle}">
+                            <Ellipse.Triggers>
+                                <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                                    <BeginStoryboard>
+                                        <Storyboard RepeatBehavior="Forever">
+                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                             BeginTime="0:0:0.3"
+                                                             From="0.35"
+                                                             To="1"
+                                                             Duration="0:0:0.45"
+                                                             AutoReverse="True"/>
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                             BeginTime="0:0:0.3"
+                                                             From="0.7"
+                                                             To="1"
+                                                             Duration="0:0:0.45"
+                                                             AutoReverse="True"/>
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                             BeginTime="0:0:0.3"
+                                                             From="0.7"
+                                                             To="1"
+                                                             Duration="0:0:0.45"
+                                                             AutoReverse="True"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </EventTrigger>
+                            </Ellipse.Triggers>
+                        </Ellipse>
+                    </StackPanel>
+                    <TextBlock x:Name="InitialLoadingText"
+                               Margin="0,14,0,0"
+                               HorizontalAlignment="Center"
+                               Foreground="White"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Text="Preparing..." />
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

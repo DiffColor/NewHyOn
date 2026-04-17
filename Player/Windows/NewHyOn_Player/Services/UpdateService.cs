@@ -13,6 +13,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using TurtleTools;
+using SharedWeeklyPlayScheduleInfo = AndoW.Shared.WeeklyPlayScheduleInfo;
 
 namespace NewHyOnPlayer
 {
@@ -707,10 +708,12 @@ namespace NewHyOnPlayer
             // 백업 후 적용
             var backupPageList = new PageListRepository().LoadAll();
             var backupPages = new PageRepository().LoadAll();
+            bool weeklyScheduleUpdated = false;
             try
             {
                 ApplyToLiteDb(localPageList, localPages);
                 SaveContentPeriods(payload.ContentPeriods);
+                weeklyScheduleUpdated = SyncSchedulePayloadToLocalDb(payload.Schedule);
             }
             catch (Exception ex)
             {
@@ -735,8 +738,8 @@ namespace NewHyOnPlayer
                 return;
             }
 
-            // 사용되지 않는 파일 정리
-            CleanupUnusedFiles(localPages);
+            // 현재 일반 재생 + 특별 스케줄 기준 밖의 미디어 파일 정리
+            CleanupMediaFilesOutsideScheduleScope(queue, payload, localPages);
             CleanupTemp(downloadEntries);
 
             owner?.Dispatcher.BeginInvoke(new Action(() =>
@@ -756,6 +759,11 @@ namespace NewHyOnPlayer
                         // 스케줄 큐는 데이터만 반영하고 전환은 PageEnd/ContentEnd에서 처리한다.
                         playerInfoManager.SaveData();
                     }
+                }
+
+                if (weeklyScheduleUpdated)
+                {
+                    owner?.HandleWeeklyScheduleUpdated();
                 }
             }));
 
@@ -820,6 +828,132 @@ namespace NewHyOnPlayer
             }
 
             owner?.RefreshContentPeriodCache(list);
+        }
+
+        private bool SyncSchedulePayloadToLocalDb(ScheduleUpdatePayload schedule)
+        {
+            if (schedule == null)
+            {
+                return false;
+            }
+
+            SaveSpecialScheduleCache(schedule);
+            return SaveWeeklySchedule(schedule.WeeklySchedule);
+        }
+
+        private void SaveSpecialScheduleCache(ScheduleUpdatePayload schedule)
+        {
+            if (schedule == null)
+            {
+                return;
+            }
+
+            string playerId = owner?.g_PlayerInfoManager?.g_PlayerInfo?.PIF_GUID ?? string.Empty;
+            string playerName = owner?.g_PlayerInfoManager?.g_PlayerInfo?.PIF_PlayerName ?? string.Empty;
+
+            string cacheId = string.IsNullOrWhiteSpace(schedule.PlayerId) ? schedule.PlayerName : schedule.PlayerId;
+            if (string.IsNullOrWhiteSpace(cacheId))
+            {
+                cacheId = string.IsNullOrWhiteSpace(playerId) ? playerName : playerId;
+            }
+
+            if (string.IsNullOrWhiteSpace(cacheId))
+            {
+                return;
+            }
+
+            var schedules = new List<SpecialSchedulePayload>();
+            foreach (var item in schedule.SpecialSchedules ?? Enumerable.Empty<SpecialSchedulePayload>())
+            {
+                if (item != null)
+                {
+                    schedules.Add(item);
+                }
+            }
+
+            var playlists = new List<SchedulePlaylistPayload>();
+            foreach (var playlist in schedule.Playlists ?? Enumerable.Empty<SchedulePlaylistPayload>())
+            {
+                if (playlist == null || playlist.PageList == null || playlist.Pages == null || playlist.Pages.Count == 0)
+                {
+                    continue;
+                }
+
+                playlists.Add(playlist);
+            }
+
+            var cache = new SpecialScheduleCache
+            {
+                Id = cacheId,
+                PlayerId = string.IsNullOrWhiteSpace(schedule.PlayerId) ? playerId : schedule.PlayerId,
+                PlayerName = string.IsNullOrWhiteSpace(schedule.PlayerName) ? playerName : schedule.PlayerName,
+                UpdatedAt = string.IsNullOrWhiteSpace(schedule.GeneratedAt)
+                    ? DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+                    : schedule.GeneratedAt,
+                Schedules = schedules,
+                Playlists = playlists
+            };
+
+            using (var repo = new SpecialScheduleCacheRepository())
+            {
+                repo.Upsert(cache);
+            }
+        }
+
+        private bool SaveWeeklySchedule(SharedWeeklyPlayScheduleInfo schedule)
+        {
+            if (schedule == null)
+            {
+                return false;
+            }
+
+            var playerInfo = owner?.g_PlayerInfoManager?.g_PlayerInfo;
+            string playerId = playerInfo?.PIF_GUID;
+            string playerName = playerInfo?.PIF_PlayerName;
+
+            var localId = string.IsNullOrWhiteSpace(schedule.Id)
+                ? (string.IsNullOrWhiteSpace(playerId) ? playerName : playerId)
+                : schedule.Id?.Trim();
+            var resolvedPlayerId = string.IsNullOrWhiteSpace(schedule.PlayerID)
+                ? (string.IsNullOrWhiteSpace(playerId) ? playerName : playerId)
+                : schedule.PlayerID?.Trim();
+
+            if (string.IsNullOrWhiteSpace(localId) || string.IsNullOrWhiteSpace(resolvedPlayerId))
+            {
+                Logger.WriteErrorLog("UpdateService SaveWeeklySchedule skipped: missing id/playerId.", Logger.GetLogFileName());
+                return false;
+            }
+
+            var local = new SharedWeeklyPlayScheduleInfo
+            {
+                Id = localId,
+                PlayerID = resolvedPlayerId,
+                PlayerName = string.IsNullOrWhiteSpace(schedule.PlayerName)
+                    ? (string.IsNullOrWhiteSpace(playerName) ? playerId ?? string.Empty : playerName)
+                    : schedule.PlayerName.Trim(),
+                MonSch = schedule.MonSch ?? DaySchedule.CreateDefault(),
+                TueSch = schedule.TueSch ?? DaySchedule.CreateDefault(),
+                WedSch = schedule.WedSch ?? DaySchedule.CreateDefault(),
+                ThuSch = schedule.ThuSch ?? DaySchedule.CreateDefault(),
+                FriSch = schedule.FriSch ?? DaySchedule.CreateDefault(),
+                SatSch = schedule.SatSch ?? DaySchedule.CreateDefault(),
+                SunSch = schedule.SunSch ?? DaySchedule.CreateDefault()
+            };
+
+            using (var repo = new WeeklyScheduleRepository())
+            {
+                repo.DeleteMany(x =>
+                    (!string.IsNullOrWhiteSpace(local.Id)
+                        && string.Equals(x.Id, local.Id, StringComparison.OrdinalIgnoreCase))
+                    || (!string.IsNullOrWhiteSpace(local.PlayerID)
+                        && string.Equals(x.PlayerID, local.PlayerID, StringComparison.OrdinalIgnoreCase))
+                    || (!string.IsNullOrWhiteSpace(local.PlayerName)
+                        && string.Equals(x.PlayerName, local.PlayerName, StringComparison.OrdinalIgnoreCase)));
+                repo.Upsert(local);
+            }
+
+            Logger.WriteLog($"UpdateService weekly schedule synced to local db. playerId={local.PlayerID}, playerName={local.PlayerName}", Logger.GetLogFileName());
+            return true;
         }
 
         private TimeSpan RetryPolicy(int retryCount)
@@ -1825,53 +1959,244 @@ namespace NewHyOnPlayer
             }
         }
 
-        private void CleanupUnusedFiles(IEnumerable<PageInfoClass> pages)
+        private void CleanupMediaFilesOutsideScheduleScope(UpdateQueue queue, SharedUpdatePayload payload, IEnumerable<PageInfoClass> appliedPages)
         {
-            var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            void Collect(IEnumerable<PageInfoClass> source)
-            {
-                foreach (var page in source ?? Enumerable.Empty<PageInfoClass>())
-                {
-                    if (page?.PIC_Elements == null) continue;
-                    foreach (var element in page.PIC_Elements)
-                    {
-                        if (element?.EIF_ContentsInfoClassList == null) continue;
-                        foreach (var content in element.EIF_ContentsInfoClassList)
-                        {
-                            if (content == null || string.IsNullOrWhiteSpace(content.CIF_FileName)) continue;
-                            used.Add(FNDTools.GetContentsFilePath(content.CIF_FileName));
-                        }
-                    }
-                }
-            }
-
-            // Apply payload pages and all pages persisted in LiteDB.
-            Collect(pages);
             try
             {
-                using (var pageRepo = new PageRepository())
-                {
-                    Collect(pageRepo.LoadAll());
-                }
+                var retainedFiles = BuildRetainedMediaFilesForScheduleScope(queue, payload, appliedPages);
+                DeleteMediaFilesNotInSet(retainedFiles);
+                CleanupEmptyContentDirectories();
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog($"UpdateService scheduled media cleanup failed: {ex}", Logger.GetLogFileName());
+            }
+        }
+
+        private HashSet<string> BuildRetainedMediaFilesForScheduleScope(UpdateQueue queue, SharedUpdatePayload payload, IEnumerable<PageInfoClass> appliedPages)
+        {
+            var retained = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            CollectMediaFilesFromPages(retained, appliedPages);
+            CollectMediaFilesFromPages(retained, payload?.Pages);
+            CollectMediaFilesFromSchedulePayload(retained, payload?.Schedule);
+            CollectMediaFilesFromCurrentPlaylists(retained);
+            CollectMediaFilesFromSpecialScheduleCache(retained);
+
+            try
+            {
+                var currentPlaylist = owner?.g_PlayerInfoManager?.g_PlayerInfo?.PIF_CurrentPlayList ?? string.Empty;
+                var defaultPlaylist = owner?.g_PlayerInfoManager?.g_PlayerInfo?.PIF_DefaultPlayList ?? string.Empty;
+                Logger.WriteLog(
+                    $"UpdateService media retention scope prepared. retained={retained.Count}, queue={queue?.PlaylistId}, current={currentPlaylist}, default={defaultPlaylist}",
+                    Logger.GetLogFileName());
             }
             catch
             {
-                // ignore cleanup collection errors
             }
 
+            return retained;
+        }
+
+        private void CollectMediaFilesFromSchedulePayload(HashSet<string> retained, ScheduleUpdatePayload schedule)
+        {
+            if (retained == null || schedule?.Playlists == null)
+            {
+                return;
+            }
+
+            foreach (var playlist in schedule.Playlists)
+            {
+                CollectMediaFilesFromPages(retained, playlist?.Pages);
+            }
+        }
+
+        private void CollectMediaFilesFromPages(HashSet<string> retained, IEnumerable<AndoW.Shared.PageInfoClass> pages)
+        {
+            if (retained == null)
+            {
+                return;
+            }
+
+            foreach (var page in pages ?? Enumerable.Empty<AndoW.Shared.PageInfoClass>())
+            {
+                if (page?.PIC_Elements == null)
+                {
+                    continue;
+                }
+
+                foreach (var element in page.PIC_Elements)
+                {
+                    if (element?.EIF_ContentsInfoClassList == null)
+                    {
+                        continue;
+                    }
+
+                    foreach (var content in element.EIF_ContentsInfoClassList)
+                    {
+                        if (content == null || string.IsNullOrWhiteSpace(content.CIF_FileName))
+                        {
+                            continue;
+                        }
+
+                        retained.Add(Path.GetFullPath(FNDTools.GetContentsFilePath(content.CIF_FileName)));
+                    }
+                }
+            }
+        }
+
+        private void CollectMediaFilesFromCurrentPlaylists(HashSet<string> retained)
+        {
+            if (retained == null)
+            {
+                return;
+            }
+
+            var playerInfo = owner?.g_PlayerInfoManager?.g_PlayerInfo;
+            if (playerInfo == null)
+            {
+                return;
+            }
+
+            var playlistNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrWhiteSpace(playerInfo.PIF_CurrentPlayList))
+            {
+                playlistNames.Add(playerInfo.PIF_CurrentPlayList);
+            }
+
+            if (!string.IsNullOrWhiteSpace(playerInfo.PIF_DefaultPlayList))
+            {
+                playlistNames.Add(playerInfo.PIF_DefaultPlayList);
+            }
+
+            if (playlistNames.Count == 0)
+            {
+                return;
+            }
+
+            try
+            {
+                using (var pageListRepo = new PageListRepository())
+                using (var pageRepo = new PageRepository())
+                {
+                    var pageLists = pageListRepo.LoadAll() ?? new List<PageListInfoClass>();
+                    var pageMap = (pageRepo.LoadAll() ?? new List<PageInfoClass>())
+                        .Where(p => p != null && !string.IsNullOrWhiteSpace(p.PIC_GUID))
+                        .GroupBy(p => p.PIC_GUID, StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+                    foreach (var playlistName in playlistNames)
+                    {
+                        var pageList = pageLists.FirstOrDefault(pl =>
+                            pl != null && string.Equals(pl.PLI_PageListName, playlistName, StringComparison.OrdinalIgnoreCase));
+                        if (pageList?.PLI_Pages == null || pageList.PLI_Pages.Count == 0)
+                        {
+                            continue;
+                        }
+
+                        var pages = new List<PageInfoClass>();
+                        foreach (var pageId in pageList.PLI_Pages)
+                        {
+                            if (string.IsNullOrWhiteSpace(pageId))
+                            {
+                                continue;
+                            }
+
+                            if (pageMap.TryGetValue(pageId, out var page))
+                            {
+                                pages.Add(page);
+                            }
+                        }
+
+                        CollectMediaFilesFromPages(retained, pages);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog($"UpdateService current playlist media collect failed: {ex}", Logger.GetLogFileName());
+            }
+        }
+
+        private void CollectMediaFilesFromSpecialScheduleCache(HashSet<string> retained)
+        {
+            if (retained == null)
+            {
+                return;
+            }
+
+            var playerInfo = owner?.g_PlayerInfoManager?.g_PlayerInfo;
+            if (playerInfo == null)
+            {
+                return;
+            }
+
+            string cacheKey = string.IsNullOrWhiteSpace(playerInfo.PIF_GUID)
+                ? playerInfo.PIF_PlayerName
+                : playerInfo.PIF_GUID;
+
+            try
+            {
+                using (var repo = new SpecialScheduleCacheRepository())
+                {
+                    var cache = string.IsNullOrWhiteSpace(cacheKey) ? null : repo.FindById(cacheKey);
+                    if (cache == null && !string.IsNullOrWhiteSpace(playerInfo.PIF_PlayerName))
+                    {
+                        cache = repo.FindOne(x => string.Equals(x.PlayerName, playerInfo.PIF_PlayerName, StringComparison.OrdinalIgnoreCase));
+                    }
+
+                    foreach (var playlist in cache?.Playlists ?? Enumerable.Empty<SchedulePlaylistPayload>())
+                    {
+                        CollectMediaFilesFromPages(retained, playlist?.Pages);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog($"UpdateService special schedule media collect failed: {ex}", Logger.GetLogFileName());
+            }
+        }
+
+        private void DeleteMediaFilesNotInSet(HashSet<string> retainedFiles)
+        {
             var root = FNDTools.GetContentsRootDirPath();
-            if (!Directory.Exists(root)) return;
+            if (!Directory.Exists(root))
+            {
+                return;
+            }
+
+            int deletedCount = 0;
             foreach (var file in Directory.GetFiles(root, "*", SearchOption.AllDirectories))
             {
                 var full = Path.GetFullPath(file);
-                if (!used.Contains(full))
+                if (retainedFiles != null && retainedFiles.Contains(full))
                 {
-                    try { File.Delete(full); } catch { }
+                    continue;
+                }
+
+                try
+                {
+                    File.Delete(full);
+                    deletedCount++;
+                }
+                catch
+                {
                 }
             }
 
-            // 빈 폴더 정리
-            foreach (var dir in Directory.GetDirectories(root, "*", SearchOption.AllDirectories))
+            Logger.WriteLog($"UpdateService media cleanup deleted files: {deletedCount}", Logger.GetLogFileName());
+        }
+
+        private void CleanupEmptyContentDirectories()
+        {
+            var root = FNDTools.GetContentsRootDirPath();
+            if (!Directory.Exists(root))
+            {
+                return;
+            }
+
+            foreach (var dir in Directory.GetDirectories(root, "*", SearchOption.AllDirectories)
+                .OrderByDescending(x => x.Length))
             {
                 try
                 {
@@ -1880,7 +2205,9 @@ namespace NewHyOnPlayer
                         Directory.Delete(dir, false);
                     }
                 }
-                catch { }
+                catch
+                {
+                }
             }
         }
 

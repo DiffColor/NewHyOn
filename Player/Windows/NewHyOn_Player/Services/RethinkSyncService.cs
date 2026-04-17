@@ -139,6 +139,7 @@ namespace NewHyOnPlayer
                 string localGuid = manager.g_PlayerInfo.PIF_GUID;
 
                 string remoteGuid = null;
+                bool createdRemotePlayer = false;
                 if (!string.IsNullOrWhiteSpace(playerName))
                 {
                     bool lookupSucceeded = TryFetchGuidByName(playerName, out remoteGuid);
@@ -159,13 +160,8 @@ namespace NewHyOnPlayer
                             return;
                         }
 
-                        manager.g_PlayerInfo.PIF_GUID = createdGuid;
-                        manager.SaveData();
-                        UpsertPlayerInfoToRethink();
-                        infoSyncedAfterConnect = true;
-                        PlayerGuidChanged?.Invoke(createdGuid);
-                        PlayerSynced?.Invoke();
-                        return;
+                        remoteGuid = createdGuid;
+                        createdRemotePlayer = true;
                     }
                 }
 
@@ -184,23 +180,33 @@ namespace NewHyOnPlayer
                 {
                     manager.g_PlayerInfo.PIF_GUID = remoteGuid;
                     manager.SaveData();
-                    UpdatePlayerInfoToRethink();
-                    SyncAuthKey(manager.g_PlayerInfo, remoteGuid);
-                    infoSyncedAfterConnect = true;
-                    PlayerGuidChanged?.Invoke(remoteGuid);
-                    PlayerSynced?.Invoke();
-                    return;
                 }
 
-                if (!infoSyncedAfterConnect)
+                if (createdRemotePlayer)
+                {
+                    UpsertPlayerInfoToRethink();
+                }
+                else
                 {
                     UpdatePlayerInfoToRethink();
-                    SyncAuthKey(manager.g_PlayerInfo, remoteGuid);
-                    infoSyncedAfterConnect = true;
+                }
+
+                SyncAuthKey(manager.g_PlayerInfo, remoteGuid);
+
+                bool shouldNotifyPlayerSynced = createdRemotePlayer || guidChanged || !infoSyncedAfterConnect;
+                infoSyncedAfterConnect = true;
+
+                if (guidChanged)
+                {
+                    PlayerGuidChanged?.Invoke(remoteGuid);
+                }
+
+                if (shouldNotifyPlayerSynced)
+                {
                     PlayerSynced?.Invoke();
                 }
 
-                SyncWeeklySchedule(remoteGuid ?? localGuid, playerName);
+                SyncWeeklySchedule(remoteGuid, manager.g_PlayerInfo.PIF_PlayerName);
             }
             catch (Exception ex)
             {
@@ -828,6 +834,13 @@ namespace NewHyOnPlayer
 
                 using (var repo = new WeeklyScheduleRepository())
                 {
+                    repo.DeleteMany(x =>
+                        (!string.IsNullOrWhiteSpace(local.Id)
+                            && string.Equals(x.Id, local.Id, StringComparison.OrdinalIgnoreCase))
+                        || (!string.IsNullOrWhiteSpace(local.PlayerID)
+                            && string.Equals(x.PlayerID, local.PlayerID, StringComparison.OrdinalIgnoreCase))
+                        || (!string.IsNullOrWhiteSpace(local.PlayerName)
+                            && string.Equals(x.PlayerName, local.PlayerName, StringComparison.OrdinalIgnoreCase)));
                     repo.Upsert(local);
                 }
 

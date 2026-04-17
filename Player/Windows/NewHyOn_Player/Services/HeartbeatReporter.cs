@@ -32,7 +32,7 @@ namespace NewHyOnPlayer
 
             timer = new MultimediaTimer.Timer
             {
-                Mode = MultimediaTimer.TimerMode.Periodic,
+                Mode = MultimediaTimer.TimerMode.OneShot,
                 Period = this.intervalMs,
                 Resolution = 1
             };
@@ -42,7 +42,7 @@ namespace NewHyOnPlayer
         public void Start()
         {
             if (disposed || IsTerminalStopped()) return;
-            timer.Start();
+            ScheduleNext();
         }
 
         public void Stop()
@@ -200,10 +200,10 @@ namespace NewHyOnPlayer
 
             if (Interlocked.Exchange(ref isExecuting, 1) == 1)
             {
+                ScheduleNext();
                 return;
             }
 
-            Stop();
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 try
@@ -218,9 +218,21 @@ namespace NewHyOnPlayer
                 finally
                 {
                     Interlocked.Exchange(ref isExecuting, 0);
-                    Start();
+                    ScheduleNext();
                 }
             });
+        }
+
+        private void ScheduleNext()
+        {
+            if (disposed || IsTerminalStopped())
+            {
+                return;
+            }
+
+            timer.Stop();
+            timer.Period = intervalMs;
+            timer.Start();
         }
 
         private void SendHeartbeatInternal(bool forceUpdateKeepAlive)
@@ -388,8 +400,12 @@ namespace NewHyOnPlayer
 
             if (string.IsNullOrWhiteSpace(player.PIF_GUID))
             {
+                owner?.RequestPlayerGuidSyncNow();
+                Logger.WriteLog("Heartbeat skipped: player GUID is empty. Requesting RethinkDB sync.", Logger.GetLogFileName());
                 return null;
             }
+
+            string clientId = player.PIF_GUID;
 
             string status = overrideStatus;
             int process = overrideProcess ?? 0;
@@ -435,7 +451,7 @@ namespace NewHyOnPlayer
 
             return new HeartbeatPayload
             {
-                ClientId = player.PIF_GUID,
+                ClientId = clientId,
                 Status = status,
                 Process = NormalizeHeartbeatProcess(process),
                 Version = GetHeartbeatVersion(),

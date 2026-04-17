@@ -5,6 +5,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Threading;
 using NewHyOnPlayer.DataManager;
+using NewHyOnPlayer.PlaybackModes;
 
 namespace NewHyOnPlayer
 {
@@ -63,29 +64,23 @@ namespace NewHyOnPlayer
         private string BuildContentText()
         {
             var sb = new StringBuilder();
-            var list = owner.g_ContentsPlayWindowList ?? new List<ContentsPlayWindow>();
+            var list = owner.GetPlaybackDebugItems() ?? new List<PlaybackDebugItem>();
             int index = 1;
 
-            foreach (var wnd in list)
+            foreach (var item in list)
             {
-                if (wnd == null || wnd.g_ElementInfoClass == null || wnd.g_ElementInfoClass.EIF_ContentsInfoClassList == null)
+                if (item == null || string.IsNullOrWhiteSpace(item.ElementName))
                 {
                     continue;
                 }
-                if (wnd.g_ElementInfoClass.EIF_ContentsInfoClassList.Count == 0)
-                {
-                    continue;
-                }
+                string elementName = ValueOrDash(item.ElementName);
+                string currentName = ValueOrDash(item.CurrentContentName);
+                string nextName = ValueOrDash(item.NextContentName);
+                string visibleState = item.IsVisible ? "Visible" : "Hidden";
 
-                var current = wnd.GetCurrentContent();
-                var next = wnd.GetNextContent();
-                string elementName = ValueOrDash(wnd.g_ElementInfoClass.EIF_Name);
-                string currentName = ValueOrDash(current?.CIF_FileName);
-                string nextName = ValueOrDash(next?.CIF_FileName);
-                string visibleState = wnd.IsVisible ? "Visible" : "Hidden";
-
-                sb.AppendLine($"[{index}] {elementName} ({visibleState})");
-                sb.AppendLine($" - 현재 컨텐츠: {currentName} ({wnd.CurrentContentElapsedSeconds}/{wnd.CurrentContentDurationSeconds}초)");
+                sb.AppendLine($"[{index}] {elementName} / {item.LayoutName} / Slot {item.SlotIndex} ({visibleState})");
+                sb.AppendLine($" - 상태: Layout={item.LayoutState}, Slot={item.SlotState}");
+                sb.AppendLine($" - 현재 컨텐츠: {currentName} ({item.ElapsedSeconds}/{item.DurationSeconds}초)");
                 sb.AppendLine($" - 다음 컨텐츠: {nextName}");
                 sb.AppendLine();
                 index++;

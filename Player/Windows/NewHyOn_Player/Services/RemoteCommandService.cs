@@ -231,6 +231,7 @@ namespace NewHyOnPlayer
                             bool applied = payloadData != null && ApplyWeeklySchedule(payloadData.Schedule?.WeeklySchedule, playerInfo);
                             if (applied)
                             {
+                                owner?.HandleWeeklyScheduleUpdated();
                                 RecordCommandDone(historyId, playerGuid, CommandHistoryStatus.Done, null, null);
                                 return true;
                             }

@@ -14,9 +14,9 @@ using System.Windows.Threading;
 using TurtleTools;
 using NewHyOnPlayer.Services;
 using NewHyOnPlayer.DataManager;
+using NewHyOnPlayer.PlaybackModes;
 using AndoW.Shared;
 using forms = System.Windows.Forms;
-using SharedElementInfoClass = AndoW.Shared.ElementInfoClass;
 
 namespace NewHyOnPlayer
 {
@@ -27,14 +27,10 @@ namespace NewHyOnPlayer
     {
 
         public int DisplayLimit = 10;
-        public int WelcomeLimit = 10;
-        public int ScrollLimit = 2;
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         // 컨텐츠 재생 서브윈도우
         public List<ContentsPlayWindow> g_ContentsPlayWindowList = new List<ContentsPlayWindow>();  // 컨텐츠를 재생하는 윈도우
-        public List<ScrollTextPlayWindow> g_ScrollTextPlayWindowList = new List<ScrollTextPlayWindow>();  // 스크롤 텍스트를 재생하는 윈도우
-        public List<WelcomeBoardWindow> g_WelcomeBoardWindowList = new List<WelcomeBoardWindow>();
         //
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -94,6 +90,7 @@ namespace NewHyOnPlayer
         private KeyboardHook keyboardHook;
         private ScheduleEvaluator scheduleEvaluator;
         private OnAirService onAirService;
+        private SeamlessPlaybackContainer playbackContainer;
         private DateTime lastScheduleEval = DateTime.MinValue;
         private string pendingSchedulePlaylist = string.Empty;
         private string pendingScheduleId = string.Empty;
@@ -545,6 +542,10 @@ namespace NewHyOnPlayer
                 {
                     EnsureCommunicationStarted();
                 };
+                rethinkSyncService.WeeklyScheduleSynced += () =>
+                {
+                    HandleWeeklyScheduleUpdated();
+                };
             }
             catch (Exception ex)
             {
@@ -583,30 +584,12 @@ namespace NewHyOnPlayer
             g_PlayerName = g_PlayerInfoManager.g_PlayerInfo.PIF_PlayerName;
 
             CreateContentsPlayWindowForReady();
-
-            UpdateCurrentPageListName(g_PlayerInfoManager.g_PlayerInfo.PIF_DefaultPlayList);
-
-            InitTickTimer();
-
-            this.g_PageInfoManager.LoadData(this.g_PlayerInfoManager.g_PlayerInfo.PIF_DefaultPlayList);
-			LoadContentPeriodCache();
-            EnsureLocalPlaybackReady();
-
-            g_PageIndex = 0;
+            LoadContentPeriodCache();
+            SetInitialLoadingVisible(true);
+            playbackContainer?.StartInitialPlayback(g_PlayerInfoManager.g_PlayerInfo.PIF_DefaultPlayList);
+            HandleWeeklyScheduleUpdated();
 
             //LoadPeriodData();
-
-            this.Dispatcher.Invoke(DispatcherPriority.Normal,
-                        new Action(() =>
-                        {
-                            EvaluateSchedule(force: true);
-                            if (TryApplyScheduledSwitch(isPageBoundary: true, isContentBoundary: true) == false)
-                            {
-                                Logger.WriteLog("PopPage in @MainWindow_Loaded Called.", Logger.GetLogFileName());
-                                PopPage();
-                            }
-                        })
-                    );
 
 
             if (ProcessTools.CheckExeProcessAlive(FNDTools.GetPCSProcName()) == false)
@@ -618,10 +601,6 @@ namespace NewHyOnPlayer
                 }
             }
 
-            rethinkSyncService.WeeklyScheduleSynced += () =>
-            {
-                HandleWeeklyScheduleUpdated();
-            };
             onAirService.Start();
         }
 
@@ -801,6 +780,12 @@ namespace NewHyOnPlayer
 
         private void ApplySyncIndex(int index)
         {
+            if (playbackContainer != null)
+            {
+                playbackContainer.TryApplySyncIndex(index);
+                return;
+            }
+
             foreach (ContentsPlayWindow item in g_ContentsPlayWindowList)
             {
                 if (item.IsVisible)
@@ -810,21 +795,21 @@ namespace NewHyOnPlayer
             }
         }
 
-        private void HandleSyncLeaderTick(ContentsPlayWindow item)
+        private void HandleSyncLeaderTick(SeamlessSyncStatus status)
         {
-            if (!IsSyncLeader || syncService == null || item == null)
+            if (!IsSyncLeader || syncService == null || status == null)
             {
                 return;
             }
 
-            int currentIndex = item.CurrentContentIndex;
-            int nextIndex = item.GetNextContentIndex();
+            int currentIndex = status.CurrentIndex;
+            int nextIndex = status.NextIndex;
             if (currentIndex < 0 || nextIndex < 0)
             {
                 return;
             }
 
-            long remaining = item.CurrentContentDurationSeconds - item.CurrentContentElapsedSeconds;
+            long remaining = status.DurationSeconds - status.ElapsedSeconds;
             if (remaining <= 1)
             {
                 if (lastPreparedFromIndex != currentIndex)
@@ -834,7 +819,7 @@ namespace NewHyOnPlayer
                 }
             }
 
-            if (item.CurrentContentElapsedSeconds >= item.CurrentContentDurationSeconds)
+            if (status.ElapsedSeconds >= status.DurationSeconds)
             {
                 if (lastCommitFromIndex != currentIndex)
                 {
@@ -908,51 +893,27 @@ namespace NewHyOnPlayer
 
         public void CreateContentsPlayWindowForReady()
         {
+            if (playbackContainer == null)
+            {
+                playbackContainer = new SeamlessPlaybackContainer(this, DesignerCanvas);
+                playbackContainer.Initialize();
+            }
+
+            if (g_ContentsPlayWindowList.Count > 0)
+            {
+                foreach (ContentsPlayWindow item in g_ContentsPlayWindowList)
+                {
+                    try
+                    {
+                        item.Close();
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+
             g_ContentsPlayWindowList.Clear();
-
-            for (int i = 0; i < DisplayLimit; i++)
-            {
-                ContentsPlayWindow videoImgElement = new ContentsPlayWindow(this);                
-                videoImgElement.Owner = Application.Current.MainWindow;
-                videoImgElement.ShowInTaskbar = false;
-                videoImgElement.Width = 0;
-                videoImgElement.Height = 0;
-                g_ContentsPlayWindowList.Add(videoImgElement);
-                videoImgElement.Show();
-                videoImgElement.Hide();
-
-                SpecificTools.DisableWindowHWAcceleration(videoImgElement, g_TTPlayerInfoManager.g_PlayerInfo.TTInfo_DAta2.Equals("NO", StringComparison.CurrentCultureIgnoreCase));
-            }
-
-            g_WelcomeBoardWindowList.Clear();
-            for (int i = 0; i < WelcomeLimit; i++)
-            {
-                WelcomeBoardWindow welcomeTmpWnd = new WelcomeBoardWindow();
-                welcomeTmpWnd.Owner = Application.Current.MainWindow;
-                welcomeTmpWnd.ShowInTaskbar = false;
-                welcomeTmpWnd.Width = 0;
-                welcomeTmpWnd.Height = 0;
-                g_WelcomeBoardWindowList.Add(welcomeTmpWnd);
-                welcomeTmpWnd.Show();
-                welcomeTmpWnd.Hide();
-
-                SpecificTools.DisableWindowHWAcceleration(welcomeTmpWnd, g_TTPlayerInfoManager.g_PlayerInfo.TTInfo_DAta2.Equals("NO", StringComparison.CurrentCultureIgnoreCase));
-            }
-
-            g_ScrollTextPlayWindowList.Clear();
-            for (int i = 0; i < ScrollLimit; i++)
-            {
-                ScrollTextPlayWindow scrollWnd = new ScrollTextPlayWindow();
-                scrollWnd.Owner = Application.Current.MainWindow;
-                scrollWnd.ShowInTaskbar = false;
-                scrollWnd.Width = 0;
-                scrollWnd.Height = 0;
-                g_ScrollTextPlayWindowList.Add(scrollWnd);
-                scrollWnd.Show();
-                scrollWnd.Hide();
-
-                SpecificTools.DisableWindowHWAcceleration(scrollWnd, g_TTPlayerInfoManager.g_PlayerInfo.TTInfo_DAta2.Equals("NO", StringComparison.CurrentCultureIgnoreCase));
-            }
         }
 
         double testMarginLeft = 0;
@@ -996,11 +957,34 @@ namespace NewHyOnPlayer
                 }));
         }
 
+        internal void SetInitialLoadingVisible(bool visible, string message = null)
+        {
+            Dispatcher.Invoke(DispatcherPriority.Normal, new Action(() =>
+            {
+                if (InitialLoadingOverlay == null)
+                {
+                    return;
+                }
+
+                InitialLoadingOverlay.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+                if (InitialLoadingText != null && !string.IsNullOrWhiteSpace(message))
+                {
+                    InitialLoadingText.Text = message;
+                }
+            }));
+        }
+
         public void PlayPrevContents()
         {
             this.Dispatcher.Invoke(DispatcherPriority.Normal,
                 new Action(() =>
                 {
+                    if (playbackContainer != null)
+                    {
+                        playbackContainer.PlayPreviousPage();
+                        return;
+                    }
+
                     Logger.WriteLog("PlayPrevContents Called.", Logger.GetLogFileName());
 
                     if (g_PageIndex > 1)
@@ -1025,6 +1009,12 @@ namespace NewHyOnPlayer
             this.Dispatcher.Invoke(DispatcherPriority.Normal,
                 new Action(() =>
                 {
+                    if (playbackContainer != null)
+                    {
+                        playbackContainer.PlayNextPage();
+                        return;
+                    }
+
                     StopTickTimer();
                     Logger.WriteLog("PlayNextContents Called.", Logger.GetLogFileName());
                     PopPage();
@@ -1038,6 +1028,12 @@ namespace NewHyOnPlayer
             this.Dispatcher.Invoke(DispatcherPriority.Normal,
                new Action(() =>
                {
+                   if (playbackContainer != null)
+                   {
+                       playbackContainer.PlayFirstPage();
+                       return;
+                   }
+
                    g_PageIndex = 0;
                    StopTickTimer();
                    Logger.WriteLog("PlayNextContents Called.", Logger.GetLogFileName());
@@ -1055,19 +1051,14 @@ namespace NewHyOnPlayer
         {
             try
             {
+                playbackContainer?.StopAll();
+
                 foreach (ContentsPlayWindow item in g_ContentsPlayWindowList)
                 {
                     item.StopContentsDisplay();
                     item.StopVisibleContents();
                     item.Hide();
                 }
-
-                foreach (ScrollTextPlayWindow item in g_ScrollTextPlayWindowList)
-                {
-                    item.StopAnimation();
-                    item.Hide();
-                }
-
             }
             catch (Exception ex)
             {
@@ -1085,13 +1076,21 @@ namespace NewHyOnPlayer
 
         bool g_IsUpdating = false;
         internal bool IsUpdating => g_IsUpdating;
-        internal int CurrentPageElapsedSeconds => g_TickCount;
-        internal int CurrentPageDurationSeconds => (int)g_TimeInterval;
-        internal string CurrentPageListName => g_CurrentPageListName;
-        internal string CurrentPageName => g_CurrentPageName;
-        internal string NextPageName => GetNextPageName();
+        internal int CurrentPageElapsedSeconds => playbackContainer != null ? playbackContainer.CurrentPageElapsedSeconds : g_TickCount;
+        internal int CurrentPageDurationSeconds => playbackContainer != null ? playbackContainer.CurrentPageDurationSeconds : (int)g_TimeInterval;
+        internal bool IsOnlySeamlessPage => playbackContainer != null ? playbackContainer.IsOnlySinglePage : g_PageInfoManager?.g_PageInfoClassList != null && g_PageInfoManager.g_PageInfoClassList.Count <= 1;
+        internal string CurrentPageListName => playbackContainer != null ? playbackContainer.CurrentPageListName : g_CurrentPageListName;
+        internal string CurrentPageName => playbackContainer != null ? playbackContainer.CurrentPageName : g_CurrentPageName;
+        internal string NextPageName => playbackContainer != null ? playbackContainer.NextPageName : GetNextPageName();
         internal RemoteCommandService CommandService => commandService;
+        internal ScheduleEvaluator ScheduleEvaluatorService => scheduleEvaluator;
+        internal OnAirService OnAirServiceInstance => onAirService;
         internal long BeginUpdateHeartbeatReporting() => heartbeatReporter?.BeginUpdateReporting() ?? 0;
+        internal void SendHeartbeatNow()
+        {
+            heartbeatReporter?.SendHeartbeatNow();
+        }
+
         internal void ReportUpdateHeartbeatNow(string status, int progress, bool force, long sessionId)
         {
             heartbeatReporter?.ReportUpdateNow(status, progress, force, sessionId);
@@ -1104,6 +1103,12 @@ namespace NewHyOnPlayer
 
         public void UpdateCurrentPageListName(string pageListName)
         {
+            if (playbackContainer != null)
+            {
+                playbackContainer.UpdateCurrentPageListName(pageListName);
+                return;
+            }
+
             g_CurrentPageListName = pageListName;
 
             CheckOnlyOnePage();
@@ -1113,6 +1118,11 @@ namespace NewHyOnPlayer
 
         public void CheckOnlyOnePage()
         {
+            if (playbackContainer != null)
+            {
+                return;
+            }
+
             this.g_PageInfoManager.LoadData(g_CurrentPageListName);
 
 
@@ -1144,67 +1154,21 @@ namespace NewHyOnPlayer
 
         public void PopPage()
         {
-            try
-            {
-                EnsureLocalPlaybackReady();
-                if (g_PageInfoManager.g_PageInfoClassList.Count == 0)  // 재생할 컨텐츠 리스트가 없으면 그냥 리턴한다.
-                {
-                    Thread.Sleep(250);
-                    return;
-                }
+            playbackContainer?.PlayNextPage();
+        }
 
-                WindowTools.DeleteNotifyIcons();
-
-                if (g_PageInfoManager.g_PageInfoClassList.Count == g_PageIndex)
-                {
-                    if (this.g_LocalSettingsManager.Settings.IsOnlyOnePage == true)
-                    {
-                        RunTickTimer();
-                        return;
-                    }
-
-                    g_PageIndex = 0;
-                }
-
-                Logger.WriteLog(string.Format("g_PageInfoList.Count : {0} / g_PageIndex : {1}", g_PageInfoManager.g_PageInfoClassList.Count, g_PageIndex), Logger.GetLogFileName());
-
-                string pageNameForPlaying = g_CurrentPageName = g_PageInfoManager.g_PageInfoClassList[g_PageIndex].PIC_PageName;
-                int playTimeHour = g_PageInfoManager.g_PageInfoClassList[g_PageIndex].PIC_PlaytimeHour;
-                int playTimeMin = g_PageInfoManager.g_PageInfoClassList[g_PageIndex].PIC_PlaytimeMinute;
-                int playTimeSec = g_PageInfoManager.g_PageInfoClassList[g_PageIndex].PIC_PlaytimeSecond;
-
-                g_PageIndex++;
-                g_TimeInterval = (playTimeHour * 60 * 60) + (playTimeMin * 60) + playTimeSec;
-
-                PlayPage(pageNameForPlaying);  
-
-                foreach (ContentsPlayWindow item in g_ContentsPlayWindowList)
-                {
-                    if (item.IsVisible)
-                    {
-                        item.InitChangeEffect();
-                        item.OrderingCanvasBGContents();
-                        item.UpdateLayout();
-                    }
-                }
-
-                RunTickTimer();
-
-                ReOrderingContentsPlayWindowZOrder();
-
-                heartbeatReporter?.SendHeartbeatNow();
-            }
-            catch (Exception ex)
-            {
-                Logger.WriteLog("g_PageIndex 인덱스 오류로 인해 g_PageIndex를 0 으로 세팅.", Logger.GetLogFileName());
-                g_PageIndex = 0;
-                RunTickTimer();
-                Logger.WriteLog(ex.ToString(), Logger.GetLogFileName());
-            }
+        internal void HandleSeamlessSyncLeaderTick(SeamlessSyncStatus status)
+        {
+            HandleSyncLeaderTick(status);
         }
 
         public void ReOrderingContentsPlayWindowZOrder()
         {
+            if (playbackContainer != null)
+            {
+                return;
+            }
+
             List<WindowZIdxForTTClass> orderedList = (from item in g_WindowZIdxForTTClassList
                                                          orderby item.AI_Zorder
                                                          select item as WindowZIdxForTTClass).ToList();
@@ -1213,25 +1177,20 @@ namespace NewHyOnPlayer
             {
                 foreach (WindowZIdxForTTClass item in orderedList)
                 {
-
-                    switch (item.AI_WindowType)
+                    if (item.AI_WindowType != WindowType.contentsPlayWindow)
                     {
-                        case WindowType.contentsPlayWindow:
-                            if (g_ContentsPlayWindowList[item.AI_WindowIndex].IsVisible)
-                                g_ContentsPlayWindowList[item.AI_WindowIndex].Activate();
-                            break;
-                        case WindowType.scrollTextWindow:
-                            if (g_ScrollTextPlayWindowList[item.AI_WindowIndex].IsVisible)
-                                g_ScrollTextPlayWindowList[item.AI_WindowIndex].Activate();
-                            break;
-                        case WindowType.welcomeBoardWindow:
-                            if (g_WelcomeBoardWindowList[item.AI_WindowIndex].IsVisible)
-                                g_WelcomeBoardWindowList[item.AI_WindowIndex].Activate();
-                            break;
-                        default:
-                            break;
+                        continue;
                     }
 
+                    if (item.AI_WindowIndex < 0 || item.AI_WindowIndex >= g_ContentsPlayWindowList.Count)
+                    {
+                        continue;
+                    }
+
+                    if (g_ContentsPlayWindowList[item.AI_WindowIndex].IsVisible)
+                    {
+                        g_ContentsPlayWindowList[item.AI_WindowIndex].Activate();
+                    }
                 }
             }));
         }
@@ -1259,6 +1218,12 @@ namespace NewHyOnPlayer
         
         public void RunTickTimer()
         {
+            if (playbackContainer != null)
+            {
+                g_IsTickTimerStopped = true;
+                return;
+            }
+
             g_TickTimer.Start();
             g_IsTickTimerStopped = false;
         }
@@ -1272,7 +1237,7 @@ namespace NewHyOnPlayer
 
         int g_TickCount = 0;
         bool g_IsTickTimerStopped = true;
-        internal bool IsPlaying => g_IsTickTimerStopped == false;
+        internal bool IsPlaying => playbackContainer != null ? playbackContainer.IsPresentationActive() : g_IsTickTimerStopped == false;
         internal bool IsSyncPlaybackActive => g_LocalSettingsManager?.Settings?.IsSyncEnabled ?? false;
         internal bool IsSyncLeader => IsSyncPlaybackActive && (g_LocalSettingsManager?.Settings?.IsLeading ?? false);
         internal bool ShouldHoldForSyncContent => IsSyncPlaybackActive && (IsSyncLeader || hasReceivedSyncMessage);
@@ -1289,14 +1254,12 @@ namespace NewHyOnPlayer
 
         internal void RequestScheduleEvaluation(bool force = false)
         {
-            EvaluateSchedule(force);
+            playbackContainer?.RequestScheduleEvaluation(force);
         }
 
         internal void HandleWeeklyScheduleUpdated()
         {
-            scheduleEvaluator?.InvalidateWeeklyCache();
-            RequestScheduleEvaluation(force: true);
-            onAirService?.RefreshWeeklySchedule();
+            playbackContainer?.HandleWeeklyScheduleUpdated();
         }
 
         internal void RequestWeeklyScheduleSyncNow()
@@ -1304,45 +1267,14 @@ namespace NewHyOnPlayer
             rethinkSyncService?.TriggerSyncNow();
         }
 
+        internal void RequestPlayerGuidSyncNow()
+        {
+            rethinkSyncService?.TriggerSyncNow();
+        }
+
         internal void StartPlaybackFromOffAir()
         {
-            try
-            {
-                var playerInfo = g_PlayerInfoManager?.g_PlayerInfo;
-                string playlist = playerInfo?.PIF_CurrentPlayList;
-                if (string.IsNullOrWhiteSpace(playlist))
-                {
-                    playlist = playerInfo?.PIF_DefaultPlayList;
-                }
-
-                if (!string.IsNullOrWhiteSpace(playlist))
-                {
-                    g_PageInfoManager.LoadData(playlist);
-                    g_PageIndex = 0;
-                }
-
-                StopTickTimer();
-                EnsureLocalPlaybackReady();
-                EvaluateSchedule(force: true);
-                if (!TryApplyScheduledSwitch(isPageBoundary: true, isContentBoundary: true))
-                {
-                    if (g_PageInfoManager.g_PageInfoClassList.Count == 0
-                        && !string.IsNullOrWhiteSpace(playerInfo?.PIF_DefaultPlayList))
-                    {
-                        g_PageInfoManager.LoadData(playerInfo.PIF_DefaultPlayList);
-                        g_PageIndex = 0;
-                    }
-                    this.Dispatcher.Invoke(DispatcherPriority.Normal,
-                    new Action(() =>
-                    {
-                        PopPage();
-                    }));
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.WriteLog(ex.ToString(), Logger.GetLogFileName());
-            }
+            playbackContainer?.StartPlaybackFromOffAir();
         }
 
         private void EvaluateSchedule(bool force)
@@ -1392,6 +1324,11 @@ namespace NewHyOnPlayer
 
         private bool TryApplyScheduledSwitch(bool isPageBoundary, bool isContentBoundary)
         {
+            return TryApplyScheduledSwitchCore(isPageBoundary, isContentBoundary, seamlessMode: false);
+        }
+
+        private bool TryApplyScheduledSwitchCore(bool isPageBoundary, bool isContentBoundary, bool seamlessMode)
+        {
             if (string.IsNullOrWhiteSpace(pendingSchedulePlaylist))
             {
                 return false;
@@ -1438,12 +1375,15 @@ namespace NewHyOnPlayer
 
             g_PageInfoManager.LoadData(playerInfo.PIF_CurrentPlayList);
             g_PageIndex = 0;
-            StopTickTimer();
-            this.Dispatcher.Invoke(DispatcherPriority.Normal,
-                    new Action(() =>
-                    {
-                        PopPage();
-                    }));
+            if (!seamlessMode)
+            {
+                StopTickTimer();
+                this.Dispatcher.Invoke(DispatcherPriority.Normal,
+                        new Action(() =>
+                        {
+                            PopPage();
+                        }));
+            }
             ApplyScheduleTransition();
             isScheduleSwitching = false;
             return true;
@@ -1451,38 +1391,15 @@ namespace NewHyOnPlayer
 
         internal void RequestPlaylistReload(string playlistName, string reason)
         {
-            if (string.IsNullOrWhiteSpace(playlistName))
-            {
-                return;
-            }
-
-            pendingPlaylistReload = playlistName;
-            pendingPlaylistReloadReason = reason ?? string.Empty;
-            string timing = g_LocalSettingsManager?.Settings?.SwitchTiming ?? "Immediately";
-
-            if (timing.Equals("Immediately", StringComparison.OrdinalIgnoreCase))
-            {
-                pendingPlaylistReload = string.Empty;
-                pendingPlaylistReloadReason = string.Empty;
-                UpdateCurrentPageListName(playlistName);
-                StopTickTimer();
-                this.Dispatcher.Invoke(DispatcherPriority.Normal,
-                    new Action(() =>
-                    {
-                        PopPage();
-                    }));
-                return;
-            }
-
-            string stateKey = $"PENDING|{pendingPlaylistReload}|{pendingPlaylistReloadReason}";
-            if (!string.Equals(lastPlaylistReloadStateKey, stateKey, StringComparison.Ordinal))
-            {
-                Logger.WriteLog($"플레이리스트 리로드 예약: {pendingPlaylistReload} ({pendingPlaylistReloadReason})", Logger.GetLogFileName());
-                lastPlaylistReloadStateKey = stateKey;
-            }
+            playbackContainer?.RequestPlaylistReload(playlistName, reason);
         }
 
         private bool TryApplyPendingPlaylistReload(bool isPageBoundary, bool isContentBoundary)
+        {
+            return TryApplyPendingPlaylistReloadCore(isPageBoundary, isContentBoundary, seamlessMode: false);
+        }
+
+        private bool TryApplyPendingPlaylistReloadCore(bool isPageBoundary, bool isContentBoundary, bool seamlessMode)
         {
             if (string.IsNullOrWhiteSpace(pendingPlaylistReload))
             {
@@ -1526,12 +1443,15 @@ namespace NewHyOnPlayer
 
             g_PageInfoManager.LoadData(current);
             g_PageIndex = 0;
-            StopTickTimer();
-            this.Dispatcher.Invoke(DispatcherPriority.Normal,
-                    new Action(() =>
-                    {
-                        PopPage();
-                    }));
+            if (!seamlessMode)
+            {
+                StopTickTimer();
+                this.Dispatcher.Invoke(DispatcherPriority.Normal,
+                        new Action(() =>
+                        {
+                            PopPage();
+                        }));
+            }
             ApplyScheduleTransition();
             return true;
         }
@@ -1583,6 +1503,12 @@ namespace NewHyOnPlayer
 
             foreach (var element in page.PIC_Elements)
             {
+                if (!TryParseDisplayType(element?.EIF_Type, out DisplayType displayType)
+                    || displayType != DisplayType.Media)
+                {
+                    continue;
+                }
+
                 if (element?.EIF_ContentsInfoClassList == null)
                 {
                     continue;
@@ -1871,6 +1797,11 @@ namespace NewHyOnPlayer
                         if (IsFocused == false)
                             Focus();
 
+                        if (playbackContainer != null)
+                        {
+                            return;
+                        }
+
                         EvaluateSchedule(force: false);
 
                         string switchTiming = g_LocalSettingsManager?.Settings?.SwitchTiming ?? "Immediately";
@@ -1923,29 +1854,33 @@ namespace NewHyOnPlayer
 
                             return;
                         }
-                        else
-                        {
-                            bool _ready = !blockPageTimer && g_TimeInterval - g_TickCount == 1;
-                            ContentsPlayWindow syncLeaderWindow = null;
 
-                            foreach (ContentsPlayWindow item in g_ContentsPlayWindowList)
+                        bool _ready = !blockPageTimer && g_TimeInterval - g_TickCount == 1;
+                        ContentsPlayWindow syncLeaderWindow = null;
+
+                        foreach (ContentsPlayWindow item in g_ContentsPlayWindowList)
+                        {
+                            if (item.IsVisible)
                             {
-                                if (item.IsVisible)
+                                item.Tick();
+                                if (_ready && !g_LocalSettingsManager.Settings.IsOnlyOnePage)
+                                    item.SetLoopState(false);
+                                if (syncLeaderWindow == null)
                                 {
-                                    item.Tick();
-                                    if (_ready && !g_LocalSettingsManager.Settings.IsOnlyOnePage)
-                                        item.SetLoopState(false);
-                                    if (syncLeaderWindow == null)
-                                    {
-                                        syncLeaderWindow = item;
-                                    }
+                                    syncLeaderWindow = item;
                                 }
                             }
+                        }
 
-                            if (syncLeaderWindow != null)
+                        if (syncLeaderWindow != null)
+                        {
+                            HandleSyncLeaderTick(new SeamlessSyncStatus
                             {
-                                HandleSyncLeaderTick(syncLeaderWindow);
-                            }
+                                CurrentIndex = syncLeaderWindow.CurrentContentIndex,
+                                NextIndex = syncLeaderWindow.GetNextContentIndex(),
+                                ElapsedSeconds = syncLeaderWindow.CurrentContentElapsedSeconds,
+                                DurationSeconds = syncLeaderWindow.CurrentContentDurationSeconds
+                            });
                         }
 
                         g_TickCount++;
@@ -1977,117 +1912,23 @@ namespace NewHyOnPlayer
             {
             }
         }
-
-
-        public List<WindowIdxForZorderClass> g_WindowIdxForZorderClassList = new List<WindowIdxForZorderClass>();  // 컨텐츠 재생 윈도우를 위한 
-        public List<WindowIdxForZorderClass> g_WndZIdxForScrollList = new List<WindowIdxForZorderClass>();  // 자막을 위한
-
         public List<WindowZIdxForTTClass> g_WindowZIdxForTTClassList = new List<WindowZIdxForTTClass>();  // 전체 서브윈도우를 위한
 
-
-        public void PlayPage(string paramPageName)
+        private static bool TryParseDisplayType(string rawType, out DisplayType displayType)
         {
-            g_ElementInfoManager.LoadData(paramPageName);
-
-            PageInfoClass currentPage = g_PageInfoManager.GetPageDefinition(paramPageName);
-            DetectMissingContentsForPlaylist(g_PlayerInfoManager?.g_PlayerInfo?.PIF_CurrentPlayList);
-            if (currentPage != null)
+            displayType = DisplayType.None;
+            if (string.IsNullOrWhiteSpace(rawType))
             {
-                g_ElementInfoManager.g_ElementInfoClassList = new List<ElementInfoClass>();
-                if (currentPage.PIC_Elements != null)
-                {
-                    foreach (SharedElementInfoClass element in currentPage.PIC_Elements)
-                    {
-                        ElementInfoClass clone = new ElementInfoClass();
-                        clone.CopyData(element);
-                        g_ElementInfoManager.g_ElementInfoClassList.Add(clone);
-                    }
-                }
-
-                SetBaseSizeFromPageSize(currentPage.PIC_CanvasWidth, currentPage.PIC_CanvasHeight);
+                return false;
             }
 
-            int diplayCnt = 0;
-            int subtitleCnt = 0;
-            int textElementCnt = 0;
-
-            HideAllContentsPlayWindow();
-
-            g_WindowIdxForZorderClassList.Clear();   // <-------- 서브윈도우의 Z-Idx를 위한초기작업
-
-            g_WindowZIdxForTTClassList.Clear();
-
-
-            if (g_ElementInfoManager.g_ElementInfoClassList.Count > 0)
-            {
-                foreach (ElementInfoClass item in g_ElementInfoManager.g_ElementInfoClassList)
-                {
-
-                    switch ((DisplayType)Enum.Parse(typeof(DisplayType), item.EIF_Type))
-                    {
-                        case DisplayType.Media:
-                            UpdateContentsPlayingWindow(item, diplayCnt);
-                            WindowZIdxForTTClass tmpCls = new WindowZIdxForTTClass();
-                            tmpCls.AI_WindowIndex = diplayCnt;
-                            tmpCls.AI_Zorder = item.EIF_ZIndex;
-                            tmpCls.AI_WindowType = WindowType.contentsPlayWindow;
-                            g_WindowZIdxForTTClassList.Add(tmpCls);
-
-                            diplayCnt++;
-                            break;
-
-                        case DisplayType.ScrollText:
-                            UpdateSubTitleWindow(item, subtitleCnt);
-                            WindowZIdxForTTClass tmpCls2 = new WindowZIdxForTTClass();
-                            tmpCls2.AI_WindowIndex = subtitleCnt;
-                            tmpCls2.AI_Zorder = item.EIF_ZIndex;
-                            tmpCls2.AI_WindowType = WindowType.scrollTextWindow;
-                            g_WindowZIdxForTTClassList.Add(tmpCls2);
-
-                            subtitleCnt++;
-                            break;
-
-                        case DisplayType.WelcomeBoard:
-                            UpdateWelcomeBoardDispWindow(item, textElementCnt, paramPageName);
-                            WindowZIdxForTTClass tmpCls3 = new WindowZIdxForTTClass();
-                            tmpCls3.AI_WindowIndex = textElementCnt;
-                            tmpCls3.AI_Zorder = item.EIF_ZIndex;
-                            tmpCls3.AI_WindowType = WindowType.welcomeBoardWindow;
-                            g_WindowZIdxForTTClassList.Add(tmpCls3);
-
-                            textElementCnt++;
-                            break;
-                        default:
-                            break;
-                    }
-                }
-            }
+            return Enum.TryParse(rawType, true, out displayType);
         }
+
 
         public void HideAllContentsPlayWindow()
         {
-            if (g_ScrollTextPlayWindowList.Count > 0)
-            {
-                foreach (ScrollTextPlayWindow item in g_ScrollTextPlayWindowList)
-                {
-                    if (item.IsVisible)
-                    {
-                        item.StopAnimation();
-                        item.Hide();
-                    }
-                }
-            }
-
-            if (g_WelcomeBoardWindowList.Count > 0)
-            {
-                foreach (WelcomeBoardWindow item in g_WelcomeBoardWindowList)
-                {
-                    if (item.IsVisible)
-                    {
-                        item.Hide();
-                    }
-                }
-            }
+            playbackContainer?.HideAll();
 
             if (g_ContentsPlayWindowList.Count > 0)
             {
@@ -2101,33 +1942,6 @@ namespace NewHyOnPlayer
                     }
                 }
             }
-        }
-
-        public void UpdateWelcomeBoardDispWindow(ElementInfoClass tmpInfoCls, int idx, string paramPageName)
-        {
-           
-            g_WelcomeBoardWindowList[idx].Name = tmpInfoCls.EIF_Name;
-            g_WelcomeBoardWindowList[idx].Visibility = System.Windows.Visibility.Visible;
-
-            g_WelcomeBoardWindowList[idx].Width = tmpInfoCls.EIF_Width * g_FitscaleValueX;
-            g_WelcomeBoardWindowList[idx].Height = tmpInfoCls.EIF_Height * g_FitscaleValueY;
-            g_WelcomeBoardWindowList[idx].UpdateTextInfoClsFromPage(tmpInfoCls, paramPageName);
-
-            MovedWindowForWelcomeWindowForOne(idx);
-        }
-
-        public void UpdateSubTitleWindow(ElementInfoClass tmpInfoCls, int idx)
-        {
-            g_ScrollTextPlayWindowList[idx].Name = tmpInfoCls.EIF_Name;
-            g_ScrollTextPlayWindowList[idx].Visibility = System.Windows.Visibility.Visible;
-
-            g_ScrollTextPlayWindowList[idx].Width = tmpInfoCls.EIF_Width * g_FitscaleValueX;
-            g_ScrollTextPlayWindowList[idx].Height = tmpInfoCls.EIF_Height * g_FitscaleValueY;
-
-            double scaledHeight = tmpInfoCls.EIF_Height * g_FitscaleValueY;
-            g_ScrollTextPlayWindowList[idx].UpdateScrollTextList(tmpInfoCls, scaledHeight);
-
-            MovedWindowForScrollTextForOne(idx);
         }
 
 
@@ -2148,16 +1962,24 @@ namespace NewHyOnPlayer
 
         private void Window_LocationChanged(object sender, EventArgs e)
         {
+            if (playbackContainer != null)
+            {
+                return;
+            }
+
             if (IsLoaded)
             {
                 MovedWindowForAll();
-                MovedWindowForScrollTextForAll();
-                MovedWindowForWelcomeWindowForAll();
             }
         }
 
         void MovedWindowForAll()
         {
+            if (playbackContainer != null)
+            {
+                return;
+            }
+
             foreach (ContentsPlayWindow cpw in g_ContentsPlayWindowList)
             {
                 cpw.Left = cpw.Owner.Left
@@ -2170,36 +1992,13 @@ namespace NewHyOnPlayer
             }
         }
 
-        void MovedWindowForWelcomeWindowForAll()
-        {
-            foreach (WelcomeBoardWindow cpw in g_WelcomeBoardWindowList)
-            {
-                cpw.Left = cpw.Owner.Left
-                            + testMarginLeft
-                            + (cpw.g_ElementInfoClass.EIF_PosLeft * g_FitscaleValueX);
-
-                cpw.Top = cpw.Owner.Top
-                            + testMarginTop
-                            + (cpw.g_ElementInfoClass.EIF_PosTop * g_FitscaleValueY);
-            }
-        }
-
-        void MovedWindowForScrollTextForAll()
-        {
-            foreach (ScrollTextPlayWindow cpw in g_ScrollTextPlayWindowList)
-            {
-                cpw.Left = cpw.Owner.Left
-                            + testMarginLeft
-                            + (cpw.g_ElementInfoClass.EIF_PosLeft * g_FitscaleValueX);
-
-                cpw.Top = cpw.Owner.Top
-                            + testMarginTop
-                            + (cpw.g_ElementInfoClass.EIF_PosTop * g_FitscaleValueY);
-            }
-        }
-
         void MovedWindowForOne(int paramIdx)
         {
+            if (playbackContainer != null)
+            {
+                return;
+            }
+
             g_ContentsPlayWindowList[paramIdx].Left = g_ContentsPlayWindowList[paramIdx].Owner.Left
                            + testMarginLeft
                            + (g_ContentsPlayWindowList[paramIdx].g_ElementInfoClass.EIF_PosLeft * g_FitscaleValueX);
@@ -2209,33 +2008,15 @@ namespace NewHyOnPlayer
                         + (g_ContentsPlayWindowList[paramIdx].g_ElementInfoClass.EIF_PosTop * g_FitscaleValueY);
         }
 
-        void MovedWindowForWelcomeWindowForOne(int paramIdx)
+
+        internal List<PlaybackDebugItem> GetPlaybackDebugItems()
         {
-            try
+            if (playbackContainer != null)
             {
-                g_WelcomeBoardWindowList[paramIdx].Left = g_WelcomeBoardWindowList[paramIdx].Owner.Left
-                                + testMarginLeft
-                                + (g_WelcomeBoardWindowList[paramIdx].g_ElementInfoClass.EIF_PosLeft * g_FitscaleValueX);
-
-                g_WelcomeBoardWindowList[paramIdx].Top = g_WelcomeBoardWindowList[paramIdx].Owner.Top
-                            + testMarginTop
-                            + (g_WelcomeBoardWindowList[paramIdx].g_ElementInfoClass.EIF_PosTop * g_FitscaleValueY);
+                return playbackContainer.GetDebugItems();
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.ToString());
-            }
-        }
 
-        void MovedWindowForScrollTextForOne(int paramIdx)
-        {
-            g_ScrollTextPlayWindowList[paramIdx].Left = g_ScrollTextPlayWindowList[paramIdx].Owner.Left
-                            + testMarginLeft
-                            + (g_ScrollTextPlayWindowList[paramIdx].g_ElementInfoClass.EIF_PosLeft * g_FitscaleValueX);
-
-            g_ScrollTextPlayWindowList[paramIdx].Top = g_ScrollTextPlayWindowList[paramIdx].Owner.Top
-                        + testMarginTop
-                        + (g_ScrollTextPlayWindowList[paramIdx].g_ElementInfoClass.EIF_PosTop * g_FitscaleValueY);
+            return new List<PlaybackDebugItem>();
         }
     }
 }

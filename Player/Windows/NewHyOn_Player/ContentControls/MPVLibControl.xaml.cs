@@ -341,12 +341,85 @@ namespace NewHyOnPlayer
 
         public void Load(string fpath, bool append = false)
         {
+            Visibility = Visibility.Visible;
             sPlayer.Load(fpath, !append);
         }
 
         public void AppendFiles(string[] pathes, bool append = false)
         {
             sPlayer.LoadPlaylist(pathes, !append);
+        }
+
+        public int PlaylistEntryCount
+        {
+            get
+            {
+                if (sPlayer == null)
+                {
+                    return 0;
+                }
+
+                try
+                {
+                    return sPlayer.PlaylistEntryCount;
+                }
+                catch
+                {
+                    return 0;
+                }
+            }
+        }
+
+        public int PlaylistIndex
+        {
+            get
+            {
+                if (sPlayer == null)
+                {
+                    return -1;
+                }
+
+                try
+                {
+                    return sPlayer.PlaylistIndex;
+                }
+                catch
+                {
+                    return -1;
+                }
+            }
+        }
+
+        public bool LoopPlaylist
+        {
+            get
+            {
+                if (sPlayer == null)
+                {
+                    return false;
+                }
+
+                return sPlayer.LoopPlaylist;
+            }
+            set
+            {
+                if (sPlayer != null)
+                {
+                    sPlayer.LoopPlaylist = value;
+                }
+            }
+        }
+
+        public void LoadPlaylist(string[] pathes, bool autoPlay)
+        {
+            if (sPlayer == null || pathes == null || pathes.Length == 0)
+            {
+                return;
+            }
+
+            Visibility = Visibility.Visible;
+            AutoPlay = autoPlay;
+            sPlayer.LoadPlaylist(pathes, true);
         }
 
         void Dispose()
@@ -359,6 +432,7 @@ namespace NewHyOnPlayer
 
         public void Play()
         {
+            Visibility = Visibility.Visible;
             sPlayer.Resume();
         }
 
@@ -367,7 +441,13 @@ namespace NewHyOnPlayer
             sPlayer.Pause();
 
             if (hide)
+            {
                 this.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                this.Visibility = Visibility.Visible;
+            }
         }
 
         public void Stop()
@@ -392,6 +472,40 @@ namespace NewHyOnPlayer
                 sPlayer.Resume();
             else
                 Pause(preload);
+        }
+
+        public bool SetPlaylistIndex(int index, bool autoPlay)
+        {
+            if (sPlayer == null)
+            {
+                return false;
+            }
+
+            if (index < 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                Visibility = Visibility.Visible;
+                AutoPlay = autoPlay;
+                sPlayer.API.SetPropertyLong("playlist-pos", index);
+                if (autoPlay)
+                {
+                    sPlayer.Resume();
+                }
+                else
+                {
+                    sPlayer.Pause();
+                }
+
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         public bool PlaylistNext()

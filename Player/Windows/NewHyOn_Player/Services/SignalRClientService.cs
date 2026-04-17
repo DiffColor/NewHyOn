@@ -246,15 +246,9 @@ namespace NewHyOnPlayer
                 return;
             }
 
-            HubConnection localConnection;
-            lock (syncRoot)
+            HubConnection localConnection = await EnsureConnectedConnectionForHeartbeatAsync(generation);
+            if (localConnection == null)
             {
-                localConnection = connection;
-            }
-
-            if (localConnection == null || localConnection.State != HubConnectionState.Connected)
-            {
-                ScheduleReconnect();
                 return;
             }
 
@@ -276,8 +270,83 @@ namespace NewHyOnPlayer
             {
                 Logger.WriteErrorLog($"SignalR heartbeat send failed: {ex}", Logger.GetLogFileName());
                 ResetConnectionIfCurrent(localConnection);
-                ScheduleReconnect();
+
+                if (!IsCurrentHeartbeatGeneration(generation))
+                {
+                    return;
+                }
+
+                if (shouldSend != null && !shouldSend())
+                {
+                    return;
+                }
+
+                HubConnection retriedConnection = await EnsureConnectedConnectionForHeartbeatAsync(generation);
+                if (retriedConnection == null)
+                {
+                    return;
+                }
+
+                try
+                {
+                    if (!IsCurrentHeartbeatGeneration(generation))
+                    {
+                        return;
+                    }
+
+                    if (shouldSend != null && !shouldSend())
+                    {
+                        return;
+                    }
+
+                    await WaitWithTimeoutAsync(retriedConnection.InvokeAsync("ReportHeartbeat", payload), HeartbeatTimeoutMs);
+                }
+                catch (Exception retryEx)
+                {
+                    Logger.WriteErrorLog($"SignalR heartbeat retry failed: {retryEx}", Logger.GetLogFileName());
+                    ResetConnectionIfCurrent(retriedConnection);
+                    ScheduleReconnect();
+                }
             }
+        }
+
+        private async Task<HubConnection> EnsureConnectedConnectionForHeartbeatAsync(long generation)
+        {
+            if (!IsCurrentHeartbeatGeneration(generation))
+            {
+                return null;
+            }
+
+            HubConnection localConnection;
+            lock (syncRoot)
+            {
+                localConnection = connection;
+            }
+
+            if (localConnection != null && localConnection.State == HubConnectionState.Connected)
+            {
+                return localConnection;
+            }
+
+            bool connected = await EnsureConnectionAsync(forceRefreshSettings: false);
+            if (!connected || !IsCurrentHeartbeatGeneration(generation))
+            {
+                ScheduleReconnect();
+                return null;
+            }
+
+            lock (syncRoot)
+            {
+                localConnection = connection;
+            }
+
+            if (localConnection == null || localConnection.State != HubConnectionState.Connected)
+            {
+                ScheduleReconnect();
+                return null;
+            }
+
+            return localConnection;
         }
 
         private void SendTerminalHeartbeat(HeartbeatPayload payload)
