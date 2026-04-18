@@ -61,7 +61,7 @@ jobs:
       - name: Setup .NET 10 SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '10.0.105'
 
       - name: Normalize Manager solution paths
         shell: pwsh
@@ -209,7 +209,7 @@ jobs:
       - name: Setup .NET 10 SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '10.0.105'
 
       - name: Normalize Player Windows solution paths
         shell: pwsh
