@@ -80,7 +80,7 @@
         <Style x:Key="ReadOnlyValueTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource CompactTextInputStyle}">
             <Setter Property="IsReadOnly" Value="True" />
             <Setter Property="IsTabStop" Value="False" />
-            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="Padding" Value="10,0" />
         </Style>
 
