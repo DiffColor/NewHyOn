@@ -7,6 +7,7 @@
         Title="NewHyOn Player Settings"
         WindowStartupLocation="CenterScreen"
         Width="1073"
+        SizeToContent="Height"
         ResizeMode="NoResize"
         WindowStyle="None"
         AllowsTransparency="True"
