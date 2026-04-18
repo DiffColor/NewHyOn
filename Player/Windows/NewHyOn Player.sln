@@ -7,7 +7,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mpv.NET", "Mpv.NET\Mpv.NET.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NewHyOn Player", "NewHyOn_Player\NewHyOn Player.csproj", "{D8609F9F-C4E8-4B44-93BE-454C46F4690D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NewHyOn Player Settings", "NewHyOn Player Settings\NewHyOn Player Settings.csproj", "{30439142-DB43-48A5-BC4F-05FC6E666C13}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NewHyOn Player Settings", "NewHyOn_Player_Settings\NewHyOn Player Settings.csproj", "{30439142-DB43-48A5-BC4F-05FC6E666C13}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

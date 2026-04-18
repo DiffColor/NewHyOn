@@ -469,8 +469,8 @@ namespace NewHyOnPlayer
                 return "v0.0.0";
             }
 
-            var build = version.Build >= 0 ? version.Build : 0;
-            return string.Format("v{0}.{1}.{2}", version.Major, version.Minor, build);
+            var fieldCount = version.Revision > 0 ? 4 : 3;
+            return $"v{version.ToString(fieldCount)}";
         }
 
 

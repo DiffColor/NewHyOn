@@ -9,7 +9,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PageViewer", "PageViewer\Pa
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NewHyOn Manager", "NewHyOn_Manager\NewHyOn Manager.csproj", "{259A5EC2-BBF4-489E-B71D-65B361F4CFFB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NewHyOn.Settings", "C:\Mac\Home\Documents\Workspaces\Products\NewHyOn\Manager\NewHyOn_Settings_Wpf\NewHyOn.Settings.csproj", "{CC94C3A4-A71F-4B03-51E5-101793356817}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NewHyOn Settings", "NewHyOn_Settings\NewHyOn Settings.csproj", "{F4877121-50A6-A961-D83F-98A2C7EFDC46}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -29,10 +29,10 @@ Global
 		{259A5EC2-BBF4-489E-B71D-65B361F4CFFB}.Debug|x64.Build.0 = Debug|x64
 		{259A5EC2-BBF4-489E-B71D-65B361F4CFFB}.Release|x64.ActiveCfg = Release|x64
 		{259A5EC2-BBF4-489E-B71D-65B361F4CFFB}.Release|x64.Build.0 = Release|x64
-		{CC94C3A4-A71F-4B03-51E5-101793356817}.Debug|x64.ActiveCfg = Debug|x64
-		{CC94C3A4-A71F-4B03-51E5-101793356817}.Debug|x64.Build.0 = Debug|x64
-		{CC94C3A4-A71F-4B03-51E5-101793356817}.Release|x64.ActiveCfg = Release|x64
-		{CC94C3A4-A71F-4B03-51E5-101793356817}.Release|x64.Build.0 = Release|x64
+		{F4877121-50A6-A961-D83F-98A2C7EFDC46}.Debug|x64.ActiveCfg = Debug|x64
+		{F4877121-50A6-A961-D83F-98A2C7EFDC46}.Debug|x64.Build.0 = Debug|x64
+		{F4877121-50A6-A961-D83F-98A2C7EFDC46}.Release|x64.ActiveCfg = Release|x64
+		{F4877121-50A6-A961-D83F-98A2C7EFDC46}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

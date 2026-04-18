@@ -33,9 +33,22 @@ jobs:
         with:
           msbuild-architecture: x86
 
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
       - name: Normalize Manager solution paths
         shell: pwsh
         run: ./.github/scripts/normalize-solution-paths.ps1 "Manager/NewHyOn_Manager.sln"
+
+      - name: Apply Manager assembly version from tag
+        shell: pwsh
+        run: |
+          & ".github/scripts/set-dotnet-framework-assembly-version.ps1" `
+            -Tag "${{ github.ref_name }}" `
+            -ProjectTagPrefix "manager-windows" `
+            -AssemblyInfoPaths "Manager/NewHyOn_Manager/Properties/AssemblyInfo.cs"
 
       - name: Restore NuGet packages
         run: nuget restore "Manager/NewHyOn_Manager.sln" -PackagesDirectory "Manager/packages" -NonInteractive
@@ -47,9 +60,7 @@ jobs:
           $destinations = @(
             "Manager/dll",
             "Manager/NewHyOn_Manager/bin/Release",
-            "Manager/NewHyOn_Manager/bin/x64/Release",
-            "Manager/NewHyOn_Settings/bin/Release",
-            "Manager/NewHyOn_Settings/bin/x64/Release"
+            "Manager/NewHyOn_Manager/bin/x64/Release"
           )
           foreach ($dst in $destinations) {
             New-Item -ItemType Directory -Force -Path $dst | Out-Null
@@ -64,6 +75,12 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($msbuild)) { throw "x86 MSBuild not found." }
           & $msbuild "Manager/NewHyOn_Manager.sln" /t:Build /p:Configuration=Release /p:Platform=x64 /m
 
+      - name: Publish Manager Settings single file
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force "Manager/NewHyOn_Settings/bin/publish" -ErrorAction SilentlyContinue
+          & "Manager/NewHyOn_Settings/publish-single-file.ps1" -Configuration Release
+
       - name: Package Manager binaries for release
         shell: pwsh
         run: |
@@ -72,7 +89,7 @@ jobs:
           Remove-Item -Recurse -Force $packageRoot -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
           Copy-Item -Path "Manager/NewHyOn_Manager/bin/Release/*" -Destination $packageRoot -Recurse -Force
-          Copy-Item -Path "Manager/NewHyOn_Settings/bin/Release/*" -Destination $packageRoot -Recurse -Force
+          Copy-Item -Path "Manager/NewHyOn_Settings/bin/publish/*" -Destination $packageRoot -Recurse -Force
           Copy-Item -Path "Manager/ContentViewer/bin/Release/*" -Destination $packageRoot -Recurse -Force
           Copy-Item -Path "Manager/PageViewer/bin/Release/*" -Destination $packageRoot -Recurse -Force
           Compress-Archive -Path "$packageRoot/*" -DestinationPath "release-assets/manager-windows-${{ github.ref_name }}.zip" -Force
@@ -109,9 +126,22 @@ jobs:
         with:
           msbuild-architecture: x86
 
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
       - name: Normalize Player Windows solution paths
         shell: pwsh
         run: ./.github/scripts/normalize-solution-paths.ps1 "Player/Windows/NewHyOn Player.sln"
+
+      - name: Apply Player Windows assembly version from tag
+        shell: pwsh
+        run: |
+          & ".github/scripts/set-dotnet-framework-assembly-version.ps1" `
+            -Tag "${{ github.ref_name }}" `
+            -ProjectTagPrefix "player-windows" `
+            -AssemblyInfoPaths "Player/Windows/NewHyOn_Player/Properties/AssemblyInfo.cs"
 
       - name: Restore NuGet packages
         run: nuget restore "Player/Windows/NewHyOn Player.sln" -PackagesDirectory "Player/Windows/packages" -NonInteractive
@@ -121,8 +151,7 @@ jobs:
         run: |
           $src = "Player/Windows/Dependencies"
           $destinations = @(
-            "Player/Windows/NewHyOn_Player/bin/x64/Release",
-            "Player/Windows/ConfigPlayer/bin/x64/Release"
+            "Player/Windows/NewHyOn_Player/bin/x64/Release"
           )
           foreach ($dst in $destinations) {
             New-Item -ItemType Directory -Force -Path $dst | Out-Null
@@ -137,6 +166,12 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($msbuild)) { throw "x86 MSBuild not found." }
           & $msbuild "Player/Windows/NewHyOn Player.sln" /t:Build /p:Configuration=Release /p:Platform=x64 /m
 
+      - name: Publish Player Settings single file
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force "Player/Windows/NewHyOn_Player_Settings/bin/publish" -ErrorAction SilentlyContinue
+          & "Player/Windows/NewHyOn_Player_Settings/publish-single-file.ps1" -Configuration Release
+
       - name: Package Player Windows binaries for release
         shell: pwsh
         run: |
@@ -145,7 +180,7 @@ jobs:
           Remove-Item -Recurse -Force $packageRoot -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
           Copy-Item -Path "Player/Windows/NewHyOn_Player/bin/x64/Release/*" -Destination $packageRoot -Recurse -Force
-          Copy-Item -Path "Player/Windows/ConfigPlayer/bin/x64/Release/*" -Destination $packageRoot -Recurse -Force
+          Copy-Item -Path "Player/Windows/NewHyOn_Player_Settings/bin/publish/*" -Destination $packageRoot -Recurse -Force
           Compress-Archive -Path "$packageRoot/*" -DestinationPath "release-assets/player-windows-${{ github.ref_name }}.zip" -Force
 
       - name: Upload Player Windows artifact
