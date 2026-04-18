@@ -12,6 +12,7 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <Platforms>AnyCPU;x64</Platforms>
     <ApplicationIcon>hyon_p_install.ico</ApplicationIcon>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">

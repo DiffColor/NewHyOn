@@ -53,6 +53,11 @@ jobs:
       - name: Restore NuGet packages
         run: nuget restore "Manager/NewHyOn_Manager.sln" -PackagesDirectory "Manager/packages" -NonInteractive
 
+      - name: Restore Manager Settings runtime assets
+        shell: pwsh
+        run: |
+          & dotnet restore "Manager/NewHyOn_Settings/NewHyOn Settings.csproj" -r win-x64
+
       - name: Prepare Manager dependencies in build directory
         shell: pwsh
         run: |
@@ -151,6 +156,11 @@ jobs:
 
       - name: Restore NuGet packages
         run: nuget restore "Player/Windows/NewHyOn Player.sln" -PackagesDirectory "Player/Windows/packages" -NonInteractive
+
+      - name: Restore Player Settings runtime assets
+        shell: pwsh
+        run: |
+          & dotnet restore "Player/Windows/NewHyOn_Player_Settings/NewHyOn Player Settings.csproj" -r win-x64
 
       - name: Prepare Player dependencies in build directories
         shell: pwsh
