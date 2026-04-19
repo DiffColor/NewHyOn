@@ -1249,6 +1249,7 @@ public class DataSyncManager {
                     } else {
                         playerGUID = payload.playerId;
                         writePlaylistPayload(payload, downloads, !isScheduleQueue);
+                        invalidateActivityPlaylistCache(payload.playlistName);
                         if (!isScheduleQueue && !TextUtils.isEmpty(payload.playerId)) {
                             clearCommandAsync(payload.playerId);
                         }
@@ -1329,6 +1330,15 @@ public class DataSyncManager {
         return applied;
     }
 
+    private void invalidateActivityPlaylistCache(String playlistName) {
+        if (TextUtils.isEmpty(playlistName)) {
+            return;
+        }
+        if (AndoWSignage.act != null) {
+            AndoWSignage.act.invalidatePlaylistPageCache(playlistName);
+        }
+    }
+
     private boolean applyQueuedSchedulePayload(UpdatePayloadModels.ScheduleUpdatePayload schedule) {
         if (schedule == null) {
             return false;
@@ -1375,6 +1385,14 @@ public class DataSyncManager {
 
     public boolean applyNextReadyQueue(boolean requestUiRestart) {
         return UpdateQueueProvider.consumeNextReadyQueue(queue -> applyQueueEntry(queue, requestUiRestart));
+    }
+
+    public boolean applyNextSilentReadyQueue() {
+        return UpdateQueueProvider.consumeNextSilentReadyQueue(queue -> applyQueueEntry(queue, false));
+    }
+
+    public boolean applyNextPlaybackRestartReadyQueue(boolean requestUiRestart) {
+        return UpdateQueueProvider.consumeNextPlaybackRestartReadyQueue(queue -> applyQueueEntry(queue, requestUiRestart));
     }
 
     public void resumePendingQueues() {

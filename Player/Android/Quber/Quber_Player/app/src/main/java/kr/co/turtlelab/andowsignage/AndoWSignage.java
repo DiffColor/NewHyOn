@@ -146,6 +146,8 @@ public class AndoWSignage extends Activity {
 	private String playbackPlaylistName = "";
 	private String pendingSchedulePlaylistName = "";
 	private long pendingScheduleSwitchAtMillis = -1L;
+	private long pendingScheduleDueSwitchAtMillis = -1L;
+	private long handledScheduleSwitchAtMillis = -1L;
 	private long currentPageDeadlineAtMillis = -1L;
 	private long nextStageAllowedAtMillis = 0L;
 	private PageRuntime activePageRuntime;
@@ -1617,6 +1619,10 @@ public class AndoWSignage extends Activity {
 		playlistPageCache.remove(playlistName);
 	}
 
+	public void invalidatePlaylistPageCache(String playlistName) {
+		invalidatePageListCache(playlistName);
+	}
+
 	private void syncCurrentPlaylistPages() {
 		pageDataList = getOrLoadPageList(playbackPlaylistName);
 	}
@@ -2064,23 +2070,43 @@ public class AndoWSignage extends Activity {
 	}
 
 	private void refreshSchedulePlaybackState(long nowMillis) {
+		long previousSwitchAtMillis = pendingScheduleSwitchAtMillis;
 		SpecialScheduleEvaluator.ScheduleDecision decision = scheduleEvaluator.evaluate(
 				AndoWSignageApp.PLAYER_ID,
 				playerData != null ? playerData.getPlayerName() : "",
 				basePlaylistName,
 				nowMillis);
-		playbackPlaylistName = decision.getResolvedPlaylistName();
-		if (TextUtils.isEmpty(playbackPlaylistName)) {
-			playbackPlaylistName = basePlaylistName;
+		String resolvedPlaylistName = decision.getResolvedPlaylistName();
+		if (TextUtils.isEmpty(resolvedPlaylistName)) {
+			resolvedPlaylistName = basePlaylistName;
+		}
+		boolean scheduleBoundaryDue = previousSwitchAtMillis > 0
+				&& previousSwitchAtMillis <= nowMillis
+				&& previousSwitchAtMillis != handledScheduleSwitchAtMillis;
+		if (activePageRuntime == null || scheduleBoundaryDue || TextUtils.isEmpty(playbackPlaylistName)) {
+			playbackPlaylistName = resolvedPlaylistName;
+		} else if (activePageRuntime != null && !TextUtils.isEmpty(activePageRuntime.playlistName)) {
+			playbackPlaylistName = activePageRuntime.playlistName;
 		}
 		pendingSchedulePlaylistName = decision.getNextPlaylistName();
 		pendingScheduleSwitchAtMillis = decision.getNextSwitchAtMillis();
+		if (scheduleBoundaryDue) {
+			pendingScheduleDueSwitchAtMillis = previousSwitchAtMillis;
+		}
 	}
 
 	private boolean maybeSwitchScheduledPlayback(long nowMillis) {
 		String currentRuntimePlaylist = activePageRuntime != null ? activePageRuntime.playlistName : playbackPlaylistName;
 		if (TextUtils.isEmpty(playbackPlaylistName)
 				|| TextUtils.equals(playbackPlaylistName, currentRuntimePlaylist)) {
+			markScheduleSwitchHandledIfDue(nowMillis);
+			return false;
+		}
+		boolean initialPlayback = activePageRuntime == null;
+		boolean scheduleSwitchDue = pendingScheduleDueSwitchAtMillis > 0
+				&& pendingScheduleDueSwitchAtMillis <= nowMillis
+				&& pendingScheduleDueSwitchAtMillis != handledScheduleSwitchAtMillis;
+		if (!initialPlayback && !scheduleSwitchDue) {
 			return false;
 		}
 		List<PageDataModel> targetPages = getOrLoadPageList(playbackPlaylistName);
@@ -2092,7 +2118,16 @@ public class AndoWSignage extends Activity {
 		PlaybackTarget target = createActivePageTarget();
 		PageRuntime nextRuntime = resolveRuntimeForTarget(target, true);
 		requestRuntimeActivation(nextRuntime, 1);
+		markScheduleSwitchHandledIfDue(nowMillis);
 		return true;
+	}
+
+	private void markScheduleSwitchHandledIfDue(long nowMillis) {
+		if (pendingScheduleDueSwitchAtMillis > 0
+				&& pendingScheduleDueSwitchAtMillis <= nowMillis) {
+			handledScheduleSwitchAtMillis = pendingScheduleDueSwitchAtMillis;
+			pendingScheduleDueSwitchAtMillis = -1L;
+		}
 	}
 	
 	void tickToAllViews() {
@@ -2504,13 +2539,16 @@ public class AndoWSignage extends Activity {
 
 	public boolean onMediaContentComplete() {
 		if (pendingUpdateReady) {
-			maybeApplyQueuedUpdate();
+			if (maybeApplyQueuedUpdate(true)) {
+				return true;
+			}
 		}
 		return tryActivatePendingRuntime();
 	}
 
 	private void checkReadyQueue() {
-		boolean hasReady = UpdateQueueProvider.hasReadyQueue();
+		applySilentReadyQueuesSync();
+		boolean hasReady = UpdateQueueProvider.hasReadyQueueRequiringPlaybackRestart();
 		if (!hasReady && !pendingUpdateReady) {
 			return;
 		}
@@ -2526,51 +2564,87 @@ public class AndoWSignage extends Activity {
 	}
 
 	private boolean shouldApplyReadyImmediately() {
-		return isIntroPlaying() || AndoWSignageApp.SWITCH_ON_CONTENT_END;
+		return !isPlaybackContentActive();
 	}
 
-	private boolean isIntroPlaying() {
-		return vv != null;
+	private boolean isPlaybackContentActive() {
+		return usbPlaybackActive
+				|| activePageRuntime != null
+				|| pendingActivationRuntime != null;
 	}
 
 	private boolean applyPendingReadyQueuesSync() {
-		if (!UpdateQueueProvider.hasReadyQueue()) {
+		boolean silentApplied = applySilentReadyQueuesSync();
+		if (!UpdateQueueProvider.hasReadyQueueRequiringPlaybackRestart()) {
 			pendingUpdateReady = false;
+			return silentApplied;
+		}
+		DataSyncManager manager = new DataSyncManager();
+		boolean restartApplied = false;
+		while (UpdateQueueProvider.hasReadyQueueRequiringPlaybackRestart()) {
+			if (manager.applyNextPlaybackRestartReadyQueue(false)) {
+				restartApplied = true;
+			} else {
+				break;
+			}
+		}
+		if (restartApplied && !UpdateQueueProvider.hasReadyQueueRequiringPlaybackRestart()) {
+			pendingUpdateReady = false;
+		} else {
+			pendingUpdateReady = UpdateQueueProvider.hasReadyQueueRequiringPlaybackRestart();
+		}
+		return silentApplied || restartApplied;
+	}
+
+	private boolean applySilentReadyQueuesSync() {
+		if (!UpdateQueueProvider.hasSilentReadyQueue()) {
 			return false;
 		}
 		DataSyncManager manager = new DataSyncManager();
 		boolean applied = false;
-		while (UpdateQueueProvider.hasReadyQueue()) {
-			if (manager.applyNextReadyQueue(false)) {
+		while (UpdateQueueProvider.hasSilentReadyQueue()) {
+			if (manager.applyNextSilentReadyQueue()) {
 				applied = true;
 			} else {
 				break;
 			}
 		}
-		if (applied) {
-			pendingUpdateReady = false;
-		} else {
-			pendingUpdateReady = UpdateQueueProvider.hasReadyQueue();
-		}
 		return applied;
 	}
 
-	private void maybeApplyQueuedUpdate() {
+	private boolean maybeApplyQueuedUpdate() {
+		return maybeApplyQueuedUpdate(false);
+	}
+
+	private boolean maybeApplyQueuedUpdate(final boolean allowActivePlaybackInterrupt) {
 		if (!pendingUpdateReady || queuedUpdateRestartPending) {
-			return;
+			return false;
+		}
+		if (!allowActivePlaybackInterrupt && isPlaybackContentActive()) {
+			pendingUpdateReady = UpdateQueueProvider.hasReadyQueueRequiringPlaybackRestart();
+			return false;
 		}
 		queuedUpdateRestartPending = true;
 		SystemUtils.runOnUiThread(() -> {
-			if (!pendingUpdateReady) {
+			if (!pendingUpdateReady
+					|| !UpdateQueueProvider.hasReadyQueueRequiringPlaybackRestart()) {
 				queuedUpdateRestartPending = false;
+				pendingUpdateReady = UpdateQueueProvider.hasReadyQueueRequiringPlaybackRestart();
+				return;
+			}
+			if (!allowActivePlaybackInterrupt && isPlaybackContentActive()) {
+				queuedUpdateRestartPending = false;
+				pendingUpdateReady = UpdateQueueProvider.hasReadyQueueRequiringPlaybackRestart();
 				return;
 			}
 			updateAndRestart(true);
 		});
+		return true;
 	}
 
 	public void showReadyUpdateIndicator() {
-		pendingUpdateReady = true;
+		applySilentReadyQueuesSync();
+		pendingUpdateReady = UpdateQueueProvider.hasReadyQueueRequiringPlaybackRestart();
 		maybeApplyQueuedUpdate();
 	}
 
