@@ -201,7 +201,6 @@ public class AndoWSignage extends Activity {
 		boolean prepareCancelled = false;
 		boolean startInProgress = false;
 		boolean activateWhenPrepared = false;
-		long layoutStartElapsedRealtimeMs = 0L;
 		int nextPageIndexAfterActivate = 0;
 	}
 
@@ -1649,22 +1648,14 @@ public class AndoWSignage extends Activity {
 			}
 			return;
 		}
-		runtime.layoutStartElapsedRealtimeMs = SystemClock.elapsedRealtime();
 		final List<PlaybackSlotView> activeSlots = new ArrayList<>();
 		for (PlaybackSlotView slotView : runtime.slots) {
-			if (slotView == null) {
-				continue;
-			}
-			slotView.setLayoutStartElapsedRealtimeMs(runtime.layoutStartElapsedRealtimeMs);
-			if (slotView.isMediaSlot()) {
+			if (slotView != null && slotView.isMediaSlot()) {
 				activeSlots.add(slotView);
 			}
 		}
 		if (activeSlots.isEmpty()) {
 			for (PlaybackSlotView slotView : runtime.slots) {
-				if (slotView == null) {
-					continue;
-				}
 				slotView.startPreparedPlayback();
 			}
 			if (onPlaybackReady != null) {
@@ -1690,10 +1681,7 @@ public class AndoWSignage extends Activity {
 			}
 		};
 		for (PlaybackSlotView slotView : runtime.slots) {
-			if (slotView == null) {
-				continue;
-			}
-			if (slotView.isMediaSlot()) {
+			if (slotView != null && slotView.isMediaSlot()) {
 				slotView.startPreparedPlayback(callback);
 			} else {
 				slotView.startPreparedPlayback();
@@ -2360,15 +2348,12 @@ public class AndoWSignage extends Activity {
 			usbPlaybackView.runPlaylist();
 			return;
 		}
-		long layoutStartElapsedRealtimeMs = SystemClock.elapsedRealtime();
 		if (activePageRuntime != null) {
-			activePageRuntime.layoutStartElapsedRealtimeMs = layoutStartElapsedRealtimeMs;
 			startRuntime(activePageRuntime);
 		} else {
 			for (View view: elementViewList) {
 				if(view instanceof PlaybackSlotView) {
 					((PlaybackSlotView) view).showPreparedContent();
-					((PlaybackSlotView) view).setLayoutStartElapsedRealtimeMs(layoutStartElapsedRealtimeMs);
 					((PlaybackSlotView) view).startPreparedPlayback();
 				} else if(view instanceof MediaView) {
 					((MediaView) view).runPlaylist();
@@ -2377,7 +2362,6 @@ public class AndoWSignage extends Activity {
 		}
 		for (View view: elementViewList) {
 			if(view instanceof PlaybackSlotView) {
-				((PlaybackSlotView) view).setLayoutStartElapsedRealtimeMs(layoutStartElapsedRealtimeMs);
 				((PlaybackSlotView) view).startPreparedPlayback();
 			}
 		}

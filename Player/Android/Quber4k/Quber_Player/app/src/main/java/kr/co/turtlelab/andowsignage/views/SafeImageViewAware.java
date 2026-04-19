@@ -8,32 +8,17 @@ import com.nostra13.universalimageloader.core.imageaware.ImageViewAware;
 import kr.co.turtlelab.andowsignage.AndoWSignageApp;
 
 public class SafeImageViewAware extends ImageViewAware {
-    private final int overrideWidth;
-    private final int overrideHeight;
 
     public SafeImageViewAware(ImageView imageView) {
-        this(imageView, false, 0, 0);
+        super(imageView);
     }
 
     public SafeImageViewAware(ImageView imageView, boolean checkActualViewSize) {
-        this(imageView, checkActualViewSize, 0, 0);
-    }
-
-    public SafeImageViewAware(ImageView imageView, int overrideWidth, int overrideHeight) {
-        this(imageView, false, overrideWidth, overrideHeight);
-    }
-
-    public SafeImageViewAware(ImageView imageView, boolean checkActualViewSize, int overrideWidth, int overrideHeight) {
         super(imageView, checkActualViewSize);
-        this.overrideWidth = overrideWidth;
-        this.overrideHeight = overrideHeight;
     }
 
     @Override
     public int getWidth() {
-        if (overrideWidth > 0) {
-            return overrideWidth;
-        }
         ImageView view = getWrappedView();
         if (view == null) {
             return 0;
@@ -56,9 +41,6 @@ public class SafeImageViewAware extends ImageViewAware {
 
     @Override
     public int getHeight() {
-        if (overrideHeight > 0) {
-            return overrideHeight;
-        }
         ImageView view = getWrappedView();
         if (view == null) {
             return 0;

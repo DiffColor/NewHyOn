@@ -2,12 +2,12 @@ package kr.co.turtlelab.andowsignage.views;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
-import android.media.MediaMetadataRetriever;
 import android.media.MediaPlayer;
+import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.text.TextUtils;
-import android.util.AttributeSet;
 import android.util.Log;
+import android.util.AttributeSet;
 import android.widget.VideoView;
 
 import java.io.File;
@@ -17,9 +17,10 @@ import kr.co.turtlelab.andowsignage.AndoWSignage;
 @SuppressLint("DrawAllocation")
 public class TurtleVideoView extends VideoView {
 
-    private static final String TAG = "TurtleVideoView";
+    String TAG = "TurtleVideoView";
+    Context mContext;
 
-    private boolean mResumable = false;
+    boolean mResumable = false;
     private onMediaPlayerChangedListener mOnMediaPlayerChangedListener;
 
     private int mVideoWidth;
@@ -53,16 +54,19 @@ public class TurtleVideoView extends VideoView {
 
     public TurtleVideoView(Context context) {
         super(context);
+        mContext = context;
         super.setOnPreparedListener(mInternalPreparedListener);
     }
 
     public TurtleVideoView(Context context, AttributeSet attrs) {
         super(context, attrs);
+        mContext = context;
         super.setOnPreparedListener(mInternalPreparedListener);
     }
 
     public TurtleVideoView(Context context, AttributeSet attrs, int defStyle) {
         super(context, attrs, defStyle);
+        mContext = context;
         super.setOnPreparedListener(mInternalPreparedListener);
     }
 
@@ -87,7 +91,6 @@ public class TurtleVideoView extends VideoView {
         }
         fUri = uri;
         onMediaPlayerChanged(uri, normalizedPath);
-        requestLayout();
     }
 
     @Override
@@ -95,9 +98,7 @@ public class TurtleVideoView extends VideoView {
         super.setVideoURI(uri);
         onMediaPlayerChanged(uri, null);
         fUri = uri;
-        fpath = null;
         mDuration = 0;
-        requestLayout();
     }
 
     @Override
@@ -123,6 +124,16 @@ public class TurtleVideoView extends VideoView {
         mResumable = false;
         mPreparedPlayer = null;
         mDuration = 0;
+    }
+
+    @Override
+    public void pause() {
+        super.pause();
+    }
+
+    @Override
+    public void resume() {
+        super.resume();
     }
 
     @Override
@@ -158,18 +169,16 @@ public class TurtleVideoView extends VideoView {
     }
 
     public void setResumable(Boolean resumable) {
-        mResumable = resumable != null && resumable;
+        mResumable = resumable;
     }
 
     public void setVideoSize(int width, int height) {
         mVideoWidth = width;
         mVideoHeight = height;
-        requestLayout();
     }
 
     public void setKeepAspectRatio(boolean keep) {
         mKeepRatio = keep;
-        requestLayout();
     }
 
     public void setLoop(boolean loop) {
@@ -199,33 +208,28 @@ public class TurtleVideoView extends VideoView {
         }
     }
 
-    @Override
     public int getDuration() {
         return mDuration;
     }
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        int width;
-        int height;
+        int width = 0;
+        int height = 0;
 
         if (mKeepRatio) {
             MediaMetadataRetriever metaRetriever = null;
             try {
                 metaRetriever = new MediaMetadataRetriever();
 
-                if (!TextUtils.isEmpty(fpath)) {
+                if (fpath != null)
                     metaRetriever.setDataSource(fpath);
-                } else if (fUri != null) {
+                else if (fUri != null)
                     metaRetriever.setDataSource(AndoWSignage.getCtx(), fUri);
-                }
 
-                String widthMetadata = metaRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
-                String heightMetadata = metaRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
-                if (!TextUtils.isEmpty(widthMetadata) && !TextUtils.isEmpty(heightMetadata)) {
-                    mVideoWidth = Integer.parseInt(widthMetadata);
-                    mVideoHeight = Integer.parseInt(heightMetadata);
-                }
+                mVideoWidth = Integer.parseInt(metaRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));
+                mVideoHeight = Integer.parseInt(metaRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
+                metaRetriever.release();
 
                 width = getDefaultSize(mVideoWidth, widthMeasureSpec);
                 height = getDefaultSize(mVideoHeight, heightMeasureSpec);
@@ -236,16 +240,13 @@ public class TurtleVideoView extends VideoView {
                         width = height * mVideoWidth / mVideoHeight;
                     }
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+
+                if (metaRetriever != null)
+                    metaRetriever.release();
+
                 width = getDefaultSize(getMeasuredWidth(), widthMeasureSpec);
                 height = getDefaultSize(getMeasuredHeight(), heightMeasureSpec);
-            } finally {
-                if (metaRetriever != null) {
-                    try {
-                        metaRetriever.release();
-                    } catch (Exception ignored) {
-                    }
-                }
             }
         } else {
             width = getDefaultSize(getMeasuredWidth(), widthMeasureSpec);
