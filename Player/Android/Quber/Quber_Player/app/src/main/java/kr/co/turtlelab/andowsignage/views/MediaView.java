@@ -483,7 +483,7 @@ public class MediaView extends RelativeLayout {
 
     class LoopPlay extends AsyncTask<Void, String, Void> {
 
-        CONTENT_TYPE usedType;
+        CONTENT_TYPE usedType = s_usedType;
 
         Bitmap image1 = null;
         Bitmap image2 = null;
@@ -604,7 +604,8 @@ public class MediaView extends RelativeLayout {
 
                             case Video:
                                 boolean deferImageHide = usedType == CONTENT_TYPE.Image;
-                                releaseUsedResources(usedType, type1, deferImageHide, false);
+                                boolean keepPreviousVideoOpen = usedType == CONTENT_TYPE.Video;
+                                releaseUsedResources(usedType, type1, deferImageHide, keepPreviousVideoOpen);
                                 prepareForNewContentWindow(true);
                                 showVideoWithImageFade(contentData[1], muted1, type2, contentData[4]);
                                 break;
