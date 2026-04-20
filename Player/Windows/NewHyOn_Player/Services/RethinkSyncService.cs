@@ -19,6 +19,10 @@ namespace NewHyOnPlayer
         private const string DatabaseName = "NewHyOn";
         private const string PlayerTable = "PlayerInfoManager";
         private const string WeeklyTable = "WeeklyInfoManagerClass";
+        private const string SpecialScheduleTable = "SpecialScheduleInfoManager";
+        private const string PageListTable = "PageListInfoManager";
+        private const string PageTable = "PageInfoManager";
+        private const string PeriodTable = "PeriodData";
 
         private static readonly RethinkDB R = RethinkDB.R;
 
@@ -36,6 +40,7 @@ namespace NewHyOnPlayer
         public event Action PlayerSynced;
         public event Action<string> PlayerGuidChanged;
         public event Action WeeklyScheduleSynced;
+        public event Action SpecialScheduleSynced;
         public event Action SyncFailed;
 
         public RethinkSyncService(PlayerInfoManager manager, LocalSettingsManager localManager, int intervalMs = 5000)
@@ -207,6 +212,7 @@ namespace NewHyOnPlayer
                 }
 
                 SyncWeeklySchedule(remoteGuid, manager.g_PlayerInfo.PIF_PlayerName);
+                SyncSpecialSchedule(remoteGuid, manager.g_PlayerInfo.PIF_PlayerName);
             }
             catch (Exception ex)
             {
@@ -759,6 +765,433 @@ namespace NewHyOnPlayer
             return Guid.NewGuid().ToString();
         }
 
+
+        private void SyncSpecialSchedule(string playerId, string playerName)
+        {
+            if (string.IsNullOrWhiteSpace(playerName))
+            {
+                return;
+            }
+
+            try
+            {
+                var schedules = FetchSpecialSchedules(playerName);
+                var mappedSchedules = schedules
+                    .Select(MapSpecialSchedule)
+                    .Where(x => x != null)
+                    .ToList();
+
+                var playlistNames = mappedSchedules
+                    .Where(x => !string.IsNullOrWhiteSpace(x.PageListName))
+                    .Select(x => x.PageListName.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                var playlists = new List<SchedulePlaylistPayload>();
+                foreach (string playlistName in playlistNames)
+                {
+                    var playlist = BuildSchedulePlaylistPayload(playerId, playerName, playlistName);
+                    if (playlist != null)
+                    {
+                        playlists.Add(playlist);
+                    }
+                }
+
+                string cacheId = string.IsNullOrWhiteSpace(playerId) ? playerName : playerId;
+                if (string.IsNullOrWhiteSpace(cacheId))
+                {
+                    return;
+                }
+
+                var cache = new SpecialScheduleCache
+                {
+                    Id = cacheId,
+                    PlayerId = playerId ?? string.Empty,
+                    PlayerName = playerName ?? string.Empty,
+                    UpdatedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                    Schedules = mappedSchedules,
+                    Playlists = playlists
+                };
+
+                using (var repo = new SpecialScheduleCacheRepository())
+                {
+                    repo.Upsert(cache);
+                }
+
+                Logger.WriteLog($"RethinkSyncService special schedule synced. playerId={cache.PlayerId}, playerName={cache.PlayerName}, schedules={cache.Schedules.Count}, playlists={cache.Playlists.Count}", Logger.GetLogFileName());
+                SpecialScheduleSynced?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog($"SyncSpecialSchedule error: {ex}", Logger.GetLogFileName());
+            }
+        }
+
+        private List<RethinkSpecialSchedule> FetchSpecialSchedules(string playerName)
+        {
+            if (string.IsNullOrWhiteSpace(playerName))
+            {
+                return new List<RethinkSpecialSchedule>();
+            }
+
+            var conn = GetConnection();
+            if (conn == null)
+            {
+                return new List<RethinkSpecialSchedule>();
+            }
+
+            return R.Db(DatabaseName)
+                .Table(SpecialScheduleTable)
+                .Filter(row => row["PlayerNames"].Contains(playerName))
+                .RunCursor<RethinkSpecialSchedule>(conn)
+                .ToList();
+        }
+
+        private SchedulePlaylistPayload BuildSchedulePlaylistPayload(string playerId, string playerName, string playlistName)
+        {
+            if (string.IsNullOrWhiteSpace(playlistName))
+            {
+                return null;
+            }
+
+            var pageList = FetchPageList(playlistName);
+            if (pageList == null || pageList.PLI_Pages == null || pageList.PLI_Pages.Count == 0)
+            {
+                return null;
+            }
+
+            var pages = FetchPages(pageList.PLI_Pages);
+            if (pages == null || pages.Count == 0)
+            {
+                return null;
+            }
+
+            return new SchedulePlaylistPayload
+            {
+                PlaylistName = pageList.PLI_PageListName ?? playlistName,
+                PageList = pageList,
+                Pages = pages,
+                Contract = BuildContractPayload(playerId, playerName, pageList, pages),
+                ContentPeriods = BuildContentPeriodsForPages(pages)
+            };
+        }
+
+        private AndoW.Shared.PageListInfoClass FetchPageList(string playlistName)
+        {
+            var conn = GetConnection();
+            if (conn == null || string.IsNullOrWhiteSpace(playlistName))
+            {
+                return null;
+            }
+
+            return R.Db(DatabaseName)
+                .Table(PageListTable)
+                .Filter(row => row["PLI_PageListName"].Eq(playlistName))
+                .Limit(1)
+                .RunCursor<AndoW.Shared.PageListInfoClass>(conn)
+                .FirstOrDefault();
+        }
+
+        private List<AndoW.Shared.PageInfoClass> FetchPages(IEnumerable<string> pageIds)
+        {
+            var conn = GetConnection();
+            var result = new List<AndoW.Shared.PageInfoClass>();
+            if (conn == null || pageIds == null)
+            {
+                return result;
+            }
+
+            foreach (string pageId in pageIds.Where(x => !string.IsNullOrWhiteSpace(x)))
+            {
+                try
+                {
+                    var page = R.Db(DatabaseName)
+                        .Table(PageTable)
+                        .Get(pageId)
+                        .RunAtom<AndoW.Shared.PageInfoClass>(conn);
+                    if (page != null)
+                    {
+                        result.Add(page);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.WriteErrorLog($"FetchPages pageId={pageId} error: {ex}", Logger.GetLogFileName());
+                }
+            }
+
+            return result;
+        }
+
+        private AndoW.Shared.ContractPlaylistPayload BuildContractPayload(string playerId,
+                                                             string playerName,
+                                                             AndoW.Shared.PageListInfoClass pageList,
+                                                             List<AndoW.Shared.PageInfoClass> pages)
+        {
+            var payload = new AndoW.Shared.ContractPlaylistPayload
+            {
+                PlayerId = playerId ?? string.Empty,
+                PlayerName = playerName ?? string.Empty,
+                PlayerLandscape = manager?.g_PlayerInfo?.PIF_IsLandScape ?? false,
+                PlaylistId = pageList?.PLI_PageListName ?? string.Empty,
+                PlaylistName = pageList?.PLI_PageListName ?? string.Empty,
+                Pages = new List<AndoW.Shared.ContractPagePayload>()
+            };
+
+            var orderedIds = pageList?.PLI_Pages ?? new List<string>();
+            foreach (var page in pages ?? new List<AndoW.Shared.PageInfoClass>())
+            {
+                if (page == null)
+                {
+                    continue;
+                }
+
+                var pageEntry = new AndoW.Shared.ContractPagePayload
+                {
+                    PageId = page.PIC_GUID ?? string.Empty,
+                    PageName = page.PIC_PageName ?? string.Empty,
+                    OrderIndex = orderedIds.IndexOf(page.PIC_GUID),
+                    PlayHour = page.PIC_PlaytimeHour,
+                    PlayMinute = page.PIC_PlaytimeMinute,
+                    PlaySecond = page.PIC_PlaytimeSecond,
+                    Volume = page.PIC_Volume,
+                    Landscape = page.PIC_IsLandscape,
+                    Elements = new List<AndoW.Shared.ContractElementPayload>()
+                };
+                if (pageEntry.OrderIndex < 0)
+                {
+                    pageEntry.OrderIndex = payload.Pages.Count;
+                }
+
+                foreach (var element in page.PIC_Elements ?? new List<AndoW.Shared.ElementInfoClass>())
+                {
+                    if (element == null)
+                    {
+                        continue;
+                    }
+
+                    string elementId = $"{page.PIC_GUID}_{element.EIF_Name}";
+                    var elementEntry = new AndoW.Shared.ContractElementPayload
+                    {
+                        ElementId = elementId,
+                        PageId = page.PIC_GUID ?? string.Empty,
+                        Name = element.EIF_Name ?? string.Empty,
+                        Type = element.EIF_Type ?? string.Empty,
+                        Width = element.EIF_Width,
+                        Height = element.EIF_Height,
+                        PosLeft = element.EIF_PosLeft,
+                        PosTop = element.EIF_PosTop,
+                        ZIndex = element.EIF_ZIndex,
+                        Muted = element.EIF_IsMuted,
+                        Contents = new List<AndoW.Shared.ContractContentPayload>()
+                    };
+
+                    var contents = element.EIF_ContentsInfoClassList ?? new List<AndoW.Shared.ContentsInfoClass>();
+                    for (int idx = 0; idx < contents.Count; idx++)
+                    {
+                        var content = contents[idx];
+                        if (content == null)
+                        {
+                            continue;
+                        }
+
+                        elementEntry.Contents.Add(new AndoW.Shared.ContractContentPayload
+                        {
+                            Uid = $"{elementId}_{idx}",
+                            ElementId = elementId,
+                            FileName = content.CIF_FileName ?? string.Empty,
+                            FileFullPath = content.CIF_FileFullPath ?? string.Empty,
+                            ContentType = content.CIF_ContentType ?? string.Empty,
+                            PlayMinute = content.CIF_PlayMinute ?? string.Empty,
+                            PlaySecond = content.CIF_PlaySec ?? string.Empty,
+                            Valid = content.CIF_ValidTime,
+                            ScrollSpeedSec = content.CIF_ScrollTextSpeedSec,
+                            RemoteChecksum = string.IsNullOrWhiteSpace(content.CIF_FileHash) ? content.CIF_StrGUID ?? string.Empty : content.CIF_FileHash,
+                            FileSize = content.CIF_FileSize,
+                            FileExist = content.CIF_FileExist
+                        });
+                    }
+
+                    pageEntry.Elements.Add(elementEntry);
+                }
+
+                payload.Pages.Add(pageEntry);
+            }
+
+            payload.Pages = payload.Pages.OrderBy(x => x.OrderIndex).ToList();
+            return payload;
+        }
+
+        private List<ContentPeriodPayload> BuildContentPeriodsForPages(List<AndoW.Shared.PageInfoClass> pages)
+        {
+            var results = new List<ContentPeriodPayload>();
+            if (pages == null || pages.Count == 0)
+            {
+                return results;
+            }
+
+            var contentMap = new Dictionary<string, AndoW.Shared.ContentsInfoClass>(StringComparer.OrdinalIgnoreCase);
+            foreach (var page in pages)
+            {
+                if (page?.PIC_Elements == null)
+                {
+                    continue;
+                }
+
+                foreach (var element in page.PIC_Elements)
+                {
+                    if (element?.EIF_ContentsInfoClassList == null)
+                    {
+                        continue;
+                    }
+
+                    foreach (var content in element.EIF_ContentsInfoClassList)
+                    {
+                        if (content == null || string.IsNullOrWhiteSpace(content.CIF_StrGUID))
+                        {
+                            continue;
+                        }
+
+                        if (!IsFileBasedContent(content))
+                        {
+                            continue;
+                        }
+
+                        if (!contentMap.ContainsKey(content.CIF_StrGUID))
+                        {
+                            contentMap[content.CIF_StrGUID] = content;
+                        }
+                    }
+                }
+            }
+
+            if (contentMap.Count == 0)
+            {
+                return results;
+            }
+
+            var periodMap = FetchContentPeriods(contentMap.Keys);
+            string defaultStart = DateTime.Today.ToString("yyyy-MM-dd");
+
+            foreach (var kv in contentMap)
+            {
+                string guid = kv.Key;
+                var content = kv.Value;
+                if (content == null)
+                {
+                    continue;
+                }
+
+                RethinkContentPeriod period = null;
+                periodMap.TryGetValue(guid, out period);
+
+                results.Add(new ContentPeriodPayload
+                {
+                    ContentGuid = guid,
+                    FileName = string.IsNullOrWhiteSpace(period?.FileName)
+                        ? content.CIF_FileName ?? string.Empty
+                        : period.FileName,
+                    StartDate = string.IsNullOrWhiteSpace(period?.StartDate)
+                        ? defaultStart
+                        : period.StartDate,
+                    EndDate = string.IsNullOrWhiteSpace(period?.EndDate)
+                        ? "2099-12-31"
+                        : period.EndDate
+                });
+            }
+
+            return results;
+        }
+
+        private Dictionary<string, RethinkContentPeriod> FetchContentPeriods(IEnumerable<string> contentGuids)
+        {
+            var result = new Dictionary<string, RethinkContentPeriod>(StringComparer.OrdinalIgnoreCase);
+            var ids = contentGuids?.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                ?? new List<string>();
+            if (ids.Count == 0)
+            {
+                return result;
+            }
+
+            var conn = GetConnection();
+            if (conn == null)
+            {
+                return result;
+            }
+
+            try
+            {
+                var periods = R.Db(DatabaseName)
+                    .Table(PeriodTable)
+                    .GetAll(ids)
+                    .RunCursor<RethinkContentPeriod>(conn);
+
+                foreach (var period in periods ?? Enumerable.Empty<RethinkContentPeriod>())
+                {
+                    if (period == null || string.IsNullOrWhiteSpace(period.ContentGuid))
+                    {
+                        continue;
+                    }
+
+                    result[period.ContentGuid] = period;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog($"FetchContentPeriods error: {ex}", Logger.GetLogFileName());
+            }
+
+            return result;
+        }
+
+        private static bool IsFileBasedContent(AndoW.Shared.ContentsInfoClass content)
+        {
+            if (content == null)
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(content.CIF_ContentType))
+            {
+                return true;
+            }
+
+            return !content.CIF_ContentType.Equals("WebSiteURL", StringComparison.OrdinalIgnoreCase)
+                && !content.CIF_ContentType.Equals("Browser", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static SpecialSchedulePayload MapSpecialSchedule(RethinkSpecialSchedule schedule)
+        {
+            if (schedule == null)
+            {
+                return null;
+            }
+
+            return new SpecialSchedulePayload
+            {
+                Id = schedule.Id ?? string.Empty,
+                PageListName = schedule.PageListName ?? string.Empty,
+                DayOfWeek1 = schedule.DayOfWeek1,
+                DayOfWeek2 = schedule.DayOfWeek2,
+                DayOfWeek3 = schedule.DayOfWeek3,
+                DayOfWeek4 = schedule.DayOfWeek4,
+                DayOfWeek5 = schedule.DayOfWeek5,
+                DayOfWeek6 = schedule.DayOfWeek6,
+                DayOfWeek7 = schedule.DayOfWeek7,
+                IsPeriodEnable = schedule.IsPeriodEnable,
+                DisplayStartH = schedule.DisplayStartH,
+                DisplayStartM = schedule.DisplayStartM,
+                DisplayEndH = schedule.DisplayEndH,
+                DisplayEndM = schedule.DisplayEndM,
+                PeriodStartYear = schedule.PeriodStartYear,
+                PeriodStartMonth = schedule.PeriodStartMonth,
+                PeriodStartDay = schedule.PeriodStartDay,
+                PeriodEndYear = schedule.PeriodEndYear,
+                PeriodEndMonth = schedule.PeriodEndMonth,
+                PeriodEndDay = schedule.PeriodEndDay
+            };
+        }
+
         private void SyncWeeklySchedule(string playerId, string playerName)
         {
             if (string.IsNullOrWhiteSpace(playerId) && string.IsNullOrWhiteSpace(playerName))
@@ -850,6 +1283,41 @@ namespace NewHyOnPlayer
             {
                 Logger.WriteErrorLog($"SyncWeeklySchedule error: {ex}", Logger.GetLogFileName());
             }
+        }
+
+
+        private sealed class RethinkSpecialSchedule
+        {
+            public string Id { get; set; }
+            public List<string> PlayerNames { get; set; } = new List<string>();
+            public string PageListName { get; set; }
+            public bool DayOfWeek1 { get; set; }
+            public bool DayOfWeek2 { get; set; }
+            public bool DayOfWeek3 { get; set; }
+            public bool DayOfWeek4 { get; set; }
+            public bool DayOfWeek5 { get; set; }
+            public bool DayOfWeek6 { get; set; }
+            public bool DayOfWeek7 { get; set; }
+            public bool IsPeriodEnable { get; set; }
+            public int DisplayStartH { get; set; }
+            public int DisplayStartM { get; set; }
+            public int DisplayEndH { get; set; }
+            public int DisplayEndM { get; set; }
+            public int PeriodStartYear { get; set; }
+            public int PeriodStartMonth { get; set; }
+            public int PeriodStartDay { get; set; }
+            public int PeriodEndYear { get; set; }
+            public int PeriodEndMonth { get; set; }
+            public int PeriodEndDay { get; set; }
+        }
+
+        private sealed class RethinkContentPeriod
+        {
+            public string Id { get; set; }
+            public string ContentGuid { get; set; }
+            public string FileName { get; set; }
+            public string StartDate { get; set; }
+            public string EndDate { get; set; }
         }
 
         private sealed class RethinkWeeklySchedule

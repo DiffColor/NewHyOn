@@ -109,6 +109,165 @@ public class DataSyncManager {
         return true;
     }
 
+
+    public boolean syncSpecialSchedule(RethinkModels.PlayerInfoRecord player) {
+        if (player == null || TextUtils.isEmpty(player.getPlayerName())) {
+            return false;
+        }
+
+        List<RethinkModels.SpecialScheduleRecord> records = rethinkClient.fetchSpecialSchedules(player.getPlayerName());
+        UpdatePayloadModels.ScheduleUpdatePayload payload = buildSpecialSchedulePayloadFromRemote(player, records);
+        if (payload == null) {
+            return false;
+        }
+
+        String cacheId = resolveInitialScheduleCacheId(player, payload);
+        if (TextUtils.isEmpty(cacheId) || !saveScheduleCache(cacheId, payload)) {
+            return false;
+        }
+
+        boolean queuedAllPlaylists = true;
+        if (payload.Playlists != null) {
+            for (UpdatePayloadModels.SchedulePlaylistPayload playlist : payload.Playlists) {
+                if (playlist == null || playlist.PageList == null || playlist.Pages == null || playlist.Pages.isEmpty()) {
+                    continue;
+                }
+                UpdatePayloadModels.UpdatePayload updatePayload = new UpdatePayloadModels.UpdatePayload();
+                updatePayload.PageList = playlist.PageList;
+                updatePayload.Pages = playlist.Pages;
+                updatePayload.Contract = playlist.Contract;
+                queuedAllPlaylists = enqueuePayloadUpdate(updatePayload, true) > 0 && queuedAllPlaylists;
+            }
+        }
+        return queuedAllPlaylists;
+    }
+
+    private String resolveInitialScheduleCacheId(RethinkModels.PlayerInfoRecord player,
+                                                 UpdatePayloadModels.ScheduleUpdatePayload schedule) {
+        if (schedule != null) {
+            if (!TextUtils.isEmpty(schedule.PlayerId)) {
+                return schedule.PlayerId;
+            }
+            if (!TextUtils.isEmpty(schedule.PlayerName)) {
+                return schedule.PlayerName;
+            }
+        }
+        if (player != null) {
+            if (!TextUtils.isEmpty(player.getGuid())) {
+                return player.getGuid();
+            }
+            if (!TextUtils.isEmpty(player.getPlayerName())) {
+                return player.getPlayerName();
+            }
+        }
+        return "";
+    }
+
+
+    private UpdatePayloadModels.ScheduleUpdatePayload buildSpecialSchedulePayloadFromRemote(
+            RethinkModels.PlayerInfoRecord player,
+            List<RethinkModels.SpecialScheduleRecord> records) {
+        if (player == null) {
+            return null;
+        }
+
+        UpdatePayloadModels.ScheduleUpdatePayload payload = new UpdatePayloadModels.ScheduleUpdatePayload();
+        payload.PlayerId = TextUtils.isEmpty(player.getGuid()) ? "" : player.getGuid();
+        payload.PlayerName = TextUtils.isEmpty(player.getPlayerName()) ? "" : player.getPlayerName();
+        payload.GeneratedAt = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.KOREA)
+                .format(new java.util.Date());
+        payload.SpecialSchedules = new ArrayList<>();
+        payload.Playlists = new ArrayList<>();
+
+        List<String> playlistNames = new ArrayList<>();
+        if (records != null) {
+            for (RethinkModels.SpecialScheduleRecord record : records) {
+                UpdatePayloadModels.SpecialSchedulePayload schedule = mapSpecialSchedule(record);
+                if (schedule == null) {
+                    continue;
+                }
+                payload.SpecialSchedules.add(schedule);
+                addUniquePlaylistName(playlistNames, schedule.PageListName);
+            }
+        }
+
+        for (String playlistName : playlistNames) {
+            UpdatePayloadModels.SchedulePlaylistPayload playlist = buildSchedulePlaylistPayload(player, playlistName);
+            if (playlist != null) {
+                payload.Playlists.add(playlist);
+            }
+        }
+
+        return payload;
+    }
+
+    private UpdatePayloadModels.SchedulePlaylistPayload buildSchedulePlaylistPayload(
+            RethinkModels.PlayerInfoRecord player,
+            String playlistName) {
+        if (TextUtils.isEmpty(playlistName)) {
+            return null;
+        }
+        RethinkModels.PageListRecord pageList = rethinkClient.fetchPageList(playlistName);
+        if (pageList == null || pageList.getPages() == null || pageList.getPages().isEmpty()) {
+            return null;
+        }
+        List<RethinkModels.PageInfoRecord> pages = rethinkClient.fetchPagesByIds(pageList.getPages());
+        if (pages == null || pages.isEmpty()) {
+            return null;
+        }
+        UpdatePayloadModels.UpdatePayload updatePayload = buildUpdatePayloadFromRecords(player, pageList, pages);
+        if (updatePayload == null || updatePayload.PageList == null || updatePayload.Pages == null || updatePayload.Pages.isEmpty()) {
+            return null;
+        }
+
+        UpdatePayloadModels.SchedulePlaylistPayload playlist = new UpdatePayloadModels.SchedulePlaylistPayload();
+        playlist.PlaylistName = playlistName;
+        playlist.PageList = updatePayload.PageList;
+        playlist.Pages = updatePayload.Pages;
+        playlist.Contract = updatePayload.Contract;
+        return playlist;
+    }
+
+    private UpdatePayloadModels.SpecialSchedulePayload mapSpecialSchedule(RethinkModels.SpecialScheduleRecord record) {
+        if (record == null) {
+            return null;
+        }
+        UpdatePayloadModels.SpecialSchedulePayload payload = new UpdatePayloadModels.SpecialSchedulePayload();
+        payload.Id = TextUtils.isEmpty(record.getId()) ? "" : record.getId();
+        payload.PageListName = TextUtils.isEmpty(record.getPageListName()) ? "" : record.getPageListName();
+        payload.DayOfWeek1 = record.isDayOfWeek1();
+        payload.DayOfWeek2 = record.isDayOfWeek2();
+        payload.DayOfWeek3 = record.isDayOfWeek3();
+        payload.DayOfWeek4 = record.isDayOfWeek4();
+        payload.DayOfWeek5 = record.isDayOfWeek5();
+        payload.DayOfWeek6 = record.isDayOfWeek6();
+        payload.DayOfWeek7 = record.isDayOfWeek7();
+        payload.IsPeriodEnable = record.isPeriodEnable();
+        payload.DisplayStartH = record.getDisplayStartH();
+        payload.DisplayStartM = record.getDisplayStartM();
+        payload.DisplayEndH = record.getDisplayEndH();
+        payload.DisplayEndM = record.getDisplayEndM();
+        payload.PeriodStartYear = record.getPeriodStartYear();
+        payload.PeriodStartMonth = record.getPeriodStartMonth();
+        payload.PeriodStartDay = record.getPeriodStartDay();
+        payload.PeriodEndYear = record.getPeriodEndYear();
+        payload.PeriodEndMonth = record.getPeriodEndMonth();
+        payload.PeriodEndDay = record.getPeriodEndDay();
+        return payload;
+    }
+
+    private void addUniquePlaylistName(List<String> playlistNames, String playlistName) {
+        if (playlistNames == null || TextUtils.isEmpty(playlistName)) {
+            return;
+        }
+        for (String existing : playlistNames) {
+            if (playlistName.equalsIgnoreCase(existing)) {
+                return;
+            }
+        }
+        playlistNames.add(playlistName);
+    }
+
     public boolean applyWeeklyScheduleRecord(String playerKey, RethinkModels.WeeklyScheduleRecord record) {
         if (TextUtils.isEmpty(playerKey)) {
             return false;

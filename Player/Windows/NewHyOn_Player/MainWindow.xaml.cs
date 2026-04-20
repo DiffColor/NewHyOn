@@ -520,6 +520,10 @@ namespace NewHyOnPlayer
                 {
                     HandleWeeklyScheduleUpdated();
                 };
+                rethinkSyncService.SpecialScheduleSynced += () =>
+                {
+                    HandleWeeklyScheduleUpdated();
+                };
             }
             catch (Exception ex)
             {
