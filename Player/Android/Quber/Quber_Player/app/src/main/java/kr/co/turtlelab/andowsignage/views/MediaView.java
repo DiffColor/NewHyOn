@@ -1439,8 +1439,14 @@ public class MediaView extends RelativeLayout {
                         }
                         promoteVideoView(targetVideoView);
                         showVideoOnScreen(targetVideoView);
-                        recyclePreviousVideoViewAfterSwap(previousVideoView, targetVideoView, nextType, nextPath);
-                        finishVideoOverlayAndPreloadNext(overlayToFade, nextType, nextPath, nextMuted, preloadTarget);
+                        boolean preloadHandledByRecycledVideo = previousVideoView != null && nextType == CONTENT_TYPE.Video;
+                        recyclePreviousVideoViewAfterSwap(previousVideoView, targetVideoView, nextType, nextPath, nextMuted);
+                        finishVideoOverlayAndPreloadNext(overlayToFade,
+                                nextType,
+                                nextPath,
+                                nextMuted,
+                                preloadTarget,
+                                preloadHandledByRecycledVideo);
                         startVideoPlayback(targetVideoView, readyForImmediateSwap, new Runnable() {
                             @Override
                             public void run() {
@@ -1525,42 +1531,40 @@ public class MediaView extends RelativeLayout {
     private void recyclePreviousVideoViewAfterSwap(TurtleVideoView previousVideoView,
                                                    TurtleVideoView activeVideoView,
                                                    CONTENT_TYPE nextType,
-                                                   String nextPath) {
+                                                   String nextPath,
+                                                   boolean nextMuted) {
         if (previousVideoView == null || previousVideoView == activeVideoView) {
             return;
         }
         String normalizedNextPath = nextType == CONTENT_TYPE.Video ? normalizeLocalVideoPath(nextPath) : null;
-        if (nextType == CONTENT_TYPE.Video && isPreparedVideoView(previousVideoView, normalizedNextPath)) {
-            previousVideoView.setMediaInfoListener(null);
-            previousVideoView.setLoop(true);
-            previousVideoView.setMuted(true);
-            showStandbyVideoView(previousVideoView);
-            final TurtleVideoView parkedVideoView = previousVideoView;
-            final String parkedPath = normalizedNextPath;
-            runAfterOffscreenFrame(parkedVideoView, new Runnable() {
-                @Override
-                public void run() {
-                    if (isPreparedVideoView(parkedVideoView, parkedPath)) {
-                        pausePreparedStandbyVideo(parkedVideoView);
-                        Log.i(CONTENT_TRACE_TAG, "previous video paused after offscreen media=" + debugId()
-                                + " view=" + System.identityHashCode(parkedVideoView)
-                                + " path=" + summarizePath(parkedPath));
-                    }
-                }
-            });
-            Log.i(CONTENT_TRACE_TAG, "previous video kept prepared offscreen media=" + debugId()
-                    + " view=" + System.identityHashCode(previousVideoView)
-                    + " next=" + summarizePath(normalizedNextPath));
-            return;
-        }
         showStandbyVideoView(previousVideoView);
         final TurtleVideoView parkedVideoView = previousVideoView;
+        final boolean shouldPrepareNextVideo = nextType == CONTENT_TYPE.Video
+                && isPlayableLocalVideo(normalizedNextPath);
+        final String parkedPath = normalizedNextPath;
+        final boolean parkedMuted = nextMuted;
+        final int configVersion = mediaConfigurationVersion;
         runAfterOffscreenFrame(parkedVideoView, new Runnable() {
             @Override
             public void run() {
                 stopVideoPlayback(parkedVideoView);
                 Log.i(CONTENT_TRACE_TAG, "previous video stopped after offscreen media=" + debugId()
                         + " view=" + System.identityHashCode(parkedVideoView));
+                if (!shouldPrepareNextVideo || !isCurrentMediaConfiguration(configVersion)) {
+                    return;
+                }
+                playbackTimingHandler.postAtTime(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!isCurrentMediaConfiguration(configVersion)) {
+                            return;
+                        }
+                        prepareStandbyVideoView(parkedVideoView, parkedPath, parkedMuted, configVersion);
+                        Log.i(CONTENT_TRACE_TAG, "previous video loading after close media=" + debugId()
+                                + " view=" + System.identityHashCode(parkedVideoView)
+                                + " path=" + summarizePath(parkedPath));
+                    }
+                }, SystemClock.uptimeMillis() + 32L);
             }
         });
     }
@@ -1569,7 +1573,8 @@ public class MediaView extends RelativeLayout {
                                                   final CONTENT_TYPE nextType,
                                                   final String nextPath,
                                                   final boolean nextMuted,
-                                                  ImageView preloadTarget) {
+                                                  ImageView preloadTarget,
+                                                  boolean skipVideoPreload) {
         if (overlayToFade != null && overlayToFade.getVisibility() == View.VISIBLE) {
             overlayToFade.bringToFront();
             overlayToFade.animate()
@@ -1595,6 +1600,9 @@ public class MediaView extends RelativeLayout {
             return;
         }
         if (nextType == CONTENT_TYPE.Video) {
+            if (skipVideoPreload) {
+                return;
+            }
             preloadNextVideoIfNeeded(nextType, nextPath, nextMuted, mediaConfigurationVersion);
         }
     }
