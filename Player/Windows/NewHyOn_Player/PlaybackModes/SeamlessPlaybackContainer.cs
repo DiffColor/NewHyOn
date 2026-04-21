@@ -482,7 +482,14 @@ namespace NewHyOnPlayer.PlaybackModes
                     return;
                 }
 
-                PlayNextPage();
+                if (switched)
+                {
+                    PlayNextPage();
+                }
+                else
+                {
+                    completedLayout.RestartLoop();
+                }
                 return;
             }
 
