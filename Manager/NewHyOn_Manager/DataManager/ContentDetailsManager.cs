@@ -95,20 +95,23 @@ namespace AndoW_Manager
                 try
                 {
                     var table = RethinkDbContext.Table(_databaseName, TableName);
-                    var existing = RethinkDbContext.RunList<string>(table.IndexList());
-                    var r = RethinkDB.R;
+                    var existing = RethinkDbContext.RunSingleOrDefault<List<string>>(table.IndexList()) ?? new List<string>();
                     var created = new List<string>();
 
                     if (!existing.Contains(IndexPartialHash, StringComparer.OrdinalIgnoreCase))
                     {
-                        RethinkDbContext.Run(table.IndexCreate(IndexPartialHash, row => row["partial_hash"]));
-                        created.Add(IndexPartialHash);
+                        if (TryCreateIndex(table, IndexPartialHash, row => row["partial_hash"]))
+                        {
+                            created.Add(IndexPartialHash);
+                        }
                     }
 
                     if (!existing.Contains(IndexEntireHash, StringComparer.OrdinalIgnoreCase))
                     {
-                        RethinkDbContext.Run(table.IndexCreate(IndexEntireHash, row => row["entire_hash"]));
-                        created.Add(IndexEntireHash);
+                        if (TryCreateIndex(table, IndexEntireHash, row => row["entire_hash"]))
+                        {
+                            created.Add(IndexEntireHash);
+                        }
                     }
 
                     if (created.Count > 0)
@@ -122,6 +125,27 @@ namespace AndoW_Manager
                 {
                     Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
                 }
+            }
+        }
+
+        private static bool TryCreateIndex(RethinkDb.Driver.Ast.Table table,
+                                           string indexName,
+                                           RethinkDb.Driver.Ast.ReqlFunction1 indexFunction)
+        {
+            try
+            {
+                table.IndexCreate(indexName, indexFunction).Run(RethinkDbContext.GetRawConnection());
+                return true;
+            }
+            catch (Exception ex)
+            {
+                if (ex.Message != null
+                    && ex.Message.IndexOf("already exists", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return false;
+                }
+
+                throw;
             }
         }
     }

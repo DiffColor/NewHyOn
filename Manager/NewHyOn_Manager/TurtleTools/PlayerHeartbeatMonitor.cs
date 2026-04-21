@@ -14,7 +14,7 @@ namespace TurtleTools
         private bool _isPolling;
         private readonly object _stateLock = new object();
         private Dictionary<string, PlayerHeartbeatState> _cachedStates = new Dictionary<string, PlayerHeartbeatState>(StringComparer.OrdinalIgnoreCase);
-        private static readonly TimeSpan OfflineThreshold = TimeSpan.FromSeconds(15);
+        private static readonly TimeSpan OfflineThreshold = TimeSpan.FromSeconds(60);
 
         public event EventHandler<IReadOnlyList<PlayerHeartbeatState>> HeartbeatsChanged;
 

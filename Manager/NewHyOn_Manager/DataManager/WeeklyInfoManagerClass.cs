@@ -50,6 +50,36 @@ namespace AndoW_Manager
             Upsert(CurrentSchedule);
         }
 
+        public void EnsureWeeklySchedule(string playerId, string playerName)
+        {
+            if (string.IsNullOrWhiteSpace(playerId))
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(playerName))
+            {
+                playerName = playerId;
+            }
+
+            WeeklyPlayScheduleInfo existing = FindOne(x =>
+                string.Equals(x.PlayerID, playerId, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(x.Id, playerId, StringComparison.OrdinalIgnoreCase));
+            if (existing == null && !string.IsNullOrWhiteSpace(playerName))
+            {
+                existing = FindOne(x => string.Equals(x.PlayerName, playerName, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (existing != null)
+            {
+                return;
+            }
+
+            CurrentSchedule = CreateDefaultSchedule(playerId, playerName);
+            BuildWeekList(playerName);
+            Upsert(CurrentSchedule);
+        }
+
         public List<WeeklyDayScheduleInfo> GetLegacySchedules(string playerId, string playerName)
         {
             InitPlayerInfoListFromDataTable(playerId, playerName);

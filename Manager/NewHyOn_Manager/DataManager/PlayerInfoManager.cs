@@ -15,6 +15,7 @@ namespace AndoW_Manager
         public PlayerInfoManager()
             : base(RethinkDbConfigurator.GetDataDatabaseName(), nameof(PlayerInfoManager), "id")
         {
+            EnsureWeeklyScheduleTable();
             ReloadFromDatabase();
 
             SetDefaultEditorStyle();
@@ -453,6 +454,23 @@ namespace AndoW_Manager
             }
 
             Upsert(player);
+            EnsureWeeklyScheduleForPlayer(player);
+        }
+
+        private static void EnsureWeeklyScheduleTable()
+        {
+            new WeeklyInfoManagerClass();
+        }
+
+        private static void EnsureWeeklyScheduleForPlayer(PlayerInfoClass player)
+        {
+            if (player == null || string.IsNullOrWhiteSpace(player.PIF_GUID))
+            {
+                return;
+            }
+
+            var weeklyManager = new WeeklyInfoManagerClass();
+            weeklyManager.EnsureWeeklySchedule(player.PIF_GUID, player.PIF_PlayerName);
         }
 
         private void RemovePlayerFromDatabase(PlayerInfoClass player)
