@@ -106,67 +106,59 @@ build_gradle_release_from_find() {
   cp "$apk_path" "$output_dir/$output_name"
 }
 
-build_quber_quber4k_krizer_triplet() {
+build_quber_release() {
   local quber_root="$1"
-  local quber4k_root="$2"
-  local krizer_root="$3"
-  local pair_prefix="$4"
+  local output_name="$2"
   local quber_keystore="Player/Android/_shared/platformkeys/quber/platform.jks"
-  local quber4k_keystore="Player/Android/_shared/platformkeys/quber4k/platform.jks"
-  local krizer_keystore="Player/Android/_shared/platformkeys/krizer/platform.jks"
 
   build_gradle_release \
     "$quber_root" \
     ":app:assembleRelease" \
     "app/build/outputs/apk/release/app-release.apk" \
-    "${pair_prefix}-quber.apk" \
+    "$output_name" \
     "$quber_keystore" \
     "zbqj2636" \
     "quber" \
     "zbqj2636"
+}
+
+build_player_release_pair() {
+  local quber_root="$1"
+  local gl_root="$2"
+  local pair_prefix="$3"
+  local quber_keystore="Player/Android/_shared/platformkeys/quber/platform.jks"
+
+  build_quber_release \
+    "$quber_root" \
+    "${pair_prefix}-quber.apk"
 
   build_gradle_release \
-    "$quber4k_root" \
+    "$gl_root" \
     ":app:assembleRelease" \
     "app/build/outputs/apk/release/app-release.apk" \
-    "${pair_prefix}-quber4k.apk" \
-    "$quber4k_keystore" \
+    "${pair_prefix}-gl.apk" \
+    "$quber_keystore" \
     "zbqj2636" \
     "quber" \
     "zbqj2636"
-
-  build_gradle_release \
-    "$krizer_root" \
-    ":app:assembleRelease" \
-    "app/build/outputs/apk/release/app-release.apk" \
-    "${pair_prefix}-krizer.apk" \
-    "$krizer_keystore" \
-    "android" \
-    "androiddebugkey" \
-    "android"
 }
 
 case "$target" in
   player)
-    build_quber_quber4k_krizer_triplet \
+    build_player_release_pair \
       "Player/Android/Quber/Quber_Player" \
-      "Player/Android/Quber4k/Quber_Player" \
-      "Player/Android/Krizer/Krizer_Player" \
+      "Player/Android/GL/GL_Player" \
       "$artifact_prefix"
     ;;
   notifier)
-    build_quber_quber4k_krizer_triplet \
+    build_quber_release \
       "Player/Android/Quber/Notifier" \
-      "Player/Android/Quber4k/Notifier" \
-      "Player/Android/Krizer/Notifier" \
-      "$artifact_prefix"
+      "${artifact_prefix}-quber.apk"
     ;;
   usbinstaller)
-    build_quber_quber4k_krizer_triplet \
+    build_quber_release \
       "Player/Android/Quber/USBInstaller_4launcher" \
-      "Player/Android/Quber4k/USBInstaller_4launcher" \
-      "Player/Android/Krizer/USBInstaller_4launcher" \
-      "$artifact_prefix"
+      "${artifact_prefix}-quber.apk"
     ;;
   launcher)
     build_gradle_release_from_find \
