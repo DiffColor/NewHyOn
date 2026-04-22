@@ -1,6 +1,4 @@
-﻿extern alias USBDetector;
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
@@ -12,9 +10,6 @@ using System.ComponentModel;
 
 using System.IO;
 using TurtleTools;
-using UsbDisk = USBDetector::USB_Detector.UsbDisk;
-using UsbDiskCollection = USBDetector::USB_Detector.UsbDiskCollection;
-using UsbManager = USBDetector::USB_Detector.UsbManager;
 
 namespace AndoW_Manager
 {
@@ -35,8 +30,6 @@ namespace AndoW_Manager
 
         public PlayListBatchUpdateWindow g_BatchUpdateWnd = null;
 
-        public UsbManager g_USBManager;
-
         public string CurrentSelectedPageListName => g_CurrentSelectedPageListName;
 
         public static Page2 Instance { get; set; }
@@ -49,13 +42,40 @@ namespace AndoW_Manager
 
             InitEventHandler();
             g_BatchUpdateWnd = new PlayListBatchUpdateWindow();
-
-            g_USBManager = new UsbManager();
         }
 
         public bool HasAvailableUsb()
         {
-            return g_USBManager != null && g_USBManager.GetAvailableDisks().Count > 0;
+            return GetAvailableUsbNames().Count > 0;
+        }
+
+        public List<string> GetAvailableUsbNames()
+        {
+            List<string> usbs = new List<string>();
+            try
+            {
+                foreach (DriveInfo drive in DriveInfo.GetDrives())
+                {
+                    if (drive == null || drive.DriveType != DriveType.Removable || drive.IsReady == false)
+                    {
+                        continue;
+                    }
+
+                    string name = drive.Name;
+                    if (string.IsNullOrWhiteSpace(name))
+                    {
+                        continue;
+                    }
+
+                    usbs.Add(name.Replace(":\\", "").Replace(":", "").Replace("\\", ""));
+                }
+            }
+            catch
+            {
+                usbs.Clear();
+            }
+
+            return usbs;
         }
 
         public void ExportPlaylistToUsb(string pageListName)
@@ -73,18 +93,12 @@ namespace AndoW_Manager
                 return;
             }
 
-            UsbDiskCollection usbcol = g_USBManager.GetAvailableDisks();
+            List<string> usblist = GetAvailableUsbNames();
 
-            if (usbcol == null || usbcol.Count < 1)
+            if (usblist.Count < 1)
             {
                 MessageTools.ShowMessageBox("이동 저장소가 없습니다.");
                 return;
-            }
-
-            List<string> usblist = new List<string>();
-            foreach (UsbDisk usb in usbcol)
-            {
-                usblist.Add(usb.Name.Replace(":", ""));
             }
 
             SelectUSBWindow usbw = new SelectUSBWindow(usblist, pageListName);

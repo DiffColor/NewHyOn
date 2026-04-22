@@ -8,11 +8,10 @@ namespace TurtleTools
 {
     public static class SecureJsonTools
     {
-        private const int SaltSize = 16;
         private const int IvSize = 16;
         private const int HmacSize = 32;
-        private const int Iterations = 100000;
         private const string DefaultPassphrase = "ninja04!9akftp!";
+        private static readonly byte[] FastMagic = Encoding.ASCII.GetBytes("NHY2");
 
         public static void WriteEncryptedJson(string filePath, object data, string passphrase = null)
         {
@@ -21,7 +20,7 @@ namespace TurtleTools
                 return;
             }
 
-            string json = JsonConvert.SerializeObject(data, Formatting.Indented);
+            string json = JsonConvert.SerializeObject(data, Formatting.None);
             byte[] encrypted = Encrypt(json, passphrase);
 
             string directory = Path.GetDirectoryName(filePath);
@@ -54,8 +53,12 @@ namespace TurtleTools
 
         private static byte[] Encrypt(string plainText, string passphrase)
         {
-            byte[] salt = GenerateRandomBytes(SaltSize);
-            DeriveKeys(passphrase, salt, out byte[] encKey, out byte[] macKey);
+            return EncryptFast(plainText, passphrase);
+        }
+
+        private static byte[] EncryptFast(string plainText, string passphrase)
+        {
+            DeriveFastKeys(passphrase, out byte[] encKey, out byte[] macKey);
 
             byte[] iv = GenerateRandomBytes(IvSize);
             byte[] plainBytes = Encoding.UTF8.GetBytes(plainText);
@@ -75,50 +78,56 @@ namespace TurtleTools
                 }
             }
 
-            int totalLength = SaltSize + IvSize + cipherBytes.Length + HmacSize;
-            byte[] output = new byte[totalLength];
+            int authLength = FastMagic.Length + IvSize + cipherBytes.Length;
+            byte[] output = new byte[authLength + HmacSize];
+            Buffer.BlockCopy(FastMagic, 0, output, 0, FastMagic.Length);
+            Buffer.BlockCopy(iv, 0, output, FastMagic.Length, IvSize);
+            Buffer.BlockCopy(cipherBytes, 0, output, FastMagic.Length + IvSize, cipherBytes.Length);
 
-            Buffer.BlockCopy(salt, 0, output, 0, SaltSize);
-            Buffer.BlockCopy(iv, 0, output, SaltSize, IvSize);
-            Buffer.BlockCopy(cipherBytes, 0, output, SaltSize + IvSize, cipherBytes.Length);
-
-            byte[] mac = ComputeHmac(macKey, output, 0, SaltSize + IvSize + cipherBytes.Length);
-            Buffer.BlockCopy(mac, 0, output, SaltSize + IvSize + cipherBytes.Length, mac.Length);
+            byte[] mac = ComputeHmac(macKey, output, 0, authLength);
+            Buffer.BlockCopy(mac, 0, output, authLength, mac.Length);
 
             return output;
         }
 
         private static string Decrypt(byte[] encryptedPayload, string passphrase)
         {
-            if (encryptedPayload == null || encryptedPayload.Length < SaltSize + IvSize + HmacSize)
+            if (IsFastPayload(encryptedPayload) == false)
             {
                 return null;
             }
 
-            byte[] salt = new byte[SaltSize];
-            byte[] iv = new byte[IvSize];
-            Buffer.BlockCopy(encryptedPayload, 0, salt, 0, SaltSize);
-            Buffer.BlockCopy(encryptedPayload, SaltSize, iv, 0, IvSize);
+            return DecryptFast(encryptedPayload, passphrase);
+        }
 
-            int cipherLength = encryptedPayload.Length - SaltSize - IvSize - HmacSize;
+        private static string DecryptFast(byte[] encryptedPayload, string passphrase)
+        {
+            if (encryptedPayload == null || encryptedPayload.Length < FastMagic.Length + IvSize + HmacSize)
+            {
+                return null;
+            }
+
+            DeriveFastKeys(passphrase, out byte[] encKey, out byte[] macKey);
+
+            int cipherOffset = FastMagic.Length + IvSize;
+            int cipherLength = encryptedPayload.Length - cipherOffset - HmacSize;
             if (cipherLength <= 0)
             {
                 return null;
             }
 
-            byte[] cipherBytes = new byte[cipherLength];
-            Buffer.BlockCopy(encryptedPayload, SaltSize + IvSize, cipherBytes, 0, cipherLength);
-
             byte[] providedMac = new byte[HmacSize];
-            Buffer.BlockCopy(encryptedPayload, SaltSize + IvSize + cipherLength, providedMac, 0, HmacSize);
-
-            DeriveKeys(passphrase, salt, out byte[] encKey, out byte[] macKey);
-
-            byte[] expectedMac = ComputeHmac(macKey, encryptedPayload, 0, SaltSize + IvSize + cipherLength);
+            Buffer.BlockCopy(encryptedPayload, cipherOffset + cipherLength, providedMac, 0, HmacSize);
+            byte[] expectedMac = ComputeHmac(macKey, encryptedPayload, 0, cipherOffset + cipherLength);
             if (!ConstantTimeEquals(providedMac, expectedMac))
             {
                 return null;
             }
+
+            byte[] iv = new byte[IvSize];
+            Buffer.BlockCopy(encryptedPayload, FastMagic.Length, iv, 0, IvSize);
+            byte[] cipherBytes = new byte[cipherLength];
+            Buffer.BlockCopy(encryptedPayload, cipherOffset, cipherBytes, 0, cipherLength);
 
             using (Aes aes = Aes.Create())
             {
@@ -136,16 +145,35 @@ namespace TurtleTools
             }
         }
 
-        private static void DeriveKeys(string passphrase, byte[] salt, out byte[] encKey, out byte[] macKey)
+        private static bool IsFastPayload(byte[] payload)
         {
-            using (var kdf = new Rfc2898DeriveBytes(DefaultPassphrase, salt, Iterations, HashAlgorithmName.SHA256))
+            if (payload == null || payload.Length < FastMagic.Length)
             {
-                byte[] keyMaterial = kdf.GetBytes(64);
-                encKey = new byte[32];
-                macKey = new byte[32];
+                return false;
+            }
 
-                Buffer.BlockCopy(keyMaterial, 0, encKey, 0, 32);
-                Buffer.BlockCopy(keyMaterial, 32, macKey, 0, 32);
+            for (int i = 0; i < FastMagic.Length; i++)
+            {
+                if (payload[i] != FastMagic[i])
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static void DeriveFastKeys(string passphrase, out byte[] encKey, out byte[] macKey)
+        {
+            string secret = string.IsNullOrEmpty(passphrase) ? DefaultPassphrase : passphrase;
+            encKey = ComputeSha256(secret + ":enc");
+            macKey = ComputeSha256(secret + ":mac");
+        }
+
+        private static byte[] ComputeSha256(string value)
+        {
+            using (SHA256 sha = SHA256.Create())
+            {
+                return sha.ComputeHash(Encoding.UTF8.GetBytes(value ?? string.Empty));
             }
         }
 

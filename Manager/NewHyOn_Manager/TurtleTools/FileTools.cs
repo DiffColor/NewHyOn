@@ -15,6 +15,7 @@ namespace TurtleTools
 	public class FileTools
 	{
 		private const int FtpTransferBufferSizeBytes = 2 * 1024 * 1024;
+		private const int LocalCopyBufferSizeBytes = 4 * 1024 * 1024;
 
 		public static void CopyDirectory(string sdpath, string tdpath, bool recursive = true)
 		{
@@ -58,25 +59,17 @@ namespace TurtleTools
 
 		public static bool CopyFile(string sfpath, string tfpath, bool overwrite = true, bool forceoverwrite = false, bool preservetime = true)
 		{
-			long srcFilesize = 0;
-			long targetFilesize = 0;
-			long fileSize = 0;
-
 			try
 			{
-
+				if (string.IsNullOrWhiteSpace(sfpath) || string.IsNullOrWhiteSpace(tfpath))
+					return false;
+				if (File.Exists(sfpath) == false)
+					return false;
 				if (sfpath.Equals(tfpath, StringComparison.CurrentCultureIgnoreCase))
 					return true;
 
 				FileInfo sfinfo = new FileInfo(sfpath);
-				srcFilesize = sfinfo.Length;
-
-				bool succeed = false;
-
-				FileStream rs = null;
-				FileStream ws = null;
-
-				rs = File.OpenRead(sfpath);
+				long srcFilesize = sfinfo.Length;
 
 				if (File.Exists(tfpath))
 				{
@@ -84,57 +77,30 @@ namespace TurtleTools
 					{
 						if (forceoverwrite)
 							DeleteFile(tfpath);
-						else
-						{
-							FileInfo tfinfo = new FileInfo(tfpath);
-							targetFilesize = tfinfo.Length;
-							if (srcFilesize != targetFilesize)
-								DeleteFile(tfpath);
-						}
 					}
 					else
 						return false;
 				}
 				else
 				{
-					Directory.CreateDirectory(Path.GetDirectoryName(tfpath));
+					string targetDirectory = Path.GetDirectoryName(tfpath);
+					if (string.IsNullOrWhiteSpace(targetDirectory) == false)
+						Directory.CreateDirectory(targetDirectory);
 				}
 
-				ws = new FileStream(tfpath, FileMode.Create);
-
-				byte[] b = null;
-
-				if (srcFilesize < 4096)
-					b = new byte[srcFilesize];
-				else
-					b = new byte[4096];
-
-				int count = 0;
-
-				do
+				long copiedBytes = 0;
+				byte[] buffer = new byte[LocalCopyBufferSizeBytes];
+				using (FileStream rs = new FileStream(sfpath, FileMode.Open, FileAccess.Read, FileShare.Read, LocalCopyBufferSizeBytes, FileOptions.SequentialScan))
+				using (FileStream ws = new FileStream(tfpath, FileMode.Create, FileAccess.Write, FileShare.None, LocalCopyBufferSizeBytes, FileOptions.SequentialScan))
 				{
-					count = rs.Read(b, 0, b.Length);
-
-					if (count > 0)
+					int count = 0;
+					while ((count = rs.Read(buffer, 0, buffer.Length)) > 0)
 					{
-						ws.Write(b, 0, count);
-						fileSize += count;
+						ws.Write(buffer, 0, count);
+						copiedBytes += count;
 					}
-					else
-					{
-						if (fileSize >= srcFilesize)
-						{
-							succeed = true;
-						}
-						else
-						{
-							succeed = false;
-						}
-					}
-				} while (count > 0);
-
-				rs.Close();
-				ws.Close();
+					ws.Flush();
+				}
 
 				if (preservetime)
 				{
@@ -144,7 +110,7 @@ namespace TurtleTools
 					tfinfo.LastAccessTime = sfinfo.LastAccessTime;
 				}
 
-				return succeed;
+				return copiedBytes == srcFilesize && new FileInfo(tfpath).Length == srcFilesize;
 			}
 			catch (IOException exc)
 			{

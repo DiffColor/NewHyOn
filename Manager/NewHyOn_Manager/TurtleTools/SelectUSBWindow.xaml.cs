@@ -46,13 +46,13 @@ namespace TurtleTools
             {
                 string usbname = USBCombo.SelectedValue.ToString();
                 string usbRoot = PrepareUsbRoot(usbname);
-                CopyAuthKeyToUsb(usbname);
 
                 DataShop.Instance.g_PageInfoManager.LoadPagesForList(g_listName);
 
                 List<PageInfoClass> pages = ClonePages(DataShop.Instance.g_PageInfoManager.g_PageInfoClassList);
                 NormalizeContentPaths(pages);
                 List<PlayerInfoClass> players = CollectPlayersForPlaylist(g_listName);
+                CopyAuthKeyToUsb(usbname);
 
                 var playlistSnapshot = new PlaylistExportBundle
                 {

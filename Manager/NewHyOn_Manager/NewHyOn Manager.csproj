@@ -345,10 +345,6 @@
     <Reference Include="System.Xaml">
       <RequiredTargetFramework>4.0</RequiredTargetFramework>
     </Reference>
-    <Reference Include="USB_Detector">
-      <HintPath>..\dll\USB_Detector.dll</HintPath>
-      <Aliases>USBDetector</Aliases>
-    </Reference>
     <Reference Include="VirtualizingWrapPanel, Version=2.3.2.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\packages\VirtualizingWrapPanel.2.3.2\lib\net462\VirtualizingWrapPanel.dll</HintPath>
     </Reference>

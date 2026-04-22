@@ -1,14 +1,10 @@
-﻿extern alias USBDetector;
-
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 
 using TurtleTools;
 using System.Collections.Generic;
-using UsbDisk = USBDetector::USB_Detector.UsbDisk;
-using UsbDiskCollection = USBDetector::USB_Detector.UsbDiskCollection;
 using System.IO;
 
 
@@ -56,15 +52,16 @@ namespace AndoW_Manager
 
         void MC_CleanUSB_Click(object sender, RoutedEventArgs e)
         {
-            UsbDiskCollection usbcol = Page2.Instance.g_USBManager.GetAvailableDisks();
+            List<string> usbNames = Page2.Instance != null ? Page2.Instance.GetAvailableUsbNames() : new List<string>();
 
-            if (usbcol.Count < 1)
-                MessageTools.ShowMessageBox("이동 저장소가 없습니다.");
-
-            List<string> usblist = new List<string>();
-            foreach(UsbDisk usb in usbcol) 
+            if (usbNames.Count < 1)
             {
-                string usbname = usb.Name.Replace(":", "");
+                MessageTools.ShowMessageBox("이동 저장소가 없습니다.");
+                return;
+            }
+
+            foreach(string usbname in usbNames)
+            {
                 string usbpath = FNDTools.GetUSBRootPath(usbname);
                 if (Directory.Exists(usbpath))
                     Directory.Delete(usbpath, true);
