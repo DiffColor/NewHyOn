@@ -26,7 +26,7 @@ public class AndoWSignageApp extends Application {
 	public enum DAY_OF_WEEK { MON, TUE, WED, THU, FRI, SAT, SUN };
 	
     public enum RP_STATUS { playing, stopped, updating };
-    public enum RP_ORDER { updatelist, updateschedule, upgrade, reboot, check, getmac, poweroff, wakeup, clearqueue };
+    public enum RP_ORDER { updatelist, updateschedule, updateweekly, upgrade, reboot, check, getmac, poweroff, wakeup, clearqueue };
 
 	public static String PLAYER_ID = "";
 	public static String MANAGER_IP = "";
@@ -138,13 +138,9 @@ public class AndoWSignageApp extends Application {
 			safeBaseWidth = fixed_base_width;
 			safeBaseHeight = fixed_base_height;
 		}
-		float scaleXFactor = safeBaseWidth / (fixed_base_width * 1.0f);
-		float scaleYFactor = safeBaseHeight / (fixed_base_height * 1.0f);
-		float scaleFactor = Math.max(scaleXFactor, scaleYFactor);
-		if (scaleFactor <= 0f) {
-			scaleFactor = 1.0f;
-		}
-		return new float[] { scaleFactor, scaleXFactor, scaleYFactor };
+		int targetWidth = sDevice_Width > 0 ? sDevice_Width : fixed_base_width;
+		int targetHeight = sDevice_Height > 0 ? sDevice_Height : fixed_base_height;
+		return CanvasUtils.getScaleFactors(safeBaseWidth, safeBaseHeight, targetWidth, targetHeight);
 	}
 	
 	public static float getScale() {

@@ -123,11 +123,20 @@ public class PlaybackSlotView extends RelativeLayout {
     }
 
     public void startPreparedPlayback() {
-        startPreparedPlayback(null);
+        startPreparedPlayback(0L, null);
+    }
+
+    public void startPreparedPlayback(long layoutClockBaseAtElapsedRealtimeMs) {
+        startPreparedPlayback(layoutClockBaseAtElapsedRealtimeMs, null);
     }
 
     public void startPreparedPlayback(final SlotPlaybackReadyCallback callback) {
+        startPreparedPlayback(0L, callback);
+    }
+
+    public void startPreparedPlayback(long layoutClockBaseAtElapsedRealtimeMs, final SlotPlaybackReadyCallback callback) {
         if (isMediaSlot()) {
+            mediaView.setLayoutContentClockBaseAtElapsedRealtimeMs(layoutClockBaseAtElapsedRealtimeMs);
             mediaView.startPreparedPlayback(new MediaView.PlaybackReadyCallback() {
                 @Override
                 public void onPlaybackReady(MediaView view) {
@@ -179,6 +188,51 @@ public class PlaybackSlotView extends RelativeLayout {
 
     public boolean shouldDelayLayoutTransition() {
         return isMediaSlot() && mediaView.shouldDelayLayoutTransition();
+    }
+
+    public boolean isContentTransitionDue(long nowElapsedRealtimeMs, long frameWindowMs) {
+        return isMediaSlot() && mediaView.isContentTransitionDue(nowElapsedRealtimeMs, frameWindowMs);
+    }
+
+    public long getContentTransitionDeadlineAtElapsedRealtimeMs() {
+        return isMediaSlot() ? mediaView.getContentTransitionDeadlineAtElapsedRealtimeMs() : 0L;
+    }
+
+    public void updateVideoLoopForLayoutTimer(long nowElapsedRealtimeMs, long frameWindowMs) {
+        if (isMediaSlot()) {
+            mediaView.updateVideoLoopForLayoutTimer(nowElapsedRealtimeMs, frameWindowMs);
+        }
+    }
+
+    public void advanceContentFromLayoutTimer(long boundaryAtElapsedRealtimeMs) {
+        if (isMediaSlot()) {
+            mediaView.advanceContentFromLayoutTimer(boundaryAtElapsedRealtimeMs);
+        }
+    }
+
+    public void beginSynchronizedContentSwap(long groupId, int participantCount) {
+        if (isMediaSlot()) {
+            mediaView.beginSynchronizedContentSwap(groupId, participantCount);
+        }
+    }
+
+    public boolean isReadyForSynchronizedContentAdvance() {
+        return !isMediaSlot() || mediaView.isReadyForSynchronizedContentAdvance();
+    }
+
+    public boolean willAdvanceToVideoContent() {
+        return isMediaSlot() && mediaView.willAdvanceToVideoContent();
+    }
+
+    public boolean willAdvanceToImageContent() {
+        return isMediaSlot() && mediaView.willAdvanceToImageContent();
+    }
+
+    public String getDebugContentState() {
+        if (!isMediaSlot()) {
+            return "slot=" + System.identityHashCode(this) + " inactive";
+        }
+        return "slot=" + System.identityHashCode(this) + " " + mediaView.getDebugContentState();
     }
 
     public boolean isPlaybackActiveForHeartbeat() {

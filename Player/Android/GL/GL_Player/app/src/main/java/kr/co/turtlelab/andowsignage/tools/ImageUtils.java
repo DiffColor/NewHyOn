@@ -118,6 +118,6 @@ public class ImageUtils {
       }
 
       public static void cleanDiskcache() {
-    	  ImageLoader.getInstance().clearDiskCache();
+          ImageLoader.getInstance().clearDiskCache();
       }
-}
+	}

@@ -16,12 +16,14 @@ import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.view.inputmethod.InputMethodManager;
 import android.os.IBinder;
 import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
@@ -51,6 +53,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 
 import kr.co.turtlelab.andowsignage.AndoWSignageApp.RP_STATUS;
 import kr.co.turtlelab.andowsignage.data.DataSyncManager;
@@ -101,6 +104,7 @@ import kr.co.turtlelab.andowsignage.views.WelcomeView;
 
 
 public class AndoWSignage extends Activity {
+	private static final String CONTENT_TRACE_TAG = "ContentTimerTrace";
 
 	public static AndoWSignage act;
 	private static Context sCtx = null;
@@ -122,7 +126,11 @@ public class AndoWSignage extends Activity {
 	List<View> elementViewList = new ArrayList<View>();
 	WelcomeDataModel wdm = new WelcomeDataModel();
 	private boolean pendingUpdateReady = false;
+	private boolean pendingPlaylistRestartReady = false;
 	private boolean queuedUpdateRestartPending = false;
+	private boolean updatedPlaylistSwitchPending = false;
+	private boolean playlistSwitchPending = false;
+	private String pendingPlaylistSwitchName = "";
 	private TextView debugOverlay;
 	private boolean debugOverlayVisible = false;
 	private KeyCaptureEditText keyInputOverlay;
@@ -146,6 +154,8 @@ public class AndoWSignage extends Activity {
 	private String playbackPlaylistName = "";
 	private String pendingSchedulePlaylistName = "";
 	private long pendingScheduleSwitchAtMillis = -1L;
+	private long pendingScheduleDueSwitchAtMillis = -1L;
+	private long handledScheduleSwitchAtMillis = -1L;
 	private long currentPageDeadlineAtMillis = -1L;
 	private long nextStageAllowedAtMillis = 0L;
 	private PageRuntime activePageRuntime;
@@ -154,14 +164,26 @@ public class AndoWSignage extends Activity {
 	private PageRuntime pendingActivationRuntime;
 	private PageBuildSpec stagedPageSpec;
 	private PageBuildSpec specialPageSpec;
-	private static final long NEXT_LAYOUT_STAGE_DELAY_MS = 1200L;
+	private static final long NEXT_LAYOUT_STAGE_DELAY_MS = 3000L;
 	private static final long POST_ACTIVATION_CLEANUP_DELAY_MS = 48L;
 	private static final long SPECIAL_SCHEDULE_PRELOAD_LOOKAHEAD_MS = 60000L;
-	private static final long SLOT_APPLY_FRAME_DELAY_MS = 16L;
-	private static final long SLOT_PREPARE_FRAME_DELAY_MS = 16L;
+	private static final long SLOT_APPLY_FRAME_DELAY_MS = 96L;
+	private static final long SLOT_PREPARE_FRAME_DELAY_MS = 160L;
+	private static final long LAYOUT_CONTENT_TIMER_INTERVAL_MS = 16L;
 	private static final long POST_SWITCH_TICK_SUPPRESS_MS = 1500L;
 	private static final int PRECREATED_MEDIA_SLOT_COUNT = 4;
-	private static final ExecutorService pageBuildExecutor = Executors.newSingleThreadExecutor();
+	private static final ExecutorService pageBuildExecutor = Executors.newSingleThreadExecutor(new ThreadFactory() {
+		@Override
+		public Thread newThread(final Runnable task) {
+			return new Thread(new Runnable() {
+				@Override
+				public void run() {
+					android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+					task.run();
+				}
+			}, "gl-page-build");
+		}
+	});
 	private boolean stageNextDeferredPending = false;
 	private boolean usbPlaybackActive = false;
 	private MediaView usbPlaybackView;
@@ -202,6 +224,12 @@ public class AndoWSignage extends Activity {
 		boolean startInProgress = false;
 		boolean activateWhenPrepared = false;
 		int nextPageIndexAfterActivate = 0;
+		boolean contentTimerPending = false;
+		boolean layoutTimerPending = false;
+		long contentClockBaseAtElapsedRealtimeMs = 0L;
+		long layoutDeadlineAtMillis = -1L;
+		Runnable contentTimerRunnable;
+		Runnable layoutTimerRunnable;
 	}
 
 	private static final class ElementBuildSpec {
@@ -279,6 +307,17 @@ public class AndoWSignage extends Activity {
 	});
 	
 	Handler mPostRunHandler = new Handler();
+	private boolean usbContentTimerPending = false;
+	private final Runnable usbContentTimerRunnable = new Runnable() {
+		@Override
+		public void run() {
+			usbContentTimerPending = false;
+			pulseUsbContentTransitions();
+			if (shouldRunUsbContentTimer()) {
+				startUsbContentTimer();
+			}
+		}
+	};
 	private static final String WATCHDOG_PACKAGE = "kr.co.turtlelab.startnow.watchdog";
 	private static final String WATCHDOG_PING_ACTION = "kr.co.turtlelab.watchdog.ping";
 	private static final int WATCHDOG_PING_INTERVAL_MS = 5000;
@@ -379,14 +418,13 @@ public class AndoWSignage extends Activity {
 		checkBakFile();
         
 		playerData = PlayerDataProvider.getPlayerData();
-		basePlaylistName = TextUtils.isEmpty(playerData.getPlaylist()) ? "" : playerData.getPlaylist();
-		refreshSchedulePlaybackState(System.currentTimeMillis());
-		
 		String idStr = playerData.getPlayerName();
 		
 		AndoWSignageApp.MANAGER_IP = playerData.getManagerIP();
 		
 		AndoWSignageApp.PLAYER_ID = idStr;
+		basePlaylistName = TextUtils.isEmpty(playerData.getPlaylist()) ? "" : playerData.getPlaylist();
+		refreshSchedulePlaybackState(System.currentTimeMillis());
 		
 		String manualIP = playerData.getPlayerIP();
 		if(manualIP != null) {
@@ -728,6 +766,9 @@ public class AndoWSignage extends Activity {
 				
 				if(action.equalsIgnoreCase(ACTION_STOP_AND_SLEEP)) {
 					stopAndRemoveAllViews();
+					Intent _intent = new Intent();
+					_intent.setAction("rk.android.realsleepmode.action");
+					sendBroadcast(_intent);
 				} else if(action.equalsIgnoreCase(ACTION_CALL_SETTINGS)) {
 					if(m_settingDlg != null) {
 						if(m_settingDlg.isShowing()) return;
@@ -813,8 +854,9 @@ public class AndoWSignage extends Activity {
 		if(tickTimer != null)
 			tickTimer.stop();
 		
-        if(pageTimer != null)
+	        if(pageTimer != null)
 			pageTimer.stop();
+		stopAllContentTimers();
 
         AndoWSignageApp.isRunning = false;
         if (manualStopRequested || AndoWSignageApp.isSlept || isFinishing()) {
@@ -876,6 +918,10 @@ public class AndoWSignage extends Activity {
 	
 	public void updateAndRestart(boolean setOrientation) {
 		queuedUpdateRestartPending = false;
+		pendingPlaylistRestartReady = false;
+		updatedPlaylistSwitchPending = false;
+		playlistSwitchPending = false;
+		pendingPlaylistSwitchName = "";
 		if(tickTimer != null)
 			tickTimer.stop();
 		
@@ -903,12 +949,124 @@ public class AndoWSignage extends Activity {
 		
 //		AlarmUtils.setWeeklyAlarm(sCtx);
 	}
+
+	private boolean switchToUpdatedPlaylist(boolean applyReadyQueues) {
+		if (Looper.myLooper() != Looper.getMainLooper()) {
+			SystemUtils.runOnUiThread(new Runnable() {
+				@Override
+				public void run() {
+					switchToUpdatedPlaylist(applyReadyQueues);
+				}
+			});
+			return true;
+		}
+
+		if (applyReadyQueues) {
+			applyPendingReadyQueuesSync();
+		} else {
+			applySilentReadyQueuesSync();
+		}
+
+		if (activePageRuntime == null || usbPlaybackActive) {
+			updateAndRestart(true);
+			return true;
+		}
+
+		queuedUpdateRestartPending = true;
+		pendingPlaylistRestartReady = false;
+		updatedPlaylistSwitchPending = true;
+
+		playerData = PlayerDataProvider.getPlayerData();
+		basePlaylistName = TextUtils.isEmpty(playerData.getPlaylist()) ? "" : playerData.getPlaylist();
+		playlistPageCache.clear();
+		refreshSchedulePlaybackState(System.currentTimeMillis());
+		syncCurrentPlaylistPages();
+		settingsForPlaying();
+
+		if ("USBP".equalsIgnoreCase(playbackPlaylistName) || pageDataList == null || pageDataList.isEmpty()) {
+			updatedPlaylistSwitchPending = false;
+			playlistSwitchPending = false;
+			pendingPlaylistSwitchName = "";
+			updateAndRestart(true);
+			return true;
+		}
+
+		if (!beginPlaylistSwitchOffscreen(playbackPlaylistName, pageDataList)) {
+			updatedPlaylistSwitchPending = false;
+			playlistSwitchPending = false;
+			pendingPlaylistSwitchName = "";
+			updateAndRestart(true);
+			return true;
+		}
+		return true;
+	}
+
+	private boolean beginPlaylistSwitchOffscreen(String targetPlaylistName, List<PageDataModel> targetPages) {
+		if (TextUtils.isEmpty(targetPlaylistName) || targetPages == null || targetPages.isEmpty()) {
+			return false;
+		}
+		if (playlistSwitchPending) {
+			return TextUtils.equals(pendingPlaylistSwitchName, targetPlaylistName);
+		}
+
+		ensurePageContainersAttached();
+		stopRuntimeLayoutTimer(activePageRuntime);
+		cancelDeferredStageNextPlayback();
+		clearPendingActivation(null);
+		playlistSwitchPending = true;
+		pendingPlaylistSwitchName = targetPlaylistName;
+		pageBuildGeneration++;
+		pendingStageBuildPlaylistName = "";
+		pendingStageBuildPageName = "";
+		pendingSpecialBuildPlaylistName = "";
+		pendingSpecialBuildPageName = "";
+
+		PlaybackTarget target = new PlaybackTarget();
+		target.playlistName = targetPlaylistName;
+		target.pageIndex = 0;
+		target.pageData = targetPages.get(0);
+
+		boolean reuseSpecialRuntime = target.matches(specialPageRuntime);
+		boolean reuseSpecialSpec = matchesPageBuildSpec(specialPageSpec, target);
+
+		retireRuntimeForReuse(stagedPageRuntime);
+		stagedPageRuntime = null;
+		stagedPageSpec = null;
+
+		if (!reuseSpecialRuntime) {
+			retireRuntimeForReuse(specialPageRuntime);
+			specialPageRuntime = null;
+			prepareContainerForDeferredLoad(specialPageContainer);
+			if (reuseSpecialSpec) {
+				specialPageRuntime = buildPageRuntime(specialPageContainer, specialPageSpec);
+			} else {
+				specialPageRuntime = buildPageRuntime(specialPageContainer, target);
+			}
+			specialPageSpec = null;
+		} else {
+			prepareContainerForDeferredLoad(specialPageContainer);
+		}
+
+		if (specialPageRuntime == null) {
+			playlistSwitchPending = false;
+			pendingPlaylistSwitchName = "";
+			return false;
+		}
+
+		playbackPlaylistName = targetPlaylistName;
+		pageDataList = targetPages;
+		pageIdx = 0;
+		requestRuntimeActivation(specialPageRuntime, 1);
+		return true;
+	}
 		
     public void checkBakFile() { }
 
 	public void GoFirstPage() {
 		tickTimer.stop();
 		pageTimer.stop();
+		stopAllContentTimers();
+		stopAllRuntimeLayoutTimers();
 		
 		tickTimer.start();
 		pageIdx = 0;
@@ -924,6 +1082,8 @@ public class AndoWSignage extends Activity {
 	public void GoNextPage() {
 		tickTimer.stop();
 		pageTimer.stop();
+		stopAllContentTimers();
+		stopAllRuntimeLayoutTimers();
 		
 		tickTimer.start();
 		
@@ -951,11 +1111,12 @@ public class AndoWSignage extends Activity {
 	public void stopTimerAndElements() {
 		tickTimer.stop();
 		pageTimer.stop();
+		stopAllContentTimers();
+		stopAllRuntimeLayoutTimers();
 		stopAllElement();
 	}
 	
 	public void runTimerAndElements() {
-		pageTimer.start();
 		tickTimer.start();
 		runAllElement();
 	}
@@ -1073,6 +1234,7 @@ public class AndoWSignage extends Activity {
 		if (usbPlaybackView == null) {
 			return;
 		}
+		stopUsbContentTimer();
 		usbPlaybackView.stopPlaylist();
 		usbPlaybackView.setVisibility(View.GONE);
 		usbPlaybackView.setTranslationX(getOffscreenTranslationX());
@@ -1081,12 +1243,14 @@ public class AndoWSignage extends Activity {
 	}
 
 	private void stopUsbPlayback() {
+		stopUsbContentTimer();
 		if (usbPlaybackView != null) {
 			usbPlaybackView.stopPlaylist();
 		}
 	}
 
 	private void resetUsbPlaybackMode(boolean releaseContents) {
+		stopUsbContentTimer();
 		usbPlaybackActive = false;
 		if (usbPlaybackView != null) {
 			usbPlaybackView.stopPlaylist();
@@ -1158,6 +1322,7 @@ public class AndoWSignage extends Activity {
 		if (container == null) {
 			return;
 		}
+		stopRuntimeContentTimerForContainer(container);
 		container.setTranslationX(getOffscreenTranslationX());
 		container.setTranslationY(0f);
 		container.setAlpha(1f);
@@ -1167,6 +1332,7 @@ public class AndoWSignage extends Activity {
 		if (container == null) {
 			return;
 		}
+		stopRuntimeContentTimerForContainer(container);
 		container.setVisibility(View.INVISIBLE);
 		moveContainerOffScreen(container);
 	}
@@ -1175,6 +1341,7 @@ public class AndoWSignage extends Activity {
 		if (container == null) {
 			return;
 		}
+		stopRuntimeContentTimerForContainer(container);
 		container.setVisibility(View.VISIBLE);
 		moveContainerOffScreen(container);
 	}
@@ -1203,6 +1370,11 @@ public class AndoWSignage extends Activity {
 
 	private void clearPlaybackRuntimeState() {
 		cancelDeferredStageNextPlayback();
+		stopAllContentTimers();
+		stopAllRuntimeLayoutTimers();
+		updatedPlaylistSwitchPending = false;
+		playlistSwitchPending = false;
+		pendingPlaylistSwitchName = "";
 		pageBuildGeneration++;
 		pendingStageBuildPlaylistName = "";
 		pendingStageBuildPageName = "";
@@ -1614,6 +1786,19 @@ public class AndoWSignage extends Activity {
 		playlistPageCache.remove(playlistName);
 	}
 
+	public void invalidatePlaylistPageCache(String playlistName) {
+		invalidatePageListCache(playlistName);
+	}
+
+	public void requestSchedulePlaybackRefresh() {
+		long now = System.currentTimeMillis();
+		refreshSchedulePlaybackState(now);
+		boolean switchRequested = maybeSwitchScheduledPlayback(now);
+		if (!switchRequested) {
+			stageSpecialPlaybackTarget();
+		}
+	}
+
 	private void syncCurrentPlaylistPages() {
 		pageDataList = getOrLoadPageList(playbackPlaylistName);
 	}
@@ -1639,11 +1824,54 @@ public class AndoWSignage extends Activity {
 	}
 
 	private void startRuntimePlayback(final PageRuntime runtime) {
+		startRuntimePlayback(runtime, null);
+	}
+
+	private void startRuntimePlayback(final PageRuntime runtime, final Runnable onPlaybackReady) {
 		if (runtime == null || !runtime.startInProgress) {
 			return;
 		}
+		long layoutClockBaseAtElapsedRealtimeMs = SystemClock.elapsedRealtime();
+		runtime.contentClockBaseAtElapsedRealtimeMs = layoutClockBaseAtElapsedRealtimeMs;
+		if (runtime.slots == null || runtime.slots.isEmpty()) {
+			if (onPlaybackReady != null) {
+				onPlaybackReady.run();
+			}
+			startRuntimeContentTimer(runtime);
+			return;
+		}
+		final int[] remainingReadySlots = {runtime.slots.size()};
+		final boolean[] readyNotified = {false};
+		final Runnable notifyRuntimeReady = new Runnable() {
+			@Override
+			public void run() {
+				if (readyNotified[0]) {
+					return;
+				}
+				readyNotified[0] = true;
+				if (onPlaybackReady != null) {
+					onPlaybackReady.run();
+				}
+				startRuntimeContentTimer(runtime);
+			}
+		};
 		for (PlaybackSlotView slotView : runtime.slots) {
-			slotView.startPreparedPlayback();
+			if (slotView == null) {
+				remainingReadySlots[0] = Math.max(0, remainingReadySlots[0] - 1);
+				continue;
+			}
+			slotView.startPreparedPlayback(layoutClockBaseAtElapsedRealtimeMs, new PlaybackSlotView.SlotPlaybackReadyCallback() {
+				@Override
+				public void onPlaybackReady(PlaybackSlotView view) {
+					remainingReadySlots[0] = Math.max(0, remainingReadySlots[0] - 1);
+					if (remainingReadySlots[0] == 0) {
+						notifyRuntimeReady.run();
+					}
+				}
+			});
+		}
+		if (remainingReadySlots[0] == 0) {
+			notifyRuntimeReady.run();
 		}
 	}
 
@@ -1651,8 +1879,312 @@ public class AndoWSignage extends Activity {
 		if (runtime == null) {
 			return;
 		}
+		stopRuntimeTimers(runtime);
 		for (PlaybackSlotView slotView : runtime.slots) {
 			slotView.stopPlayback();
+		}
+	}
+
+	private void releaseRuntimeContents(PageRuntime runtime) {
+		if (runtime == null || runtime.slots == null) {
+			return;
+		}
+		for (PlaybackSlotView slotView : runtime.slots) {
+			if (slotView != null) {
+				slotView.releaseSlot();
+			}
+		}
+	}
+
+	private void shutdownOffscreenRuntime(PageRuntime runtime) {
+		if (runtime == null) {
+			return;
+		}
+		clearPendingActivation(runtime);
+		runtime.prepareCancelled = true;
+		runtime.pendingPreparationCount = 0;
+		runtime.prepared = false;
+		runtime.startInProgress = false;
+		runtime.activateWhenPrepared = false;
+		stopRuntimeTimers(runtime);
+		stopRuntime(runtime);
+		releaseRuntimeContents(runtime);
+		if (runtime.container != null) {
+			runtime.container.setVisibility(View.VISIBLE);
+			moveContainerOffScreen(runtime.container);
+		}
+	}
+
+	private void stopRuntimeTimers(PageRuntime runtime) {
+		if (runtime == null) {
+			return;
+		}
+		stopRuntimeContentTimer(runtime);
+		stopRuntimeLayoutTimer(runtime);
+	}
+
+	private void stopRuntimeContentTimerForContainer(RelativeLayout container) {
+		PageRuntime runtime = findRuntimeByContainer(container);
+		if (runtime != null) {
+			stopRuntimeContentTimer(runtime);
+		}
+	}
+
+	private PageRuntime findRuntimeByContainer(RelativeLayout container) {
+		if (container == null) {
+			return null;
+		}
+		if (activePageRuntime != null && activePageRuntime.container == container) {
+			return activePageRuntime;
+		}
+		if (stagedPageRuntime != null && stagedPageRuntime.container == container) {
+			return stagedPageRuntime;
+		}
+		if (specialPageRuntime != null && specialPageRuntime.container == container) {
+			return specialPageRuntime;
+		}
+		return null;
+	}
+
+	private void startActiveContentTimer() {
+		if (usbPlaybackActive) {
+			startUsbContentTimer();
+			return;
+		}
+		startRuntimeContentTimer(activePageRuntime);
+	}
+
+	private void stopAllContentTimers() {
+		stopRuntimeContentTimer(activePageRuntime);
+		stopRuntimeContentTimer(stagedPageRuntime);
+		stopRuntimeContentTimer(specialPageRuntime);
+		stopUsbContentTimer();
+	}
+
+	private void startRuntimeContentTimer(final PageRuntime runtime) {
+		if (!shouldRunRuntimeContentTimer(runtime) || runtime.contentTimerPending) {
+			return;
+		}
+		if (runtime.contentTimerRunnable == null) {
+			runtime.contentTimerRunnable = new Runnable() {
+				@Override
+				public void run() {
+					runtime.contentTimerPending = false;
+					pulseRuntimeContentTransitions(runtime);
+					if (shouldRunRuntimeContentTimer(runtime)) {
+						startRuntimeContentTimer(runtime);
+					}
+				}
+			};
+		}
+		runtime.contentTimerPending = true;
+		mPostRunHandler.postDelayed(runtime.contentTimerRunnable, LAYOUT_CONTENT_TIMER_INTERVAL_MS);
+	}
+
+	private void stopRuntimeContentTimer(PageRuntime runtime) {
+		if (runtime == null) {
+			return;
+		}
+		runtime.contentTimerPending = false;
+		if (runtime.contentTimerRunnable != null) {
+			mPostRunHandler.removeCallbacks(runtime.contentTimerRunnable);
+		}
+	}
+
+	private boolean shouldRunRuntimeContentTimer(PageRuntime runtime) {
+		return runtime != null
+				&& runtime == activePageRuntime
+				&& AndoWSignageApp.isRunning
+				&& !AndoWSignageApp.isSlept
+				&& runtime.container != null
+				&& runtime.container.getVisibility() == View.VISIBLE
+				&& isContainerOnScreen(runtime.container);
+	}
+
+	private boolean isContainerOnScreen(RelativeLayout container) {
+		return container != null
+				&& container.getVisibility() == View.VISIBLE
+				&& Math.abs(container.getTranslationX()) < 0.5f
+				&& Math.abs(container.getTranslationY()) < 0.5f;
+	}
+
+	private void pulseRuntimeContentTransitions(PageRuntime runtime) {
+		if (!shouldRunRuntimeContentTimer(runtime) || runtime.slots == null || runtime.slots.isEmpty()) {
+			return;
+		}
+		long now = SystemClock.elapsedRealtime();
+		List<PlaybackSlotView> dueSlots = new ArrayList<>();
+		for (PlaybackSlotView slotView : runtime.slots) {
+			if (slotView == null) {
+				continue;
+			}
+			slotView.updateVideoLoopForLayoutTimer(now, LAYOUT_CONTENT_TIMER_INTERVAL_MS);
+			if (slotView.isContentTransitionDue(now, LAYOUT_CONTENT_TIMER_INTERVAL_MS)) {
+				dueSlots.add(slotView);
+			}
+		}
+		if (dueSlots.isEmpty()) {
+			return;
+		}
+		Log.i(CONTENT_TRACE_TAG, "pulse due runtime=" + runtime.runtimeName
+				+ " page=" + runtime.pageName
+				+ " dueSlots=" + dueSlots.size()
+				+ " now=" + now);
+		while (!dueSlots.isEmpty()) {
+			long groupDeadlineAtElapsedRealtimeMs = findEarliestContentDeadline(dueSlots);
+			if (groupDeadlineAtElapsedRealtimeMs <= 0L) {
+				return;
+			}
+			List<PlaybackSlotView> transitionGroup = collectContentDeadlineGroup(
+					dueSlots,
+					groupDeadlineAtElapsedRealtimeMs,
+					LAYOUT_CONTENT_TIMER_INTERVAL_MS);
+			dueSlots.removeAll(transitionGroup);
+			if (transitionGroup.isEmpty()) {
+				continue;
+			}
+			long boundaryAtElapsedRealtimeMs = groupDeadlineAtElapsedRealtimeMs;
+			boolean synchronizeMixed = shouldSynchronizeMixedVideoImageAdvance(transitionGroup);
+			boolean synchronizeGroup = transitionGroup.size() > 1;
+			Log.i(CONTENT_TRACE_TAG, "group deadline=" + groupDeadlineAtElapsedRealtimeMs
+					+ " size=" + transitionGroup.size()
+					+ " mixedVideoImage=" + synchronizeMixed
+					+ " boundary=" + boundaryAtElapsedRealtimeMs);
+			if (synchronizeGroup) {
+				if (!isSynchronizedContentAdvanceReady(transitionGroup)) {
+					Log.i(CONTENT_TRACE_TAG, "group waiting for content readiness deadline=" + groupDeadlineAtElapsedRealtimeMs);
+					continue;
+				}
+				beginSynchronizedContentSwapGroup(runtime, transitionGroup, boundaryAtElapsedRealtimeMs);
+			}
+			advanceContentGroup(transitionGroup, boundaryAtElapsedRealtimeMs);
+		}
+	}
+
+	private long findEarliestContentDeadline(List<PlaybackSlotView> dueSlots) {
+		long earliest = Long.MAX_VALUE;
+		for (PlaybackSlotView slotView : dueSlots) {
+			if (slotView == null) {
+				continue;
+			}
+			long deadline = slotView.getContentTransitionDeadlineAtElapsedRealtimeMs();
+			if (deadline > 0L && deadline < earliest) {
+				earliest = deadline;
+			}
+		}
+		return earliest == Long.MAX_VALUE ? 0L : earliest;
+	}
+
+	private List<PlaybackSlotView> collectContentDeadlineGroup(List<PlaybackSlotView> dueSlots,
+															  long groupDeadlineAtElapsedRealtimeMs,
+															  long frameWindowMs) {
+		List<PlaybackSlotView> group = new ArrayList<>();
+		long toleranceMs = Math.max(1L, frameWindowMs);
+		for (PlaybackSlotView slotView : dueSlots) {
+			if (slotView == null) {
+				continue;
+			}
+			long deadline = slotView.getContentTransitionDeadlineAtElapsedRealtimeMs();
+			if (deadline > 0L
+					&& Math.abs(deadline - groupDeadlineAtElapsedRealtimeMs) <= toleranceMs) {
+				group.add(slotView);
+			}
+		}
+		return group;
+	}
+
+	private boolean shouldSynchronizeMixedVideoImageAdvance(List<PlaybackSlotView> transitionGroup) {
+		boolean hasVideoTarget = false;
+		boolean hasImageTarget = false;
+		for (PlaybackSlotView slotView : transitionGroup) {
+			if (slotView == null) {
+				continue;
+			}
+			if (slotView.willAdvanceToVideoContent()) {
+				hasVideoTarget = true;
+			} else if (slotView.willAdvanceToImageContent()) {
+				hasImageTarget = true;
+			}
+		}
+		return hasVideoTarget && hasImageTarget;
+	}
+
+	private boolean isSynchronizedContentAdvanceReady(List<PlaybackSlotView> transitionGroup) {
+		for (PlaybackSlotView slotView : transitionGroup) {
+			if (slotView != null
+					&& !slotView.isReadyForSynchronizedContentAdvance()) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private void beginSynchronizedContentSwapGroup(PageRuntime runtime,
+												   List<PlaybackSlotView> transitionGroup,
+												   long boundaryAtElapsedRealtimeMs) {
+		if (transitionGroup == null || transitionGroup.size() <= 1) {
+			return;
+		}
+		long groupId = (((long) System.identityHashCode(runtime)) << 32)
+				^ boundaryAtElapsedRealtimeMs
+				^ SystemClock.uptimeMillis();
+		if (groupId < 0L) {
+			groupId = -groupId;
+		}
+		if (groupId == 0L) {
+			groupId = SystemClock.uptimeMillis();
+		}
+		for (PlaybackSlotView slotView : transitionGroup) {
+			if (slotView != null) {
+				slotView.beginSynchronizedContentSwap(groupId, transitionGroup.size());
+			}
+		}
+		Log.i(CONTENT_TRACE_TAG, "sync swap begin group=" + groupId
+				+ " size=" + transitionGroup.size()
+				+ " boundary=" + boundaryAtElapsedRealtimeMs);
+	}
+
+	private void advanceContentGroup(List<PlaybackSlotView> transitionGroup, long boundaryAtElapsedRealtimeMs) {
+		for (PlaybackSlotView slotView : transitionGroup) {
+			if (slotView != null) {
+				Log.i(CONTENT_TRACE_TAG, "advance slot=" + slotView.getDebugContentState()
+						+ " boundary=" + boundaryAtElapsedRealtimeMs);
+				slotView.advanceContentFromLayoutTimer(boundaryAtElapsedRealtimeMs);
+			}
+		}
+	}
+
+	private void startUsbContentTimer() {
+		if (!shouldRunUsbContentTimer() || usbContentTimerPending) {
+			return;
+		}
+		usbContentTimerPending = true;
+		mPostRunHandler.postDelayed(usbContentTimerRunnable, LAYOUT_CONTENT_TIMER_INTERVAL_MS);
+	}
+
+	private void stopUsbContentTimer() {
+		usbContentTimerPending = false;
+		mPostRunHandler.removeCallbacks(usbContentTimerRunnable);
+	}
+
+	private boolean shouldRunUsbContentTimer() {
+		return usbPlaybackActive
+				&& usbPlaybackView != null
+				&& usbPlaybackView.getVisibility() == View.VISIBLE
+				&& Math.abs(usbPlaybackView.getTranslationX()) < 0.5f
+				&& Math.abs(usbPlaybackView.getTranslationY()) < 0.5f
+				&& AndoWSignageApp.isRunning
+				&& !AndoWSignageApp.isSlept;
+	}
+
+	private void pulseUsbContentTransitions() {
+		if (!shouldRunUsbContentTimer()) {
+			return;
+		}
+		long now = SystemClock.elapsedRealtime();
+		usbPlaybackView.updateVideoLoopForLayoutTimer(now, LAYOUT_CONTENT_TIMER_INTERVAL_MS);
+		if (usbPlaybackView.isContentTransitionDue(now, LAYOUT_CONTENT_TIMER_INTERVAL_MS)) {
+			usbPlaybackView.advanceContentFromLayoutTimer(now);
 		}
 	}
 
@@ -1660,6 +2192,7 @@ public class AndoWSignage extends Activity {
 		if (runtime == null) {
 			return;
 		}
+		stopRuntimeContentTimer(runtime);
 		for (PlaybackSlotView slotView : runtime.slots) {
 			slotView.pausePlayback();
 		}
@@ -1670,15 +2203,7 @@ public class AndoWSignage extends Activity {
 			return;
 		}
 		clearPendingActivation(runtime);
-		runtime.prepareCancelled = true;
-		stopRuntime(runtime);
-		if (runtime.container != null) {
-			runtime.container.setVisibility(View.VISIBLE);
-			moveContainerOffScreen(runtime.container);
-		}
-		for (PlaybackSlotView slotView : runtime.slots) {
-			slotView.releaseSlot();
-		}
+		shutdownOffscreenRuntime(runtime);
 		runtime.elements.clear();
 		runtime.pendingPreparationCount = 0;
 		runtime.prepared = false;
@@ -1691,17 +2216,7 @@ public class AndoWSignage extends Activity {
 		if (runtime == null) {
 			return;
 		}
-		clearPendingActivation(runtime);
-		runtime.prepareCancelled = true;
-		runtime.pendingPreparationCount = 0;
-		runtime.prepared = false;
-		runtime.startInProgress = false;
-		runtime.activateWhenPrepared = false;
-		if (runtime.container != null) {
-			runtime.container.setVisibility(View.VISIBLE);
-			moveContainerOffScreen(runtime.container);
-		}
-		pauseRuntime(runtime);
+		shutdownOffscreenRuntime(runtime);
 	}
 
 	private void beginRuntimeActivation(PageRuntime nextRuntime) {
@@ -1718,7 +2233,19 @@ public class AndoWSignage extends Activity {
 			return;
 		}
 		clearPendingActivation(nextRuntime);
-		PageRuntime previousRuntime = activePageRuntime;
+		final PageRuntime previousRuntime = activePageRuntime;
+		startRuntimePlayback(nextRuntime, new Runnable() {
+			@Override
+			public void run() {
+				revealRuntimeActivation(nextRuntime, previousRuntime);
+			}
+		});
+	}
+
+	private void revealRuntimeActivation(final PageRuntime nextRuntime, final PageRuntime previousRuntime) {
+		if (nextRuntime == null || nextRuntime.prepareCancelled || !nextRuntime.startInProgress) {
+			return;
+		}
 		if (nextRuntime == stagedPageRuntime) {
 			RelativeLayout previousContainer = activePageContainer;
 			activePageContainer = stagedPageContainer;
@@ -1731,21 +2258,23 @@ public class AndoWSignage extends Activity {
 			specialPageRuntime = null;
 		}
 		nextRuntime.container.setVisibility(View.VISIBLE);
-		moveContainerOnScreen(nextRuntime.container);
 		nextRuntime.container.bringToFront();
+		moveContainerOnScreen(nextRuntime.container);
 		activePageRuntime = nextRuntime;
+		updatedPlaylistSwitchPending = false;
+		queuedUpdateRestartPending = false;
+		playlistSwitchPending = false;
+		pendingPlaylistSwitchName = "";
 		lastRuntimeActivationAtMillis = System.currentTimeMillis();
 		syncActiveViews(activePageRuntime);
 		pageIdx = nextRuntime.nextPageIndexAfterActivate;
-		configurePageTimers(nextRuntime.pageData);
 		if (previousRuntime == null || previousRuntime == nextRuntime) {
-			startRuntimePlayback(nextRuntime);
+			configureRuntimeLayoutTimer(nextRuntime);
 			nextStageAllowedAtMillis = System.currentTimeMillis() + NEXT_LAYOUT_STAGE_DELAY_MS;
 			scheduleDeferredStageNextPlayback(NEXT_LAYOUT_STAGE_DELAY_MS);
 		} else {
-			startRuntimePlayback(nextRuntime);
-			hideContainerImmediately(previousRuntime.container);
-			pauseRuntime(previousRuntime);
+			configureRuntimeLayoutTimer(nextRuntime);
+			shutdownOffscreenRuntime(previousRuntime);
 			schedulePreviousRuntimeCleanup(previousRuntime, new Runnable() {
 				@Override
 				public void run() {
@@ -1767,10 +2296,6 @@ public class AndoWSignage extends Activity {
 		mPostRunHandler.postDelayed(new Runnable() {
 			@Override
 			public void run() {
-				if (previousRuntime.container != null) {
-					previousRuntime.container.setVisibility(View.VISIBLE);
-					moveContainerOffScreen(previousRuntime.container);
-				}
 				previousRuntime.prepared = false;
 				previousRuntime.startInProgress = false;
 				previousRuntime.activateWhenPrepared = false;
@@ -1803,11 +2328,6 @@ public class AndoWSignage extends Activity {
 			clearPendingActivation(runtime);
 			return;
 		}
-		if (shouldDelayRuntimeActivation(runtime)) {
-			markPendingActivation(runtime);
-			tryActivatePendingRuntime();
-			return;
-		}
 		clearPendingActivation(runtime);
 		if (runtime.prepared) {
 			runtime.activateWhenPrepared = false;
@@ -1818,50 +2338,57 @@ public class AndoWSignage extends Activity {
 		runtime.activateWhenPrepared = true;
 	}
 
-	private void configurePageTimers(PageDataModel pdm) {
-		if (pdm == null) {
+	private void configureRuntimeLayoutTimer(final PageRuntime runtime) {
+		if (runtime == null || runtime.pageData == null) {
 			return;
 		}
-		long interval = Math.max(1L, pdm.getPlayTimeSec()) * 1000L;
-		pageTimer.changeInterval(interval);
-		currentPageDeadlineAtMillis = System.currentTimeMillis() + interval;
+		stopRuntimeLayoutTimer(runtime);
+		if (pageDataList == null || pageDataList.size() <= 1) {
+			return;
+		}
+		long interval = Math.max(1L, runtime.pageData.getPlayTimeSec()) * 1000L;
+		long now = System.currentTimeMillis();
+		runtime.layoutDeadlineAtMillis = now + interval;
+		currentPageDeadlineAtMillis = runtime.layoutDeadlineAtMillis;
 		tickTimer.changeInterval(1000);
-		if(!pageTimer.getIsTicking()) {
-			pageTimer.start();
+		if (runtime.layoutTimerRunnable == null) {
+			runtime.layoutTimerRunnable = new Runnable() {
+				@Override
+				public void run() {
+					runtime.layoutTimerPending = false;
+					if (runtime != activePageRuntime
+							|| !AndoWSignageApp.isRunning
+							|| AndoWSignageApp.isSlept
+							|| !isContainerOnScreen(runtime.container)) {
+						return;
+					}
+					popPage();
+				}
+			};
 		}
+		runtime.layoutTimerPending = true;
+		mPostRunHandler.postDelayed(runtime.layoutTimerRunnable, interval);
 	}
 
-	private boolean shouldDelayRuntimeActivation(PageRuntime runtime) {
-		return runtime != null
-				&& activePageRuntime != null
-				&& activePageRuntime != runtime
-				&& shouldDelayActiveRuntimeSwitch();
-	}
-
-	private boolean shouldDelayActiveRuntimeSwitch() {
-		if (activePageRuntime == null) {
-			return false;
-		}
-		for (PlaybackSlotView slotView : activePageRuntime.slots) {
-			if (slotView != null && slotView.shouldDelayLayoutTransition()) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	private void markPendingActivation(PageRuntime runtime) {
+	private void stopRuntimeLayoutTimer(PageRuntime runtime) {
 		if (runtime == null) {
 			return;
 		}
-		if (pendingActivationRuntime != runtime) {
-			if (pendingActivationRuntime != null) {
-				pendingActivationRuntime.activateWhenPrepared = false;
-			}
-			pendingActivationRuntime = runtime;
+		runtime.layoutTimerPending = false;
+		runtime.layoutDeadlineAtMillis = -1L;
+		if (runtime.layoutTimerRunnable != null) {
+			mPostRunHandler.removeCallbacks(runtime.layoutTimerRunnable);
 		}
-		runtime.activateWhenPrepared = true;
-		pageTimer.stop();
+		if (runtime == activePageRuntime) {
+			currentPageDeadlineAtMillis = -1L;
+		}
+	}
+
+	private void stopAllRuntimeLayoutTimers() {
+		stopRuntimeLayoutTimer(activePageRuntime);
+		stopRuntimeLayoutTimer(stagedPageRuntime);
+		stopRuntimeLayoutTimer(specialPageRuntime);
+		currentPageDeadlineAtMillis = -1L;
 	}
 
 	private void clearPendingActivation(PageRuntime runtime) {
@@ -1884,10 +2411,6 @@ public class AndoWSignage extends Activity {
 			return false;
 		}
 		if (!runtime.prepared) {
-			runtime.activateWhenPrepared = true;
-			return false;
-		}
-		if (shouldDelayActiveRuntimeSwitch()) {
 			runtime.activateWhenPrepared = true;
 			return false;
 		}
@@ -1921,6 +2444,9 @@ public class AndoWSignage extends Activity {
 
 	private void stageSpecialPlaybackTarget() {
 		ensurePageContainersAttached();
+		if (isImmediateScheduleRuntimePreparing()) {
+			return;
+		}
 		long now = System.currentTimeMillis();
 		boolean shouldPrepareSpecial = !TextUtils.isEmpty(pendingSchedulePlaylistName)
 				&& pendingScheduleSwitchAtMillis > 0
@@ -1945,6 +2471,14 @@ public class AndoWSignage extends Activity {
 		specialPageRuntime = null;
 		specialPageSpec = null;
 		requestPageBuildSpec(target, true);
+	}
+
+	private boolean isImmediateScheduleRuntimePreparing() {
+		return specialPageRuntime != null
+				&& specialPageRuntime != activePageRuntime
+				&& specialPageRuntime.activateWhenPrepared
+				&& !TextUtils.isEmpty(playbackPlaylistName)
+				&& TextUtils.equals(specialPageRuntime.playlistName, playbackPlaylistName);
 	}
 
 	private boolean matchesPageBuildSpec(PageBuildSpec spec, PlaybackTarget target) {
@@ -2061,35 +2595,78 @@ public class AndoWSignage extends Activity {
 	}
 
 	private void refreshSchedulePlaybackState(long nowMillis) {
+		long previousSwitchAtMillis = pendingScheduleSwitchAtMillis;
 		SpecialScheduleEvaluator.ScheduleDecision decision = scheduleEvaluator.evaluate(
-				AndoWSignageApp.PLAYER_ID,
+				playerData != null ? playerData.getPlayerId() : "",
 				playerData != null ? playerData.getPlayerName() : "",
 				basePlaylistName,
 				nowMillis);
-		playbackPlaylistName = decision.getResolvedPlaylistName();
-		if (TextUtils.isEmpty(playbackPlaylistName)) {
-			playbackPlaylistName = basePlaylistName;
+		String resolvedPlaylistName = decision.getResolvedPlaylistName();
+		if (TextUtils.isEmpty(resolvedPlaylistName)) {
+			resolvedPlaylistName = basePlaylistName;
+		}
+		boolean scheduleBoundaryDue = previousSwitchAtMillis > 0
+				&& previousSwitchAtMillis <= nowMillis
+				&& previousSwitchAtMillis != handledScheduleSwitchAtMillis;
+		String currentRuntimePlaylist = activePageRuntime != null
+				? activePageRuntime.playlistName
+				: playbackPlaylistName;
+		boolean resolvedPlaylistChanged = activePageRuntime != null
+				&& !TextUtils.equals(resolvedPlaylistName, currentRuntimePlaylist);
+		if (activePageRuntime == null
+				|| scheduleBoundaryDue
+				|| resolvedPlaylistChanged
+				|| TextUtils.isEmpty(playbackPlaylistName)) {
+			playbackPlaylistName = resolvedPlaylistName;
+		} else if (activePageRuntime != null && !TextUtils.isEmpty(activePageRuntime.playlistName)) {
+			playbackPlaylistName = activePageRuntime.playlistName;
 		}
 		pendingSchedulePlaylistName = decision.getNextPlaylistName();
 		pendingScheduleSwitchAtMillis = decision.getNextSwitchAtMillis();
+		if (scheduleBoundaryDue) {
+			pendingScheduleDueSwitchAtMillis = previousSwitchAtMillis;
+		} else if (resolvedPlaylistChanged) {
+			pendingScheduleDueSwitchAtMillis = nowMillis;
+		}
 	}
 
 	private boolean maybeSwitchScheduledPlayback(long nowMillis) {
 		String currentRuntimePlaylist = activePageRuntime != null ? activePageRuntime.playlistName : playbackPlaylistName;
 		if (TextUtils.isEmpty(playbackPlaylistName)
 				|| TextUtils.equals(playbackPlaylistName, currentRuntimePlaylist)) {
+			markScheduleSwitchHandledIfDue(nowMillis);
+			return false;
+		}
+		boolean initialPlayback = activePageRuntime == null;
+		boolean scheduleSwitchDue = pendingScheduleDueSwitchAtMillis > 0
+				&& pendingScheduleDueSwitchAtMillis <= nowMillis
+				&& pendingScheduleDueSwitchAtMillis != handledScheduleSwitchAtMillis;
+		if (!initialPlayback && !scheduleSwitchDue) {
 			return false;
 		}
 		List<PageDataModel> targetPages = getOrLoadPageList(playbackPlaylistName);
 		if (targetPages == null || targetPages.isEmpty()) {
+			if (!TextUtils.isEmpty(currentRuntimePlaylist)) {
+				playbackPlaylistName = currentRuntimePlaylist;
+			}
 			return false;
 		}
-		pageDataList = targetPages;
-		pageIdx = 0;
-		PlaybackTarget target = createActivePageTarget();
-		PageRuntime nextRuntime = resolveRuntimeForTarget(target, true);
-		requestRuntimeActivation(nextRuntime, 1);
-		return true;
+		if (beginPlaylistSwitchOffscreen(playbackPlaylistName, targetPages)) {
+			markScheduleSwitchHandledIfDue(nowMillis);
+			return true;
+		}
+		if (!TextUtils.isEmpty(currentRuntimePlaylist)) {
+			playbackPlaylistName = currentRuntimePlaylist;
+		}
+		return false;
+	}
+
+	private void markScheduleSwitchHandledIfDue(long nowMillis) {
+		if (pendingScheduleDueSwitchAtMillis > 0
+				&& pendingScheduleDueSwitchAtMillis <= nowMillis) {
+			handledScheduleSwitchAtMillis = pendingScheduleDueSwitchAtMillis;
+			pendingScheduleDueSwitchAtMillis = -1L;
+		}
 	}
 	
 	void tickToAllViews() {
@@ -2115,13 +2692,22 @@ public class AndoWSignage extends Activity {
 			}
 			return;
 		}
+		if (playlistSwitchPending) {
+			if (debugOverlayVisible) {
+				refreshDebugOverlay();
+			}
+			return;
+		}
 		refreshSchedulePlaybackState(now);
-		if (!maybeSwitchScheduledPlayback(now)
+		boolean switchRequested = maybeSwitchScheduledPlayback(now);
+		if (!switchRequested
 				&& !stageNextDeferredPending
 				&& now >= nextStageAllowedAtMillis) {
 			stageNextPlaybackTarget();
 		}
-		stageSpecialPlaybackTarget();
+		if (!switchRequested) {
+			stageSpecialPlaybackTarget();
+		}
 		checkReadyQueue();
 		if (debugOverlayVisible) {
 			refreshDebugOverlay();
@@ -2131,6 +2717,9 @@ public class AndoWSignage extends Activity {
 	void popPage() {
 
 		try {
+			if (playlistSwitchPending) {
+				return;
+			}
 			maybeApplyQueuedUpdate();
 			refreshSchedulePlaybackState(System.currentTimeMillis());
 			if (!"USBP".equalsIgnoreCase(playbackPlaylistName)) {
@@ -2144,6 +2733,7 @@ public class AndoWSignage extends Activity {
 			if(playbackPlaylistName.equalsIgnoreCase("USBP"))
 			{
 				pageTimer.stop();
+				stopAllRuntimeLayoutTimers();
 				if(hasAuthorizedUsbKey()) {
 					RunUSBP();
 					return;
@@ -2298,6 +2888,7 @@ public class AndoWSignage extends Activity {
 		if (usbPlaybackActive && usbPlaybackView != null) {
 			showUsbPlaybackView();
 			usbPlaybackView.runPlaylist();
+			startActiveContentTimer();
 			return;
 		}
 		if (activePageRuntime != null) {
@@ -2306,17 +2897,19 @@ public class AndoWSignage extends Activity {
 			for (View view: elementViewList) {
 				if(view instanceof PlaybackSlotView) {
 					((PlaybackSlotView) view).showPreparedContent();
-					((PlaybackSlotView) view).startPreparedPlayback();
+					((PlaybackSlotView) view).startPreparedPlayback(SystemClock.elapsedRealtime());
 				} else if(view instanceof MediaView) {
 					((MediaView) view).runPlaylist();
 				}
 			}
 		}
+		long layoutClockBaseAtElapsedRealtimeMs = SystemClock.elapsedRealtime();
 		for (View view: elementViewList) {
 			if(view instanceof PlaybackSlotView) {
-				((PlaybackSlotView) view).startPreparedPlayback();
+				((PlaybackSlotView) view).startPreparedPlayback(layoutClockBaseAtElapsedRealtimeMs);
 			}
 		}
+		startActiveContentTimer();
 	}
 
 	@Override
@@ -2500,14 +3093,23 @@ public class AndoWSignage extends Activity {
 	}
 
 	public boolean onMediaContentComplete() {
+		if (pendingPlaylistRestartReady) {
+			pendingPlaylistRestartReady = false;
+			return switchToUpdatedPlaylist(false);
+		}
 		if (pendingUpdateReady) {
-			maybeApplyQueuedUpdate();
+			if (UpdateQueueProvider.hasReadyQueueRequiringPlaybackRestart()) {
+				pendingUpdateReady = false;
+				return switchToUpdatedPlaylist(true);
+			}
+			pendingUpdateReady = false;
 		}
 		return tryActivatePendingRuntime();
 	}
 
 	private void checkReadyQueue() {
-		boolean hasReady = UpdateQueueProvider.hasReadyQueue();
+		applySilentReadyQueuesSync();
+		boolean hasReady = UpdateQueueProvider.hasReadyQueueRequiringPlaybackRestart();
 		if (!hasReady && !pendingUpdateReady) {
 			return;
 		}
@@ -2523,52 +3125,105 @@ public class AndoWSignage extends Activity {
 	}
 
 	private boolean shouldApplyReadyImmediately() {
-		return isIntroPlaying() || AndoWSignageApp.SWITCH_ON_CONTENT_END;
+		return !isPlaybackContentActive();
 	}
 
-	private boolean isIntroPlaying() {
-		return vv != null;
+	private boolean isPlaybackContentActive() {
+		return usbPlaybackActive
+				|| activePageRuntime != null
+				|| pendingActivationRuntime != null;
 	}
 
 	private boolean applyPendingReadyQueuesSync() {
-		if (!UpdateQueueProvider.hasReadyQueue()) {
+		boolean silentApplied = applySilentReadyQueuesSync();
+		if (!UpdateQueueProvider.hasReadyQueueRequiringPlaybackRestart()) {
 			pendingUpdateReady = false;
+			return silentApplied;
+		}
+		DataSyncManager manager = new DataSyncManager();
+		boolean restartApplied = false;
+		while (UpdateQueueProvider.hasReadyQueueRequiringPlaybackRestart()) {
+			if (manager.applyNextPlaybackRestartReadyQueue(false)) {
+				restartApplied = true;
+			} else {
+				break;
+			}
+		}
+		if (restartApplied && !UpdateQueueProvider.hasReadyQueueRequiringPlaybackRestart()) {
+			pendingUpdateReady = false;
+		} else {
+			pendingUpdateReady = UpdateQueueProvider.hasReadyQueueRequiringPlaybackRestart();
+		}
+		return silentApplied || restartApplied;
+	}
+
+	private boolean applySilentReadyQueuesSync() {
+		if (!UpdateQueueProvider.hasSilentReadyQueue()) {
 			return false;
 		}
 		DataSyncManager manager = new DataSyncManager();
 		boolean applied = false;
-		while (UpdateQueueProvider.hasReadyQueue()) {
-			if (manager.applyNextReadyQueue(false)) {
+		while (UpdateQueueProvider.hasSilentReadyQueue()) {
+			if (manager.applyNextSilentReadyQueue()) {
 				applied = true;
 			} else {
 				break;
 			}
 		}
-		if (applied) {
-			pendingUpdateReady = false;
-		} else {
-			pendingUpdateReady = UpdateQueueProvider.hasReadyQueue();
-		}
 		return applied;
 	}
 
-	private void maybeApplyQueuedUpdate() {
-		if (!pendingUpdateReady || queuedUpdateRestartPending) {
-			return;
+	private boolean maybeApplyQueuedUpdate() {
+		return maybeApplyQueuedUpdate(false);
+	}
+
+	private boolean maybeApplyQueuedUpdate(final boolean allowActivePlaybackInterrupt) {
+		if (!pendingUpdateReady || queuedUpdateRestartPending || updatedPlaylistSwitchPending || playlistSwitchPending) {
+			return false;
+		}
+		if (!allowActivePlaybackInterrupt && isPlaybackContentActive()) {
+			pendingUpdateReady = UpdateQueueProvider.hasReadyQueueRequiringPlaybackRestart();
+			return false;
 		}
 		queuedUpdateRestartPending = true;
 		SystemUtils.runOnUiThread(() -> {
-			if (!pendingUpdateReady) {
+			if (!pendingUpdateReady
+					|| !UpdateQueueProvider.hasReadyQueueRequiringPlaybackRestart()) {
 				queuedUpdateRestartPending = false;
+				pendingUpdateReady = UpdateQueueProvider.hasReadyQueueRequiringPlaybackRestart();
 				return;
 			}
-			updateAndRestart(true);
+			if (!allowActivePlaybackInterrupt && isPlaybackContentActive()) {
+				queuedUpdateRestartPending = false;
+				pendingUpdateReady = UpdateQueueProvider.hasReadyQueueRequiringPlaybackRestart();
+				return;
+			}
+			if (isPlaybackContentActive()) {
+				switchToUpdatedPlaylist(true);
+			} else {
+				updateAndRestart(true);
+			}
 		});
+		return true;
 	}
 
 	public void showReadyUpdateIndicator() {
-		pendingUpdateReady = true;
+		applySilentReadyQueuesSync();
+		pendingUpdateReady = UpdateQueueProvider.hasReadyQueueRequiringPlaybackRestart();
 		maybeApplyQueuedUpdate();
+	}
+
+	public void requestPlaylistPlaybackRestart() {
+		SystemUtils.runOnUiThread(new Runnable() {
+			@Override
+			public void run() {
+				if (!isPlaybackContentActive()) {
+					updateAndRestart(true);
+					return;
+				}
+				switchToUpdatedPlaylist(false);
+			}
+		});
 	}
 
 	private String formatTimestamp(long millis) {

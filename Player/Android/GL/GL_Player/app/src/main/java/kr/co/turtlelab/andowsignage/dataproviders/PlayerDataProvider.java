@@ -29,6 +29,7 @@ public class PlayerDataProvider {
         try {
             RealmPlayer realmPlayer = realm.where(RealmPlayer.class).findFirst();
             if (realmPlayer != null) {
+                playerData.setPlayerId(realmPlayer.getPlayerId());
                 String name = realmPlayer.getPlayerName();
                 if (TextUtils.isEmpty(name)) {
                     name = local.getPlayerId();
@@ -44,6 +45,7 @@ public class PlayerDataProvider {
                 if (TextUtils.isEmpty(playerId)) {
                     playerId = AndoWSignageApp.PLAYER_ID;
                 }
+                playerData.setPlayerId(playerId);
                 playerData.setPlayerName(playerId);
                 playerData.setPlaylist("");
                 playerData.setIsLandscape(String.valueOf(true));

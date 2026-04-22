@@ -15,6 +15,7 @@ import java.util.zip.ZipInputStream;
 import kr.co.turtlelab.andowsignage.AndoWSignage;
 
 public class FileUtils {
+	private static final int LOCAL_COPY_BUFFER_SIZE = 4 * 1024 * 1024;
 
 	public static String ReadTextFile(String path) {
 		
@@ -60,7 +61,7 @@ public class FileUtils {
 			fis = new FileInputStream(sf);
 			fos = new FileOutputStream(tf);
 			
-			byte[] b = new byte[4096];
+			byte[] b = new byte[LOCAL_COPY_BUFFER_SIZE];
 			int cnt = 0;
 			while((cnt=fis.read(b)) != -1){
 				fos.write(b, 0, cnt);
@@ -125,7 +126,7 @@ public class FileUtils {
 			fis = new FileInputStream(sf);
 			fos = new FileOutputStream(tf);
 			
-			byte[] b = new byte[4096];
+			byte[] b = new byte[LOCAL_COPY_BUFFER_SIZE];
 			int cnt = 0;
 			
 			while((cnt=fis.read(b)) != -1){
@@ -242,7 +243,7 @@ public class FileUtils {
 			fis = new FileInputStream(sf);
 			fos = new FileOutputStream(tf) ;
 			
-			byte[] b = new byte[4096];
+			byte[] b = new byte[LOCAL_COPY_BUFFER_SIZE];
 			int cnt = 0;
 			
 			while((cnt=fis.read(b)) != -1){
@@ -296,7 +297,7 @@ public class FileUtils {
 			fis = new FileInputStream(sf);
 			fos = new FileOutputStream(tf) ;
 			
-			byte[] b = new byte[4096];
+			byte[] b = new byte[LOCAL_COPY_BUFFER_SIZE];
 			int cnt = 0;
 			
 			while((cnt=fis.read(b)) != -1){

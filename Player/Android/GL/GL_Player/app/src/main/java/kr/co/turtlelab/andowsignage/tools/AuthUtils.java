@@ -51,6 +51,48 @@ public class AuthUtils {
         return hasKey;
     }
 
+    public static boolean HasEncodedAuthKey(String keypath, String encodedKey) {
+
+        if (encodedKey == null || encodedKey.trim().length() < 1) {
+            return false;
+        }
+
+        File _file = new File(keypath);
+        if (!_file.exists()) {
+            return false;
+        }
+
+        FileReader fileReader = null;
+        BufferedReader bufferedReader = null;
+
+        try {
+            fileReader = new FileReader(_file);
+            bufferedReader = new BufferedReader(fileReader);
+            String line;
+            while ((line = bufferedReader.readLine()) != null) {
+                if (line != null && line.trim().equalsIgnoreCase(encodedKey.trim())) {
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                if (bufferedReader != null)
+                    bufferedReader.close();
+            } catch (Exception exc1) {
+            }
+
+            try {
+                if (fileReader != null)
+                    fileReader.close();
+            } catch (Exception exc1) {
+            }
+        }
+
+        return false;
+    }
+
     public static String DecodeAuthKey(String authkey) {
         byte[] asciiBytes = ConvertStringToASCIIBytes(authkey);
         byte[] restoreBytes = MoveDiff(asciiBytes);

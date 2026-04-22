@@ -260,6 +260,12 @@ public class UpdateQueueProcessor implements UpdateQueueDownloader.LeaseHandler 
         tracker.stepDownload(0f);
         boolean ignoreLease = ignoreLeaseFlag || shouldIgnoreLease(queue);
         UpdateThrottleSettings settings = ignoreLease ? null : getSettings();
+        if (!hasDownloads(queue)) {
+            tracker.stepDownload(1f);
+            UpdateQueueHelper.updateStatus(queue.getId(), UpdateQueueContract.Status.DOWNLOADED);
+            handleDownloaded(queue);
+            return;
+        }
         if (!ignoreLease && hasDownloads(queue) && !ensureLease(queue, settings)) {
             scheduleLeaseRetry(queue, settings, "LEASE_BUSY");
             return;
@@ -330,7 +336,11 @@ public class UpdateQueueProcessor implements UpdateQueueDownloader.LeaseHandler 
     }
 
     private void handleReady(RealmUpdateQueue queue) {
-        UpdateQueueHelper.updateStatus(queue.getId(), UpdateQueueContract.Status.READY);
+        if (queueApplier != null) {
+            queueApplier.apply(queue);
+        } else {
+            UpdateQueueHelper.updateStatus(queue.getId(), UpdateQueueContract.Status.READY);
+        }
     }
 
     private void scheduleLeaseRetry(RealmUpdateQueue queue, UpdateThrottleSettings settings, String reason) {

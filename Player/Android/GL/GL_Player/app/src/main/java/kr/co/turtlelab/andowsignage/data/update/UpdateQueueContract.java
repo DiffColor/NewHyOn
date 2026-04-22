@@ -13,6 +13,7 @@ public final class UpdateQueueContract {
 
     public static final class Type {
         public static final String PLAYLIST = "playlist";
+        public static final String SCHEDULE = "schedule";
         public static final String WELCOME = "welcome";
         public static final String WEEKLY = "weekly";
         private Type() { }

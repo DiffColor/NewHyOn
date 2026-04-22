@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Locale;
 
 import io.realm.Realm;
+import io.realm.RealmResults;
 import kr.co.turtlelab.andowsignage.data.realm.RealmSpecialScheduleCache;
 import kr.co.turtlelab.andowsignage.data.update.UpdatePayloadModels;
 
@@ -70,10 +71,11 @@ public class SpecialScheduleEvaluator {
                         .equalTo("id", playerId)
                         .findFirst();
             }
-            if (cache == null && !TextUtils.isEmpty(playerName)) {
-                cache = realm.where(RealmSpecialScheduleCache.class)
-                        .equalTo("playerName", playerName)
-                        .findFirst();
+            if (cache == null) {
+                cache = findByPlayerNameIgnoreCase(realm, playerName);
+            }
+            if (cache == null) {
+                cache = findByPlayerNameIgnoreCase(realm, playerId);
             }
             if (cache == null || TextUtils.isEmpty(cache.getSchedulesJson())) {
                 return Collections.emptyList();
@@ -86,6 +88,23 @@ public class SpecialScheduleEvaluator {
         } finally {
             realm.close();
         }
+    }
+
+    private RealmSpecialScheduleCache findByPlayerNameIgnoreCase(Realm realm, String playerName) {
+        if (realm == null || TextUtils.isEmpty(playerName)) {
+            return null;
+        }
+        RealmResults<RealmSpecialScheduleCache> caches = realm.where(RealmSpecialScheduleCache.class)
+                .findAll();
+        if (caches == null || caches.isEmpty()) {
+            return null;
+        }
+        for (RealmSpecialScheduleCache cache : caches) {
+            if (cache != null && playerName.equalsIgnoreCase(safe(cache.getPlayerName()))) {
+                return cache;
+            }
+        }
+        return null;
     }
 
     private UpdatePayloadModels.SpecialSchedulePayload selectActiveSchedule(

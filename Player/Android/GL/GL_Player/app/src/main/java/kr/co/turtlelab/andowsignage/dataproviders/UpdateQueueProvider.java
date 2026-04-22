@@ -22,7 +22,39 @@ public final class UpdateQueueProvider {
         }
     }
 
+    public static boolean hasSilentReadyQueue() {
+        Realm realm = Realm.getDefaultInstance();
+        try {
+            RealmUpdateQueue queue = findReadyQueue(realm, true);
+            return queue != null;
+        } finally {
+            realm.close();
+        }
+    }
+
+    public static boolean hasReadyQueueRequiringPlaybackRestart() {
+        Realm realm = Realm.getDefaultInstance();
+        try {
+            RealmUpdateQueue queue = findReadyQueue(realm, false);
+            return queue != null;
+        } finally {
+            realm.close();
+        }
+    }
+
     public static boolean consumeNextReadyQueue(DataConsumer consumer) {
+        return consumeNextReadyQueue(consumer, null);
+    }
+
+    public static boolean consumeNextSilentReadyQueue(DataConsumer consumer) {
+        return consumeNextReadyQueue(consumer, true);
+    }
+
+    public static boolean consumeNextPlaybackRestartReadyQueue(DataConsumer consumer) {
+        return consumeNextReadyQueue(consumer, false);
+    }
+
+    private static boolean consumeNextReadyQueue(DataConsumer consumer, Boolean silentOnly) {
         if (consumer == null) {
             return false;
         }
@@ -30,10 +62,7 @@ public final class UpdateQueueProvider {
         RealmUpdateQueue queue;
         try {
             realm.beginTransaction();
-            queue = realm.where(RealmUpdateQueue.class)
-                    .equalTo("status", UpdateQueueContract.Status.READY)
-                    .sort("id")
-                    .findFirst();
+            queue = findReadyQueue(realm, silentOnly);
             if (queue == null) {
                 realm.cancelTransaction();
                 return false;
@@ -49,6 +78,37 @@ public final class UpdateQueueProvider {
         }
         realm.close();
         return consumer.consume(queue);
+    }
+
+    private static RealmUpdateQueue findReadyQueue(Realm realm, Boolean silentOnly) {
+        if (realm == null) {
+            return null;
+        }
+        io.realm.RealmResults<RealmUpdateQueue> queues = realm.where(RealmUpdateQueue.class)
+                .equalTo("status", UpdateQueueContract.Status.READY)
+                .sort("id")
+                .findAll();
+        if (queues == null || queues.isEmpty()) {
+            return null;
+        }
+        for (RealmUpdateQueue queue : queues) {
+            if (queue == null) {
+                continue;
+            }
+            boolean silent = isSilentQueue(queue);
+            if (silentOnly == null || silentOnly == silent) {
+                return queue;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isSilentQueue(RealmUpdateQueue queue) {
+        if (queue == null) {
+            return false;
+        }
+        return queue.isScheduleQueue()
+                || UpdateQueueContract.Type.SCHEDULE.equals(queue.getType());
     }
 
     public static RealmUpdateQueue getLatestQueueSnapshot() {

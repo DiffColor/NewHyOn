@@ -54,6 +54,7 @@ public class RethinkDbClient {
     private static final String TABLE_PAGE = "PageInfoManager";
     private static final String TABLE_TEXT_INFO = "TextInfoManager";
     private static final String TABLE_WEEKLY = "WeeklyInfoManagerClass";
+    private static final String TABLE_SPECIAL_SCHEDULE = "SpecialScheduleInfoManager";
     private static final String TABLE_HEARTBEAT = "ClientHeartbeat";
     private static final String TABLE_UPDATE_QUEUE = "UpdateQueue";
     private static final String TABLE_COMMAND_HISTORY = "CommandHistory";
@@ -185,6 +186,11 @@ public class RethinkDbClient {
                 }
                 try {
                     fetchInitialWeeklySchedule();
+                } catch (Exception ex) {
+                    Log.e(TAG, "RethinkDbClient: operation failed", ex);
+                }
+                try {
+                    fetchInitialSpecialSchedule();
                 } catch (Exception ex) {
                     Log.e(TAG, "RethinkDbClient: operation failed", ex);
                 }
@@ -349,6 +355,24 @@ public class RethinkDbClient {
         return convert(result.get(0), RethinkModels.TextInfoRecord.class);
     }
 
+    public List<RethinkModels.SpecialScheduleRecord> fetchSpecialSchedules(String playerName) {
+        if (playerName == null || playerName.isEmpty()) {
+            return new ArrayList<>();
+        }
+        ReqlExpr query = R.db(DATABASE)
+                .table(TABLE_SPECIAL_SCHEDULE)
+                .filter(row -> row.g("PlayerNames").contains(playerName));
+        List<Map> rows = runList(query);
+        List<RethinkModels.SpecialScheduleRecord> schedules = new ArrayList<>();
+        for (Map row : rows) {
+            RethinkModels.SpecialScheduleRecord schedule = convert(row, RethinkModels.SpecialScheduleRecord.class);
+            if (schedule != null) {
+                schedules.add(schedule);
+            }
+        }
+        return schedules;
+    }
+
     public RethinkModels.WeeklyScheduleRecord fetchWeeklySchedule(String playerId) {
         if (playerId == null || playerId.isEmpty()) {
             return null;
@@ -420,14 +444,6 @@ public class RethinkDbClient {
         } catch (Exception ex) {
             Log.e(TAG, "RethinkDbClient: operation failed", ex);
         }
-    }
-
-    private String resolveDeviceMacAddress() {
-        String mac = NetworkUtils.getMACAddress();
-        if (!TextUtils.isEmpty(mac)) {
-            return mac.trim();
-        }
-        return "";
     }
 
     public String getCachedPlayerGuid() {
@@ -793,6 +809,15 @@ public class RethinkDbClient {
             }
         }
     }
+
+    private String resolveDeviceMacAddress() {
+        String mac = NetworkUtils.getMACAddress();
+        if (!TextUtils.isEmpty(mac)) {
+            return mac.trim();
+        }
+        return "";
+    }
+
     public boolean isDeviceInfoSynced() {
         synchronized (deviceInfoLock) {
             return deviceInfoSynced;
@@ -1277,21 +1302,36 @@ public class RethinkDbClient {
     }
 
     public void fetchInitialWeeklySchedule() {
-        String ensuredGuid = ensurePlayerGuid();
-        if (TextUtils.isEmpty(ensuredGuid)) {
-            return;
-        }
-
-        RethinkModels.PlayerInfoRecord player = fetchPlayerByGuid(ensuredGuid);
-        if (player == null) {
-            player = fetchPlayer(AndoWSignageApp.PLAYER_ID);
-        }
+        RethinkModels.PlayerInfoRecord player = resolveCurrentPlayerRecord();
         if (player == null) {
             return;
         }
 
         DataSyncManager manager = new DataSyncManager();
         manager.syncWeeklySchedule(player);
+    }
+
+    public void fetchInitialSpecialSchedule() {
+        RethinkModels.PlayerInfoRecord player = resolveCurrentPlayerRecord();
+        if (player == null) {
+            return;
+        }
+
+        DataSyncManager manager = new DataSyncManager();
+        manager.syncSpecialSchedule(player);
+    }
+
+    private RethinkModels.PlayerInfoRecord resolveCurrentPlayerRecord() {
+        String ensuredGuid = ensurePlayerGuid();
+        if (TextUtils.isEmpty(ensuredGuid)) {
+            return null;
+        }
+
+        RethinkModels.PlayerInfoRecord player = fetchPlayerByGuid(ensuredGuid);
+        if (player == null) {
+            player = fetchPlayer(AndoWSignageApp.PLAYER_ID);
+        }
+        return player;
     }
 
     private String getCurrentTimestamp() {
