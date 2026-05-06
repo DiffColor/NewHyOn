@@ -159,12 +159,33 @@ build_player_release_pair() {
     "zbqj2636"
 }
 
+build_gl_release() {
+  local gl_root="$1"
+  local output_name="$2"
+  local quber_keystore="Player/Android/_shared/platformkeys/quber/platform.jks"
+
+  build_gradle_release \
+    "$gl_root" \
+    ":app:assembleRelease" \
+    "app/build/outputs/apk/release/app-release.apk" \
+    "$output_name" \
+    "$quber_keystore" \
+    "zbqj2636" \
+    "quber" \
+    "zbqj2636"
+}
+
 case "$target" in
   player)
     build_player_release_pair \
       "Player/Android/Quber/Quber_Player" \
       "Player/Android/GL/GL_Player" \
       "$artifact_prefix"
+    ;;
+  gl-player)
+    build_gl_release \
+      "Player/Android/GL/GL_Player" \
+      "${artifact_prefix}-gl.apk"
     ;;
   quber4k-player)
     build_quber4k_release \

@@ -6,6 +6,7 @@ on:
       - 'manager-windows-v*'
       - 'player-windows-v*'
       - 'player-android-v*'
+      - 'player-gl-android-v*'
       - 'player-notifier-android-v*'
       - 'player-usbinstaller-android-v*'
       - 'player-quber4k-android-v*'
@@ -228,11 +229,31 @@ jobs:
           overwrite_files: true
 
   build-player-android:
-    if: startsWith(github.ref_name, 'player-android-v')
+    if: startsWith(github.ref_name, 'player-android-v') || startsWith(github.ref_name, 'player-gl-android-v')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve Player Android target
+        id: player_android_target
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ github.ref_name }}" in
+            player-android-v*)
+              echo "target=player" >> "$GITHUB_OUTPUT"
+              echo "artifact_id=player-android" >> "$GITHUB_OUTPUT"
+              echo "artifact_prefix=player-android-${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+              echo "display_name=Player Android" >> "$GITHUB_OUTPUT"
+              ;;
+            player-gl-android-v*)
+              echo "target=gl-player" >> "$GITHUB_OUTPUT"
+              echo "artifact_id=player-gl-android" >> "$GITHUB_OUTPUT"
+              echo "artifact_prefix=player-android-${GITHUB_REF_NAME#player-gl-android-}" >> "$GITHUB_OUTPUT"
+              echo "display_name=Player GL Android" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
 
       - name: Setup JDK 17 for sdkmanager
         uses: actions/setup-java@v4
@@ -264,26 +285,26 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Build Player Android release assets
+      - name: Build ${{ steps.player_android_target.outputs.display_name }} release assets
         run: |
           bash ./.github/scripts/build-android-release-assets.sh \
-            player \
-            "player-android-${{ github.ref_name }}" \
+            "${{ steps.player_android_target.outputs.target }}" \
+            "${{ steps.player_android_target.outputs.artifact_prefix }}" \
             "release-assets"
 
-      - name: Upload Player Android artifact
+      - name: Upload ${{ steps.player_android_target.outputs.display_name }} artifact
         uses: actions/upload-artifact@v4
         with:
-          name: player-android-${{ github.ref_name }}
-          path: release-assets/player-android-${{ github.ref_name }}-*.apk
+          name: ${{ steps.player_android_target.outputs.artifact_id }}-${{ github.ref_name }}
+          path: release-assets/${{ steps.player_android_target.outputs.artifact_prefix }}-*.apk
           if-no-files-found: warn
 
-      - name: Attach Player Android APK to GitHub Release
+      - name: Attach ${{ steps.player_android_target.outputs.display_name }} APK to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
-          files: release-assets/player-android-${{ github.ref_name }}-*.apk
+          files: release-assets/${{ steps.player_android_target.outputs.artifact_prefix }}-*.apk
           overwrite_files: true
 
   build-player-notifier-android:
