@@ -12,6 +12,7 @@ namespace AndoW_Manager
     {
         public ContentsInfoClass TargetContent { get; private set; }
         private bool _periodCleared;
+        private bool _isAdjustingTimeSelection;
 
         public EditPeriodWindow(ContentsInfoClass content)
         {
@@ -103,6 +104,9 @@ namespace AndoW_Manager
                 Close();
                 return;
             }
+
+            EnsureMinuteDefaultsToZero(StartHourCombo, StartMinuteCombo);
+            EnsureMinuteDefaultsToZero(EndHourCombo, EndMinuteCombo);
 
             string startDate = StartDatePicker.Text;
             string endDate = EndDatePicker.Text;
@@ -241,12 +245,22 @@ namespace AndoW_Manager
 
         private void StartHourCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
-            EnsureMinuteDefaultsToZero(StartHourCombo, StartMinuteCombo);
+            NormalizeTimeSelection(StartHourCombo, StartMinuteCombo, changedByHour: true);
         }
 
         private void EndHourCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
-            EnsureMinuteDefaultsToZero(EndHourCombo, EndMinuteCombo);
+            NormalizeTimeSelection(EndHourCombo, EndMinuteCombo, changedByHour: true);
+        }
+
+        private void StartMinuteCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            NormalizeTimeSelection(StartHourCombo, StartMinuteCombo, changedByHour: false);
+        }
+
+        private void EndMinuteCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            NormalizeTimeSelection(EndHourCombo, EndMinuteCombo, changedByHour: false);
         }
 
         private static void ApplyTimeToInputs(string value, System.Windows.Controls.ComboBox hourCombo, System.Windows.Controls.ComboBox minuteCombo)
@@ -285,6 +299,51 @@ namespace AndoW_Manager
             if (string.IsNullOrWhiteSpace(minute))
             {
                 minuteCombo.SelectedItem = "00";
+            }
+        }
+
+        private void NormalizeTimeSelection(System.Windows.Controls.ComboBox hourCombo, System.Windows.Controls.ComboBox minuteCombo, bool changedByHour)
+        {
+            if (_isAdjustingTimeSelection || hourCombo == null || minuteCombo == null)
+            {
+                return;
+            }
+
+            try
+            {
+                _isAdjustingTimeSelection = true;
+
+                string hour = hourCombo.SelectedItem?.ToString();
+                string minute = minuteCombo.SelectedItem?.ToString();
+                bool hasHour = string.IsNullOrWhiteSpace(hour) == false;
+                bool hasMinute = string.IsNullOrWhiteSpace(minute) == false;
+
+                if (changedByHour)
+                {
+                    if (!hasHour)
+                    {
+                        hourCombo.SelectedIndex = 0;
+                        minuteCombo.SelectedIndex = 0;
+                        return;
+                    }
+
+                    if (!hasMinute)
+                    {
+                        minuteCombo.SelectedItem = "00";
+                    }
+
+                    return;
+                }
+
+                if (!hasMinute || !hasHour)
+                {
+                    hourCombo.SelectedIndex = 0;
+                    minuteCombo.SelectedIndex = 0;
+                }
+            }
+            finally
+            {
+                _isAdjustingTimeSelection = false;
             }
         }
 

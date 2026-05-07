@@ -60,11 +60,11 @@
                 <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,4,0,0">
                     <ComboBox x:Name="StartHourCombo" Width="54" Height="24" Margin="0,0,4,0" SelectionChanged="StartHourCombo_SelectionChanged"/>
                     <TextBlock Text=":" Margin="0,0,4,0" VerticalAlignment="Center" FontFamily="Malgun Gothic" Foreground="#FF1B1B1D"/>
-                    <ComboBox x:Name="StartMinuteCombo" Width="54" Height="24" Margin="0,0,7,0"/>
+                    <ComboBox x:Name="StartMinuteCombo" Width="54" Height="24" Margin="0,0,7,0" SelectionChanged="StartMinuteCombo_SelectionChanged"/>
                     <TextBlock Text="~" Margin="0,0,7,0" VerticalAlignment="Center" FontFamily="Malgun Gothic" Foreground="#FF1B1B1D"/>
                     <ComboBox x:Name="EndHourCombo" Width="54" Height="24" Margin="0,0,4,0" SelectionChanged="EndHourCombo_SelectionChanged"/>
                     <TextBlock Text=":" Margin="0,0,4,0" VerticalAlignment="Center" FontFamily="Malgun Gothic" Foreground="#FF1B1B1D"/>
-                    <ComboBox x:Name="EndMinuteCombo" Width="54" Height="24"/>
+                    <ComboBox x:Name="EndMinuteCombo" Width="54" Height="24" SelectionChanged="EndMinuteCombo_SelectionChanged"/>
                 </StackPanel>
 
                 <TextBlock Grid.Row="2" Text="재생 시간" FontFamily="Malgun Gothic" FontSize="12.667" Foreground="#FF1B1B1D" VerticalAlignment="Center" Margin="0,4,0,0"/>
