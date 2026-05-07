@@ -93,7 +93,7 @@ namespace NewHyOnPlayer.PlaybackModes
 
             RunOnUiThread(() =>
             {
-                LoadPlaylist(false);
+                LoadPlaylist(false, false);
             });
 
             Task completed = await Task.WhenAny(activePrepareSource.Task, Task.Delay(PrepareTimeoutMilliseconds)).ConfigureAwait(false);
@@ -160,17 +160,18 @@ namespace NewHyOnPlayer.PlaybackModes
                 surface.HideSurface();
                 if (!playlistPrepared)
                 {
-                    SwitchToCurrentItem(true);
+                    SwitchToCurrentItem(true, false);
                     return;
                 }
 
                 if (!surface.SeekToStart())
                 {
-                    SwitchToCurrentItem(true);
+                    SwitchToCurrentItem(true, false);
                     return;
                 }
 
                 UpdateCurrentItemLoopState(force: true);
+                surface.ShowSurface();
                 surface.Play();
             });
         }
@@ -266,7 +267,7 @@ namespace NewHyOnPlayer.PlaybackModes
             bool applied = true;
                 RunOnUiThread(() =>
                 {
-                    if (!SwitchToCurrentItem(true))
+                    if (!SwitchToCurrentItem(true, true))
                     {
                         applied = false;
                         return;
@@ -317,7 +318,7 @@ namespace NewHyOnPlayer.PlaybackModes
                 bool switchedApplied = true;
                 RunOnUiThread(() =>
                 {
-                    if (!SwitchToCurrentItem(true))
+                    if (!SwitchToCurrentItem(true, false))
                     {
                         switchedApplied = false;
                         return;
@@ -375,7 +376,7 @@ namespace NewHyOnPlayer.PlaybackModes
             long seekMilliseconds = currentItemElapsedMilliseconds;
             RunOnUiThread(() =>
             {
-                if (!SwitchToCurrentItem(true))
+                if (!SwitchToCurrentItem(true, false))
                 {
                     applied = false;
                     return;
@@ -420,7 +421,7 @@ namespace NewHyOnPlayer.PlaybackModes
 
             RunOnUiThread(() =>
             {
-                SwitchToCurrentItem(true);
+                SwitchToCurrentItem(true, false);
             });
         }
 
@@ -703,7 +704,7 @@ namespace NewHyOnPlayer.PlaybackModes
             return remainingMilliseconds > GetActualDurationMilliseconds(item);
         }
 
-        private void LoadPlaylist(bool autoPlay)
+        private void LoadPlaylist(bool autoPlay, bool hideUntilLoaded)
         {
             SeamlessContentItem item = GetCurrentItem();
             if (item == null)
@@ -735,11 +736,15 @@ namespace NewHyOnPlayer.PlaybackModes
             {
                 surface.HideSurface();
             }
+            else if (!hideUntilLoaded)
+            {
+                surface.ShowSurface();
+            }
 
             UpdateCurrentItemLoopState(force: true);
         }
 
-        private bool SwitchToCurrentItem(bool autoPlay)
+        private bool SwitchToCurrentItem(bool autoPlay, bool hideUntilLoaded)
         {
             SeamlessContentItem item = GetCurrentItem();
             if (item == null)
@@ -753,7 +758,7 @@ namespace NewHyOnPlayer.PlaybackModes
 
             if (!playlistPrepared)
             {
-                LoadPlaylist(autoPlay);
+                LoadPlaylist(autoPlay, hideUntilLoaded);
                 return State != SeamlessSlotState.Error;
             }
 
@@ -790,13 +795,17 @@ namespace NewHyOnPlayer.PlaybackModes
                 return false;
             }
 
-            if (autoPlay)
+            if (!autoPlay)
+            {
+                surface.HideSurface();
+            }
+            else if (hideUntilLoaded)
             {
                 surface.HideSurface();
             }
             else
             {
-                surface.HideSurface();
+                surface.ShowSurface();
             }
 
             UpdateCurrentItemLoopState(force: true);
