@@ -203,27 +203,35 @@ namespace AndoW_Manager
 
         public void DeletePageInfoClass(string pageListName, PageInfoClass newCls)
         {
-            int idx = 0;
-
-            foreach (PageInfoClass item in g_PageInfoClassList)
+            if (string.IsNullOrWhiteSpace(pageListName) || newCls == null)
             {
-                if (item.PIC_PageName == newCls.PIC_PageName)
+                return;
+            }
+
+            int idx = -1;
+
+            for (int i = 0; i < g_PageInfoClassList.Count; i++)
+            {
+                PageInfoClass item = g_PageInfoClassList[i];
+                bool isSamePage = string.IsNullOrWhiteSpace(newCls.PIC_GUID) == false
+                    ? item.PIC_GUID == newCls.PIC_GUID
+                    : item.PIC_PageName == newCls.PIC_PageName;
+                if (isSamePage)
                 {
+                    idx = i;
                     break;
                 }
-                idx++;
-
             }
 
-            if (idx < g_PageInfoClassList.Count)
-            {
-                g_PageInfoClassList.RemoveAt(idx);
-                SavePageList(pageListName);
-            }
-            else
+            if (idx < 0 || idx >= g_PageInfoClassList.Count)
             {
                 Page2.Instance.RefreshPageListOfSelectedPageList();
+                return;
             }
+
+            g_PageInfoClassList.RemoveAt(idx);
+            DataShop.Instance.g_PageListInfoManager.RemovePageFromPlaylist(pageListName, newCls.PIC_GUID);
+            LoadPageList(pageListName);
         }
 
         public void SavePageList(string pageListName)
