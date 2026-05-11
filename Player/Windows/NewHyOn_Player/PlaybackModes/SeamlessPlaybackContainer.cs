@@ -120,6 +120,13 @@ namespace NewHyOnPlayer.PlaybackModes
         public void PlayNextPage()
         {
             Initialize();
+            if (!(owner?.IsPlaybackAllowedNow() ?? true))
+            {
+                blankRecoveryPending = false;
+                owner?.SetInitialLoadingVisible(false);
+                return;
+            }
+
             if (activeLayoutIndex < 0)
             {
                 owner?.SetInitialLoadingVisible(true);
@@ -1853,6 +1860,11 @@ namespace NewHyOnPlayer.PlaybackModes
         private void BlankRecoveryTimer_Tick(object sender, EventArgs e)
         {
             if (!initialized || activeLayoutIndex >= 0)
+            {
+                return;
+            }
+
+            if (!(owner?.IsPlaybackAllowedNow() ?? true))
             {
                 return;
             }

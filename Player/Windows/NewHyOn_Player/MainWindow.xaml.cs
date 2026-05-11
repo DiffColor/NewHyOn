@@ -1124,6 +1124,7 @@ namespace NewHyOnPlayer
         internal string CurrentPageName => playbackContainer?.CurrentPageName ?? g_CurrentPageName;
         internal string NextPageName => playbackContainer?.NextPageName ?? string.Empty;
         internal bool IsPlaying => playbackContainer?.IsPresentationActive() ?? false;
+        internal bool IsPlaybackAllowedNow() => onAirService?.IsOnAirNow() ?? true;
         internal bool IsSyncPlaybackActive => playbackSyncCoordinator?.IsSyncPlaybackActive ?? (g_LocalSettingsManager?.Settings?.IsSyncEnabled ?? false);
         internal bool IsSyncLeader => playbackSyncCoordinator?.IsSyncLeader ?? (IsSyncPlaybackActive && (g_LocalSettingsManager?.Settings?.IsLeading ?? false));
         internal RemoteCommandService CommandService => commandService;

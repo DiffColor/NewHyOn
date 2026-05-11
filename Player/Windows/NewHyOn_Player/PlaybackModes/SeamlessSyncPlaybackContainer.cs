@@ -341,6 +341,13 @@ namespace NewHyOnPlayer.PlaybackModes
         public void PlayNextPage()
         {
             Initialize();
+            if (!(owner?.IsPlaybackAllowedNow() ?? true))
+            {
+                blankRecoveryPending = false;
+                owner?.SetInitialLoadingVisible(false);
+                return;
+            }
+
             EnsureCurrentPlaylistLoaded();
             StopPageTimer();
             StopContentTimer();
@@ -474,6 +481,11 @@ namespace NewHyOnPlayer.PlaybackModes
         private void BlankRecoveryTimer_Tick(object sender, EventArgs e)
         {
             if (!initialized || presentationActive)
+            {
+                return;
+            }
+
+            if (!(owner?.IsPlaybackAllowedNow() ?? true))
             {
                 return;
             }

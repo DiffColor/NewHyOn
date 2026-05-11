@@ -54,6 +54,11 @@ namespace NewHyOnPlayer.Services
             timer.Stop();
         }
 
+        internal bool IsOnAirNow()
+        {
+            return IsOnAir(DateTime.Now);
+        }
+
         public void RefreshWeeklySchedule()
         {
             if (disposed)
@@ -319,7 +324,7 @@ namespace NewHyOnPlayer.Services
                         catch
                         {
                         }
-                        owner?.DoApplicationShutdown();
+                        //owner?.DoApplicationShutdown();
                     });
                     break;
             }
@@ -331,6 +336,7 @@ namespace NewHyOnPlayer.Services
             {
                 try
                 {
+                    owner.StopPlayback();
                     owner.HidePlayback();
                     owner.Opacity = 0;
                 }
@@ -353,6 +359,7 @@ namespace NewHyOnPlayer.Services
             {
                 try
                 {
+                    owner.StopPlayback();
                     owner.HidePlayback();
                     owner.Hide();
                 }
