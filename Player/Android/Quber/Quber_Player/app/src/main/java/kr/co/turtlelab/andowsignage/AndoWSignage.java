@@ -1085,7 +1085,9 @@ public class AndoWSignage extends Activity {
 
 	TurtleVideoView vv;
 	public void showInitAnim() {
+		hidePageContainers();
 		if (vv != null) {
+			vv.bringToFront();
 			if (!vv.isPlaying()) {
 				try {
 					vv.start();
@@ -1105,6 +1107,7 @@ public class AndoWSignage extends Activity {
 		String path = "android.resource://" + getPackageName() + "/" + R.raw.intro;
 		vv.setVideoURI(Uri.parse(path));
 		vv.setLoop(true);
+		vv.bringToFront();
 		vv.start();
 	}
 	
@@ -2669,6 +2672,13 @@ public class AndoWSignage extends Activity {
 			}
 		}
 		if (usbPlaybackActive) {
+			checkReadyQueue();
+			if (debugOverlayVisible) {
+				refreshDebugOverlay();
+			}
+			return;
+		}
+		if (vv != null) {
 			checkReadyQueue();
 			if (debugOverlayVisible) {
 				refreshDebugOverlay();
