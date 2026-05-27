@@ -409,6 +409,7 @@
     <Compile Include="TurtleTools\SpecificTools.cs" />
     <Compile Include="TurtleTools\Taskbar.cs" />
     <Compile Include="TurtleTools\UDPer.cs" />
+    <Compile Include="TurtleTools\WakeUpAlarm.cs" />
     <Compile Include="TurtleTools\XXHash64.cs" />
     <Page Include="ContentControls\MPVLibControl.xaml">
       <Generator>MSBuild:Compile</Generator>
