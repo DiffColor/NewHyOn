@@ -112,9 +112,9 @@ namespace NewHyOnPlayer
                 R.Db(DatabaseName)
                     .Table(TableName)
                     .Get(commandId)
-                    .Update(new
+                    .Update(row => new
                     {
-                        AttemptCount = R.Row()["AttemptCount"].Default_(0).Add(1),
+                        AttemptCount = row["AttemptCount"].Default_(0).Add(1),
                         LastAttemptAt = now,
                         UpdatedAt = now
                     })
