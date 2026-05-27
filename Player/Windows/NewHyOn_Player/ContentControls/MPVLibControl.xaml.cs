@@ -1,4 +1,5 @@
-﻿using Mpv.NET.Player;
+﻿using Mpv.NET.API;
+using Mpv.NET.Player;
 using System;
 using System.Windows;
 using System.Windows.Controls;
@@ -572,6 +573,10 @@ namespace NewHyOnPlayer
                 {
                     isDisposed = true;
                     sPlayer = null;
+                    return fallback;
+                }
+                catch (MpvAPIException)
+                {
                     return fallback;
                 }
             }
