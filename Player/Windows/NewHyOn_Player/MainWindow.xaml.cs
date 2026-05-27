@@ -1185,6 +1185,8 @@ namespace NewHyOnPlayer
 
         internal void HandleWeeklyScheduleUpdated()
         {
+            scheduleEvaluator?.InvalidateWeeklyCache();
+            onAirService?.RefreshWeeklySchedule();
             playbackContainer?.HandleWeeklyScheduleUpdated();
         }
 

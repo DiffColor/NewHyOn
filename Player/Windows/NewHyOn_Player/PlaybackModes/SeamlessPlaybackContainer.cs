@@ -280,9 +280,7 @@ namespace NewHyOnPlayer.PlaybackModes
 
         public void HandleWeeklyScheduleUpdated()
         {
-            owner?.ScheduleEvaluatorService?.InvalidateWeeklyCache();
             RequestScheduleEvaluation(force: true);
-            owner?.OnAirServiceInstance?.RefreshWeeklySchedule();
         }
 
         public void HandleContentPeriodUpdated(IReadOnlyCollection<string> contentGuids)
