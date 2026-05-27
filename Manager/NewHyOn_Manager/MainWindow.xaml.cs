@@ -765,23 +765,16 @@ namespace AndoW_Manager
         private async Task WaitForSignalRReadyAsync(DbLoadingWindow loadingWindow)
         {
             loadingWindow?.SetStatus("실시간 연결 확인", "실시간 제어 서버에 연결 중입니다.");
-            var initialWaitUntil = DateTime.Now.AddSeconds(1);
 
             while (!SignalRClientTools.IsConnected())
             {
-                if (SignalRClientTools.IsConnecting())
+                bool connected = await SignalRClientTools.EnsureConnectedAsync();
+                if (connected)
                 {
-                    await Task.Delay(250);
-                    continue;
+                    return;
                 }
 
-                if (DateTime.Now < initialWaitUntil)
-                {
-                    await Task.Delay(100);
-                    continue;
-                }
-
-                Logger.WriteErrorLog("SignalR 연결 실패. 15초 후 재시도합니다.", Logger.GetLogFileName());
+                Logger.WriteErrorLog($"SignalR 연결 실패. 15초 후 재시도합니다. {SignalRClientTools.GetConnectionStatus()}", Logger.GetLogFileName());
                 loadingWindow?.SetStatus(
                     "실시간 연결 실패",
                     "실시간 제어 서버 연결이 필요합니다.\r\n설정 확인 후 15초마다 재시도합니다.");
