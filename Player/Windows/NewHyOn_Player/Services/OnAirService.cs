@@ -1,6 +1,9 @@
 ﻿using AndoW.Shared;
+using Microsoft.Win32.SafeHandles;
 using System;
+using System.Runtime.InteropServices;
 using System.Threading;
+using System.Windows.Forms;
 using TurtleTools;
 using SharedWeeklyPlayScheduleInfo = AndoW.Shared.WeeklyPlayScheduleInfo;
 
@@ -17,6 +20,7 @@ namespace NewHyOnPlayer.Services
         private bool blackScreenApplied;
         private bool hiddenApplied;
         private bool monitorPowerBlocked;
+        private int hibernationResumeStarted;
         private SharedWeeklyPlayScheduleInfo cachedWeekly;
         private DateTime cachedLoadedAt = DateTime.MinValue;
 
@@ -176,57 +180,42 @@ namespace NewHyOnPlayer.Services
                 return true;
             }
 
-            DaySchedule target = null;
-            switch (now.DayOfWeek)
-            {
-                case DayOfWeek.Sunday:
-                    target = weekly.SunSch;
-                    break;
-                case DayOfWeek.Monday:
-                    target = weekly.MonSch;
-                    break;
-                case DayOfWeek.Tuesday:
-                    target = weekly.TueSch;
-                    break;
-                case DayOfWeek.Wednesday:
-                    target = weekly.WedSch;
-                    break;
-                case DayOfWeek.Thursday:
-                    target = weekly.ThuSch;
-                    break;
-                case DayOfWeek.Friday:
-                    target = weekly.FriSch;
-                    break;
-                case DayOfWeek.Saturday:
-                    target = weekly.SatSch;
-                    break;
-            }
-
-            if (target == null)
+            DaySchedule today = GetDaySchedule(weekly, now.DayOfWeek);
+            if (today == null)
             {
                 return true;
             }
 
-            if (!target.IsOnAir)
+            DaySchedule yesterday = GetDaySchedule(weekly, now.AddDays(-1).DayOfWeek) ?? DaySchedule.CreateDefault();
+
+            int current = TimeToInt(now);
+            int todayStart = TimeToInt(today.StartHour, today.StartMinute);
+
+            if (!yesterday.IsOnAir && current < todayStart)
             {
                 return false;
             }
 
-            int start = (target.StartHour * 60) + target.StartMinute;
-            int end = (target.EndHour * 60) + target.EndMinute;
-            int current = now.Hour * 60 + now.Minute;
+            int yesterdayStart = TimeToInt(yesterday.StartHour, yesterday.StartMinute);
+            int yesterdayEnd = TimeToInt(yesterday.EndHour, yesterday.EndMinute);
 
-            if (start == end)
+            if ((yesterdayEnd - yesterdayStart) > 0 && current < todayStart)
             {
-                return true;
+                return false;
             }
 
-            if (end > start)
+            if (current >= yesterdayEnd && current < todayStart)
             {
-                return current >= start && current < end;
+                return false;
             }
 
-            return current >= start || current < end;
+            int todayEnd = TimeToInt(today.EndHour, today.EndMinute);
+            if ((todayEnd - todayStart) > 0 && current >= todayEnd)
+            {
+                return false;
+            }
+
+            return today.IsOnAir;
         }
 
         private SharedWeeklyPlayScheduleInfo GetWeeklySchedule(PlayerInfoClass player)
@@ -312,7 +301,7 @@ namespace NewHyOnPlayer.Services
                     ApplyBlackScreen();
                     break;
                 case PowerControlType.Hibernation:
-                    ProcessTools.ExecuteCommand("shutdown /h");
+                    ApplyHibernation();
                     break;
                 default:
                     owner?.Dispatcher?.Invoke(() =>
@@ -328,6 +317,176 @@ namespace NewHyOnPlayer.Services
                     });
                     break;
             }
+        }
+
+        private void ApplyHibernation()
+        {
+            Logger.WriteLog("<<<<<< Hibernation >>>>>>>>>>", Logger.GetLogFileName());
+
+            var player = owner?.g_PlayerInfoManager?.g_PlayerInfo;
+            var weekly = GetWeeklySchedule(player);
+            DateTime? wakeAt = FindNextWakeUpTime(weekly, DateTime.Now);
+            if (wakeAt.HasValue)
+            {
+                SetWakeUpAlarm(wakeAt.Value);
+            }
+
+            WindowTools.AllowSleep();
+            Thread.Sleep(3000);
+
+            if (!Application.SetSuspendState(PowerState.Suspend, false, false))
+            {
+                Logger.WriteErrorLog("Hibernation suspend request failed.", Logger.GetLogFileName());
+            }
+        }
+
+        private void SetWakeUpAlarm(DateTime wakeAt)
+        {
+            long wakeTime = wakeAt.ToFileTime();
+            Interlocked.Exchange(ref hibernationResumeStarted, 0);
+
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    using (SafeWaitHandle handle = CreateWaitableTimer(IntPtr.Zero, true, "NewHyOnPlayerWakeUpTimer"))
+                    {
+                        if (handle == null || handle.IsInvalid)
+                        {
+                            Logger.WriteErrorLog($"CreateWaitableTimer failed: {Marshal.GetLastWin32Error()}", Logger.GetLogFileName());
+                            return;
+                        }
+
+                        if (!SetWaitableTimer(handle, ref wakeTime, 0, IntPtr.Zero, IntPtr.Zero, true))
+                        {
+                            Logger.WriteErrorLog($"SetWaitableTimer failed: {Marshal.GetLastWin32Error()}", Logger.GetLogFileName());
+                            return;
+                        }
+
+                        using (EventWaitHandle waitHandle = new EventWaitHandle(false, EventResetMode.AutoReset))
+                        {
+                            waitHandle.SafeWaitHandle = handle;
+                            waitHandle.WaitOne();
+                        }
+                    }
+
+                    ResumeFromHibernation();
+                }
+                catch (Exception ex)
+                {
+                    Logger.WriteErrorLog($"WakeUpAlarm error: {ex}", Logger.GetLogFileName());
+                }
+            });
+
+            Logger.WriteLog($"잠들 시간: {DateTime.Now} / 깨어날 시간: {wakeAt}", Logger.GetLogFileName());
+        }
+
+        private void ResumeFromHibernation()
+        {
+            if (Interlocked.Exchange(ref hibernationResumeStarted, 1) == 1)
+            {
+                return;
+            }
+
+            Thread.Sleep(15000);
+            Logger.WriteLog("<<<<<< Resume >>>>>>>>>>", Logger.GetLogFileName());
+            Logger.WriteLog($"깨어난 시간: {DateTime.Now}", Logger.GetLogFileName());
+            ProcessTools.ExecuteCommand("shutdown -r -t 0 -f");
+        }
+
+        private DateTime? FindNextWakeUpTime(SharedWeeklyPlayScheduleInfo weekly, DateTime now)
+        {
+            if (weekly == null || CountOnAirDays(weekly) <= 0)
+            {
+                return null;
+            }
+
+            DaySchedule today = GetDaySchedule(weekly, now.DayOfWeek);
+            int current = TimeToInt(now);
+            if (today != null && today.IsOnAir)
+            {
+                int todayStart = TimeToInt(today.StartHour, today.StartMinute);
+                if (current < todayStart)
+                {
+                    return BuildWakeUpTime(now.Date, today);
+                }
+            }
+
+            int todayIndex = (int)now.DayOfWeek;
+            for (int offset = 1; offset <= 7; offset++)
+            {
+                DayOfWeek dayOfWeek = (DayOfWeek)((todayIndex + offset) % 7);
+                DaySchedule schedule = GetDaySchedule(weekly, dayOfWeek);
+                if (schedule == null || !schedule.IsOnAir)
+                {
+                    continue;
+                }
+
+                return BuildWakeUpTime(now.Date.AddDays(offset), schedule);
+            }
+
+            return null;
+        }
+
+        private static DateTime BuildWakeUpTime(DateTime date, DaySchedule schedule)
+        {
+            return date
+                .AddHours(schedule.StartHour)
+                .AddMinutes(schedule.StartMinute)
+                .AddSeconds(30);
+        }
+
+        private static int CountOnAirDays(SharedWeeklyPlayScheduleInfo weekly)
+        {
+            int count = 0;
+            for (int i = 0; i < 7; i++)
+            {
+                DaySchedule schedule = GetDaySchedule(weekly, (DayOfWeek)i);
+                if (schedule != null && schedule.IsOnAir)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private static DaySchedule GetDaySchedule(SharedWeeklyPlayScheduleInfo weekly, DayOfWeek dayOfWeek)
+        {
+            if (weekly == null)
+            {
+                return null;
+            }
+
+            switch (dayOfWeek)
+            {
+                case DayOfWeek.Sunday:
+                    return weekly.SunSch;
+                case DayOfWeek.Monday:
+                    return weekly.MonSch;
+                case DayOfWeek.Tuesday:
+                    return weekly.TueSch;
+                case DayOfWeek.Wednesday:
+                    return weekly.WedSch;
+                case DayOfWeek.Thursday:
+                    return weekly.ThuSch;
+                case DayOfWeek.Friday:
+                    return weekly.FriSch;
+                case DayOfWeek.Saturday:
+                    return weekly.SatSch;
+                default:
+                    return null;
+            }
+        }
+
+        private static int TimeToInt(DateTime time)
+        {
+            return (time.Hour * 100) + time.Minute;
+        }
+
+        private static int TimeToInt(int hour, int minute)
+        {
+            return (hour * 100) + minute;
         }
 
         private void ApplyBlackScreen()
@@ -460,6 +619,19 @@ namespace NewHyOnPlayer.Services
         private const int SC_MONITORPOWER = 0xF170;
         private const int MONITOR_ON = -1;
         private const int MONITOR_OFF = 2;
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern SafeWaitHandle CreateWaitableTimer(IntPtr lpTimerAttributes, bool bManualReset, string lpTimerName);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetWaitableTimer(
+            SafeWaitHandle hTimer,
+            ref long pDueTime,
+            int lPeriod,
+            IntPtr pfnCompletionRoutine,
+            IntPtr lpArgToCompletionRoutine,
+            bool fResume);
 
         [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SendMessageW")]
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
