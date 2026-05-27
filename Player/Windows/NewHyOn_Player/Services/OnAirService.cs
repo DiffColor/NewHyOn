@@ -350,7 +350,7 @@ namespace NewHyOnPlayer.Services
 
             SetWakeUpAlarm(wakeAt);
 
-            WindowTools.AllowSleep();
+            owner?.Dispatcher?.Invoke(() => { WindowTools.AllowSleep(); });
             Suspend();
             Application.SetSuspendState(PowerState.Suspend, false, false);
         }
