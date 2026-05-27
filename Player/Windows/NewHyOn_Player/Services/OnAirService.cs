@@ -608,7 +608,7 @@ namespace NewHyOnPlayer.Services
         {
             try
             {
-                SendMessage(new IntPtr(-1), WM_SYSCOMMAND, new IntPtr(SC_MONITORPOWER), new IntPtr(on ? MONITOR_ON : MONITOR_OFF));
+                PostMessage(new IntPtr(-1), WM_SYSCOMMAND, new IntPtr(SC_MONITORPOWER), new IntPtr(on ? MONITOR_ON : MONITOR_OFF));
             }
             catch
             {
@@ -633,7 +633,8 @@ namespace NewHyOnPlayer.Services
             IntPtr lpArgToCompletionRoutine,
             bool fResume);
 
-        [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SendMessageW")]
-        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+        [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool PostMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
     }
 }
