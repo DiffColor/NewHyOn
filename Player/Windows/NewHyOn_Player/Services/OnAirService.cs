@@ -1,5 +1,6 @@
 ﻿using AndoW.Shared;
 using Microsoft.Win32.SafeHandles;
+using Remotion.Linq.Utilities;
 using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
@@ -160,8 +161,8 @@ namespace NewHyOnPlayer.Services
                     return;
                 }
 
-                lastOnAir = false;
-                HandleOffAirAction();
+                if(HandleOffAirAction())
+                    lastOnAir = false;
             }
             catch (Exception ex)
             {
@@ -273,8 +274,10 @@ namespace NewHyOnPlayer.Services
             }
         }
 
-        private void HandleOffAirAction()
+        private bool HandleOffAirAction()
         {
+            bool _result = true;
+
             owner?.Dispatcher?.Invoke(() => {
                 owner.ResetPlaybackCursor();
             });
@@ -283,15 +286,10 @@ namespace NewHyOnPlayer.Services
             string actionValue = settings?.EndTimeAction ?? PowerControlType.ApplicationClose.ToString();
 
             if (settings != null && settings.BlockMonitorOnEndTime)
-            {
                 BlockMonitor();
-                return;
-            }
 
             if (!Enum.TryParse(actionValue, true, out PowerControlType action))
-            {
-                action = PowerControlType.ApplicationClose;
-            }
+                action = PowerControlType.BlackScreen;
 
             Logger.WriteLog($"방송시간이 아니므로 종료 동작 수행: {action}", Logger.GetLogFileName());
 
@@ -322,14 +320,16 @@ namespace NewHyOnPlayer.Services
                     ApplyBlackScreen();
                     break;
                 case PowerControlType.Hibernation:
-                    ApplyHibernation();
+                    _result = ApplyHibernation();
                     break;
                 default:
                     break;
             }
+
+            return _result;
         }
 
-        private void ApplyHibernation()
+        private bool ApplyHibernation()
         {
             Logger.WriteLog("<<<<<< Hibernation >>>>>>>>>>", Logger.GetLogFileName());
 
@@ -337,28 +337,12 @@ namespace NewHyOnPlayer.Services
             var weekly = GetWeeklySchedule(player, forceReload: true);
             DateTime now = DateTime.Now;
             DateTime? scheduledWakeAt = FindNextWakeUpTime(weekly, now);
-            if (!scheduledWakeAt.HasValue)
-            {
-                Logger.WriteErrorLog("Hibernation aborted: wake-up time was not found.", Logger.GetLogFileName());
-                return;
-            }
 
-            if (!TryResolveWakeTimeForHibernation(now, scheduledWakeAt.Value, out DateTime wakeAt))
-            {
-                return;
-            }
-
-            SetWakeUpAlarm(wakeAt);
+            if (scheduledWakeAt.HasValue && TryResolveWakeTimeForHibernation(now, scheduledWakeAt.Value, out DateTime wakeAt))
+                SetWakeUpAlarm(wakeAt);
 
             owner?.Dispatcher?.Invoke(() => { WindowTools.AllowSleep(); });
-            Suspend();
-            Application.SetSuspendState(PowerState.Suspend, false, false);
-        }
-
-        private void Suspend()
-        {
-            Stop();
-            Thread.Sleep(3000);
+            return Application.SetSuspendState(PowerState.Suspend, false, false);
         }
 
         private bool TryResolveWakeTimeForHibernation(DateTime now, DateTime scheduledWakeAt, out DateTime wakeAt)

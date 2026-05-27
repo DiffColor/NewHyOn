@@ -80,6 +80,8 @@ namespace NewHyOnPlayer
         private SeamlessSyncCoordinator playbackSyncCoordinator;
         private PortInfoManager portInfoManager;
         private int commStarted;
+        private int initialPlaybackStarted;
+        private int initialScheduleChecksEnabled;
         private bool isShortcutCursorVisible;
         private bool isShortcutTaskbarVisible;
         private bool isShortcutTestMode;
@@ -510,6 +512,10 @@ namespace NewHyOnPlayer
             try
             {
                 rethinkSyncService = new RethinkSyncService(g_PlayerInfoManager, g_LocalSettingsManager, 5000);
+                rethinkSyncService.InitialSyncCompleted += serverSynced =>
+                {
+                    StartInitialPlaybackAfterScheduleSync(serverSynced);
+                };
                 rethinkSyncService.PlayerSynced += () =>
                 {
                     g_PlayerName = g_PlayerInfoManager.g_PlayerInfo.PIF_PlayerName;
@@ -527,12 +533,18 @@ namespace NewHyOnPlayer
                 rethinkSyncService.WeeklyScheduleSynced += () =>
                 {
                     SyncReferencedContentPeriodsNow(refreshPlayback: true);
-                    HandleWeeklyScheduleUpdated();
+                    if (Volatile.Read(ref initialScheduleChecksEnabled) == 1)
+                    {
+                        HandleWeeklyScheduleUpdated();
+                    }
                 };
                 rethinkSyncService.SpecialScheduleSynced += () =>
                 {
                     SyncReferencedContentPeriodsNow(refreshPlayback: true);
-                    HandleWeeklyScheduleUpdated();
+                    if (Volatile.Read(ref initialScheduleChecksEnabled) == 1)
+                    {
+                        HandleWeeklyScheduleUpdated();
+                    }
                 };
             }
             catch (Exception ex)
@@ -552,10 +564,10 @@ namespace NewHyOnPlayer
             if (rethinkInitFailed)
             {
                 EnsureCommunicationStarted();
+                StartInitialPlaybackAfterScheduleSync(serverSynced: false);
             }
             scheduleEvaluator = new ScheduleEvaluator(g_PlayerInfoManager);
             onAirService = new OnAirService(this);
-            onAirService.Start();
             portInfoManager = new PortInfoManager();
 
             ChangePlayerStyle();
@@ -569,12 +581,6 @@ namespace NewHyOnPlayer
 
             g_PlayerName = g_PlayerInfoManager.g_PlayerInfo.PIF_PlayerName;
 
-            EnsurePlaybackContainer();
-            playbackSyncCoordinator?.Start();
-            LoadContentPeriodCache();
-            SetInitialLoadingVisible(true);
-            playbackContainer?.StartInitialPlayback(g_PlayerInfoManager.g_PlayerInfo.PIF_DefaultPlayList);
-            HandleWeeklyScheduleUpdated();
             usbUpdateService = new UsbUpdateService(this);
 
             //LoadPeriodData();
@@ -588,8 +594,33 @@ namespace NewHyOnPlayer
                     Logger.WriteLog("PC Scheduler 실행", Logger.GetLogFileName());
                 }
             }
+        }
 
-            onAirService.Start();
+        private void StartInitialPlaybackAfterScheduleSync(bool serverSynced)
+        {
+            if (Interlocked.Exchange(ref initialPlaybackStarted, 1) == 1)
+            {
+                return;
+            }
+
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                Logger.WriteLog(
+                    serverSynced
+                        ? "Initial RethinkDB sync completed. Starting playback after schedule sync."
+                        : "Initial RethinkDB sync failed or unavailable. Starting playback with local schedule data.",
+                    Logger.GetLogFileName());
+
+                EnsureCommunicationStarted();
+                EnsurePlaybackContainer();
+                playbackSyncCoordinator?.Start();
+                LoadContentPeriodCache();
+                SetInitialLoadingVisible(true);
+                onAirService?.Start();
+                playbackContainer?.StartInitialPlayback(g_PlayerInfoManager.g_PlayerInfo.PIF_DefaultPlayList);
+                Volatile.Write(ref initialScheduleChecksEnabled, 1);
+                HandleWeeklyScheduleUpdated();
+            }));
         }
 
         private void LoadContentPeriodCache()

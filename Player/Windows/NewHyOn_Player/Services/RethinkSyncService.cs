@@ -33,10 +33,12 @@ namespace NewHyOnPlayer
         private string currentHost = "127.0.0.1";
         private Connection connection;
         private int isSyncing;
+        private int initialSyncCompleted;
         private bool disposed;
         private bool infoSyncedAfterConnect;
         private bool syncFailedNotified;
 
+        public event Action<bool> InitialSyncCompleted;
         public event Action PlayerSynced;
         public event Action<string> PlayerGuidChanged;
         public event Action WeeklyScheduleSynced;
@@ -120,12 +122,14 @@ namespace NewHyOnPlayer
 
             ThreadPool.QueueUserWorkItem(_ =>
             {
+                bool syncSucceeded = false;
                 try
                 {
-                    GetPlayerGuidOnce();
+                    syncSucceeded = GetPlayerGuidOnce();
                 }
                 finally
                 {
+                    NotifyInitialSyncCompleted(syncSucceeded);
                     Interlocked.Exchange(ref isSyncing, 0);
                     if (scheduleNext)
                     {
@@ -143,13 +147,13 @@ namespace NewHyOnPlayer
             timer.Start();
         }
 
-        private void GetPlayerGuidOnce()
+        private bool GetPlayerGuidOnce()
         {
             try
             {
                 if (manager == null || manager.g_PlayerInfo == null || localManager == null || localManager.Settings == null)
                 {
-                    return;
+                    return false;
                 }
 
                 RefreshLocalNetworkInfo();
@@ -165,7 +169,7 @@ namespace NewHyOnPlayer
                 }
                 if (string.IsNullOrWhiteSpace(playerName))
                 {
-                    return;
+                    return false;
                 }
 
                 string localGuid = manager.g_PlayerInfo.PIF_GUID;
@@ -174,7 +178,7 @@ namespace NewHyOnPlayer
                 if (!lookupSucceeded)
                 {
                     NotifySyncFailed();
-                    return;
+                    return false;
                 }
 
                 syncFailedNotified = false;
@@ -184,7 +188,7 @@ namespace NewHyOnPlayer
                     Logger.WriteLog(
                         $"RethinkSyncService skipped player sync: no registered player data for name '{playerName}'.",
                         Logger.GetLogFileName());
-                    return;
+                    return false;
                 }
 
                 bool guidChanged = !string.Equals(remoteGuid, localGuid, StringComparison.OrdinalIgnoreCase);
@@ -206,22 +210,36 @@ namespace NewHyOnPlayer
                     PlayerGuidChanged?.Invoke(remoteGuid);
                 }
 
-                if (shouldNotifyPlayerSynced)
-                {
-                    PlayerSynced?.Invoke();
-                }
-
                 if (shouldSyncSchedulesForConnection)
                 {
                     SyncWeeklySchedule(remoteGuid, manager.g_PlayerInfo.PIF_PlayerName);
                     SyncSpecialSchedule(remoteGuid, manager.g_PlayerInfo.PIF_PlayerName);
                 }
+
+                if (shouldNotifyPlayerSynced)
+                {
+                    PlayerSynced?.Invoke();
+                }
+
+                return true;
             }
             catch (Exception ex)
             {
                 Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
                 ResetConnection();
+                NotifySyncFailed();
+                return false;
             }
+        }
+
+        private void NotifyInitialSyncCompleted(bool syncSucceeded)
+        {
+            if (Interlocked.Exchange(ref initialSyncCompleted, 1) == 1)
+            {
+                return;
+            }
+
+            InitialSyncCompleted?.Invoke(syncSucceeded);
         }
 
         private void UpdateHost(string host)
