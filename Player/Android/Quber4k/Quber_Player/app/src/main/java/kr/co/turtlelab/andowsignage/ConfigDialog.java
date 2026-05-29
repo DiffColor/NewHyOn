@@ -764,14 +764,13 @@ public class ConfigDialog extends Dialog implements View.OnClickListener {
 		String sourceKey = NetworkUtils.getMACAddress().replace(":", "").toUpperCase();
 		mSrcKey.setText(sourceKey);
 
-		boolean hasStoredKey = false;
+		boolean hasStoredKey = LocalSettingsProvider.hasStoredUsbKeyForDevice();
 		try {
-			hasStoredKey = AuthUtils.HasAuthKey(LocalPathUtils.getAuthFilePath(), sourceKey);
+			if (!hasStoredKey && AuthUtils.HasAuthKey(LocalPathUtils.getAuthFilePath(), sourceKey)) {
+				LocalSettingsProvider.updateUsbAuthKey(AuthUtils.EncodeAuthKey(sourceKey));
+				hasStoredKey = true;
+			}
 		} catch (Exception ignored) { }
-		if (!hasStoredKey) {
-			hasStoredKey = LocalSettingsProvider.hasStoredUsbKeyForDevice();
-		}
-
 		mAuthBtn.setEnabled(!hasStoredKey);
 		mAuthKey.setEnabled(!hasStoredKey);
 		mAuthBg.setBackgroundColor(AndoWSignage.act.getResources().getColor(

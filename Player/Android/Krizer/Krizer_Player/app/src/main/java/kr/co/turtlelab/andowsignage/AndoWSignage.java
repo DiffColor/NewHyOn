@@ -2372,16 +2372,17 @@ public class AndoWSignage extends Activity {
 	}
 
 	private boolean hasAuthorizedUsbKey() {
+		if (LocalSettingsProvider.hasStoredUsbKeyForDevice()) {
+			return true;
+		}
+
 		boolean hasKey = false;
 		try {
 			hasKey = AuthUtils.HasAuthKey(LocalPathUtils.getAuthFilePath(), NetworkUtils.getMACAddress());
+			if (hasKey) {
+				LocalSettingsProvider.updateUsbAuthKey(AuthUtils.EncodeAuthKey(NetworkUtils.getMACAddress().replace(":", "").toUpperCase()));
+			}
 		} catch (Exception ignored) {
-		}
-		if (!hasKey && new File(LocalPathUtils.getAuthFilePath()).exists()) {
-			hasKey = true;
-		}
-		if (!hasKey) {
-			hasKey = LocalSettingsProvider.hasStoredUsbKeyForDevice();
 		}
 		return hasKey;
 	}

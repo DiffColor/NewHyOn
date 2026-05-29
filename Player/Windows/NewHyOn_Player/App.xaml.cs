@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Windows;
 using TurtleTools;
@@ -18,7 +19,7 @@ namespace NewHyOnPlayer
         {
             PlayerInfoManager g_PlayerInfoManager = new PlayerInfoManager();
 
-            if (CheckInvalidAuthKey(g_PlayerInfoManager.g_PlayerInfo.PIF_AuthKey))
+            if (!EnsureAuthorized(g_PlayerInfoManager))
             {
                 //if (CheckDemoExpired())
                 //{
@@ -49,25 +50,64 @@ namespace NewHyOnPlayer
             base.OnExit(e);
         }
 
-        private bool CheckInvalidAuthKey(string encodedKey)
+        private bool EnsureAuthorized(PlayerInfoManager playerInfoManager)
         {
-            if (string.IsNullOrEmpty(encodedKey))
+            if (playerInfoManager == null || playerInfoManager.g_PlayerInfo == null)
+                return false;
+
+            string dbAuthKey = playerInfoManager.g_PlayerInfo.PIF_AuthKey;
+            if (IsDeviceAuthKey(dbAuthKey))
                 return true;
 
-                    // DB 기반 AuthKey 검증
+            string fileAuthKey = ReadValidAuthKeyFromFile();
+            if (string.IsNullOrWhiteSpace(fileAuthKey))
+                return false;
+
+            playerInfoManager.g_PlayerInfo.PIF_AuthKey = fileAuthKey;
+            playerInfoManager.SaveData();
+            return true;
+        }
+
+        private bool IsDeviceAuthKey(string encodedKey)
+        {
+            if (string.IsNullOrEmpty(encodedKey))
+                return false;
+
             List<string> nics = NetworkTools.GetAllMACAddressesBySystemNet();
 
             foreach (string nic in nics)
             {
                 if (encodedKey.Equals(AuthTools.EncodeAuthKey(nic), StringComparison.CurrentCultureIgnoreCase))
-                    return false;
+                    return true;
             }
 
             if (nics.Count < 1)
                 if (encodedKey.Equals(AuthTools.EncodeAuthKey(AuthTools.getUUID12()), StringComparison.CurrentCultureIgnoreCase))
-                    return false;
+                    return true;
 
-            return true;
+            return false;
+        }
+
+        private string ReadValidAuthKeyFromFile()
+        {
+            string authKeyPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "AuthKeys");
+            if (!File.Exists(authKeyPath))
+                return string.Empty;
+
+            try
+            {
+                foreach (string line in File.ReadLines(authKeyPath))
+                {
+                    string candidate = line?.Trim() ?? string.Empty;
+                    if (IsDeviceAuthKey(candidate))
+                        return candidate;
+                }
+            }
+            catch
+            {
+            }
+
+            return string.Empty;
         }
 
         // 데모 프로그램은 최초 설치 후 15일 동안 사용 가능

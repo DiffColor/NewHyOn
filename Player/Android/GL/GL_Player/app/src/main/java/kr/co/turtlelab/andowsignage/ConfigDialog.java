@@ -453,13 +453,13 @@ public class ConfigDialog extends Dialog implements View.OnClickListener {
 
 		mSrcKey.setText(NetworkUtils.getMACAddress().replace(":", "").toUpperCase());
 
-		boolean hasStoredKey = false;
+		boolean hasStoredKey = LocalSettingsProvider.hasStoredUsbKeyForDevice();
 		try {
-			hasStoredKey = AuthUtils.HasAuthKey(LocalPathUtils.getAuthFilePath(), mSrcKey.getText().toString());
+			if (!hasStoredKey && AuthUtils.HasAuthKey(LocalPathUtils.getAuthFilePath(), mSrcKey.getText().toString())) {
+				LocalSettingsProvider.updateUsbAuthKey(AuthUtils.EncodeAuthKey(mSrcKey.getText().toString()));
+				hasStoredKey = true;
+			}
 		} catch (Exception ignored) { }
-		if (!hasStoredKey) {
-			hasStoredKey = LocalSettingsProvider.hasStoredUsbKeyForDevice();
-		}
 		if(hasStoredKey){
 			mAuthBtn.setEnabled(false);
 			mAuthKey.setEnabled(false);

@@ -3,6 +3,7 @@ using NewHyOn.Player.Settings.DataManager;
 using NewHyOn.Player.Settings.Models;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Threading;
@@ -282,17 +283,31 @@ public sealed class PlayerConfigurationService
             }
 
             ExecuteAuthLogic();
+            playerInfoManager.LoadData();
+            (string statusText, bool isLicensed, bool authInputEnabled) = EvaluateAuthState();
+            if (!isLicensed)
+            {
+                return new AuthResult
+                {
+                    Success = false,
+                    StatusText = statusText,
+                    IsLicensed = false,
+                    DisablePasswordInput = !authInputEnabled,
+                    Message = "인증키 생성 후 현재 장비 기준 검증에 실패했습니다."
+                };
+            }
+
             return new AuthResult
             {
                 Success = true,
-                StatusText = "인증 상태 : 정품 인증 완료",
-                IsLicensed = true,
-                DisablePasswordInput = true,
+                StatusText = statusText,
+                IsLicensed = isLicensed,
+                DisablePasswordInput = !authInputEnabled,
                 Message = "인증키 생성에 성공했습니다."
             };
         }
 
-        if (CheckInvalidAuthKey(playerInfoManager.PlayerInfo.PIF_AuthKey))
+        if (!HasCompletedAuth())
         {
             AuthRegistryService.WriteTryAuthReg();
             bool prohibitTrying = AuthRegistryService.ProhibitTrying();
@@ -306,13 +321,16 @@ public sealed class PlayerConfigurationService
             };
         }
 
+        (string currentStatusText, bool currentIsLicensed, bool currentAuthInputEnabled) = EvaluateAuthState();
         return new AuthResult
         {
             Success = false,
-            StatusText = "인증 상태 : 정품 인증 완료",
-            IsLicensed = true,
-            DisablePasswordInput = true,
-            Message = "이미 인증된 장치입니다."
+            StatusText = currentStatusText,
+            IsLicensed = currentIsLicensed,
+            DisablePasswordInput = !currentAuthInputEnabled,
+            Message = currentIsLicensed
+                ? "이미 인증된 장치입니다."
+                : "인증키 생성에 실패했습니다. DB 인증키와 인증파일을 모두 확인해 주세요."
         };
     }
 
@@ -649,7 +667,7 @@ public sealed class PlayerConfigurationService
 
     private (string statusText, bool isLicensed, bool authInputEnabled) EvaluateAuthState()
     {
-        bool isLicensed = !CheckInvalidAuthKey(playerInfoManager.PlayerInfo.PIF_AuthKey);
+        bool isLicensed = HasCompletedAuth();
         if (isLicensed)
         {
             return ("인증 상태 : 정품 인증 완료", true, false);
@@ -673,9 +691,13 @@ public sealed class PlayerConfigurationService
 
         if (!hasValid && networkCards.Count < 1)
         {
-            string uuidKey = AuthRegistryService.EncodeAuthKey(AuthRegistryService.GetUuid12FromWmi());
-            hasValid = string.Equals(encodedKey, uuidKey, StringComparison.CurrentCultureIgnoreCase);
-            if (!hasValid)
+            string uuid = AuthRegistryService.GetUuid12FromWmi();
+            string uuidKey = string.IsNullOrWhiteSpace(uuid)
+                ? string.Empty
+                : AuthRegistryService.EncodeAuthKey(uuid);
+            hasValid = !string.IsNullOrWhiteSpace(uuidKey) &&
+                string.Equals(encodedKey, uuidKey, StringComparison.CurrentCultureIgnoreCase);
+            if (!hasValid && !string.IsNullOrWhiteSpace(uuidKey))
             {
                 encodedKey = uuidKey;
             }
@@ -688,9 +710,78 @@ public sealed class PlayerConfigurationService
                 encodedKey = AuthRegistryService.EncodeAuthKey(networkCards[0]);
             }
 
+            if (string.IsNullOrWhiteSpace(encodedKey))
+            {
+                return;
+            }
+
             playerInfoManager.PlayerInfo.PIF_AuthKey = encodedKey;
             playerInfoManager.SaveData();
         }
+
+        WriteAuthKeyFile(encodedKey);
+    }
+
+    private bool HasCompletedAuth()
+    {
+        string dbAuthKey = playerInfoManager.PlayerInfo.PIF_AuthKey;
+        if (!CheckInvalidAuthKey(dbAuthKey))
+        {
+            return true;
+        }
+
+        string fileAuthKey = ReadValidAuthKeyFromFile();
+        if (string.IsNullOrWhiteSpace(fileAuthKey))
+        {
+            return false;
+        }
+
+        playerInfoManager.PlayerInfo.PIF_AuthKey = fileAuthKey;
+        playerInfoManager.SaveData();
+        return true;
+    }
+
+    private string ReadValidAuthKeyFromFile()
+    {
+        string authKeyPath = FndTools.GetAuthKeyPath();
+        if (!File.Exists(authKeyPath))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            foreach (string line in File.ReadLines(authKeyPath))
+            {
+                string candidate = line?.Trim() ?? string.Empty;
+                if (!CheckInvalidAuthKey(candidate))
+                {
+                    return candidate;
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return string.Empty;
+    }
+
+    private static void WriteAuthKeyFile(string encodedKey)
+    {
+        if (string.IsNullOrWhiteSpace(encodedKey))
+        {
+            return;
+        }
+
+        string authKeyPath = FndTools.GetAuthKeyPath();
+        string? directory = Path.GetDirectoryName(authKeyPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        File.WriteAllText(authKeyPath, encodedKey.Trim() + Environment.NewLine);
     }
 
     private string ValidateRegisteredPlayerForAuth()

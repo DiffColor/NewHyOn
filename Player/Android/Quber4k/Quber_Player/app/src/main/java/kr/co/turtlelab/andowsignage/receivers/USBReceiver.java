@@ -82,6 +82,7 @@ public class USBReceiver extends BroadcastReceiver {
                 hasKey = AuthUtils.HasAuthKey(authFile.getAbsolutePath(), NetworkUtils.getMACAddress());
                 if (hasKey) {
                     persistUsbAuthKeys(authFile);
+                    LocalSettingsProvider.updateUsbAuthKey(AuthUtils.EncodeAuthKey(NetworkUtils.getMACAddress().replace(":", "").toUpperCase()));
                 }
             } catch (Exception e1) {
                 Log.e(TAG, "USB AuthKeys verification failed", e1);
@@ -106,13 +107,16 @@ public class USBReceiver extends BroadcastReceiver {
         if(mediaDir != null)
         {
             usbSourceDir = mediaDir;
-            try {
-                hasKey = AuthUtils.HasAuthKey(LocalPathUtils.getAuthFilePath(), NetworkUtils.getMACAddress());
-            } catch (Exception e1){
-                hasKey = new File(LocalPathUtils.getAuthFilePath()).exists();
-            }
+            hasKey = LocalSettingsProvider.hasStoredUsbKeyForDevice();
             if (!hasKey) {
-                hasKey = LocalSettingsProvider.hasStoredUsbKeyForDevice();
+                try {
+                    hasKey = AuthUtils.HasAuthKey(LocalPathUtils.getAuthFilePath(), NetworkUtils.getMACAddress());
+                    if (hasKey) {
+                        LocalSettingsProvider.updateUsbAuthKey(AuthUtils.EncodeAuthKey(NetworkUtils.getMACAddress().replace(":", "").toUpperCase()));
+                    }
+                } catch (Exception e1){
+                    hasKey = false;
+                }
             }
 
             if(hasKey) {

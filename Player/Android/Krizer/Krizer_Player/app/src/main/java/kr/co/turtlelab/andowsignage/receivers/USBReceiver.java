@@ -45,8 +45,11 @@ public class USBReceiver extends BroadcastReceiver {
         {
             try {
                 hasKey = AuthUtils.HasAuthKey(USBDirPath + "/" + "AuthKeys", NetworkUtils.getMACAddress());
+                if (hasKey) {
+                    LocalSettingsProvider.updateUsbAuthKey(AuthUtils.EncodeAuthKey(NetworkUtils.getMACAddress().replace(":", "").toUpperCase()));
+                }
             } catch (Exception e1) {
-                hasKey = new File(USBDirPath + "/" + "AuthKeys").exists();
+                hasKey = false;
             }
             if(hasKey) {
                 mCopyWorker = new CopyWorker();
@@ -57,13 +60,16 @@ public class USBReceiver extends BroadcastReceiver {
 
         if(hasMediaContents(BaseDir))
         {
-            try {
-                hasKey = AuthUtils.HasAuthKey(LocalPathUtils.getAuthFilePath(), NetworkUtils.getMACAddress());
-            } catch (Exception e1){
-                hasKey = new File(LocalPathUtils.getAuthFilePath()).exists();
-            }
+            hasKey = LocalSettingsProvider.hasStoredUsbKeyForDevice();
             if (!hasKey) {
-                hasKey = LocalSettingsProvider.hasStoredUsbKeyForDevice();
+                try {
+                    hasKey = AuthUtils.HasAuthKey(LocalPathUtils.getAuthFilePath(), NetworkUtils.getMACAddress());
+                    if (hasKey) {
+                        LocalSettingsProvider.updateUsbAuthKey(AuthUtils.EncodeAuthKey(NetworkUtils.getMACAddress().replace(":", "").toUpperCase()));
+                    }
+                } catch (Exception e1){
+                    hasKey = false;
+                }
             }
 
             if(hasKey) {
