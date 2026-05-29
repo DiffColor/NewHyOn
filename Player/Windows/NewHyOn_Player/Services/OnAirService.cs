@@ -1,4 +1,5 @@
 ﻿using AndoW.Shared;
+using Microsoft.Win32;
 using Microsoft.Win32.SafeHandles;
 using Remotion.Linq.Utilities;
 using System;
@@ -27,6 +28,8 @@ namespace NewHyOnPlayer.Services
         private BackgroundWorker wakeWorker;
         private SharedWeeklyPlayScheduleInfo cachedWeekly;
         private DateTime cachedLoadedAt = DateTime.MinValue;
+        private const int SuspendStabilizationDelayMs = 3000;
+        private const int ResumeRebootDelaySeconds = 15;
         private static readonly TimeSpan MinimumHibernationLeadTime = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan WakeTimeAdjustmentThreshold = TimeSpan.FromMinutes(1);
         private static readonly TimeSpan ShortLeadWakeDelay = TimeSpan.FromSeconds(30);
@@ -45,6 +48,7 @@ namespace NewHyOnPlayer.Services
                 Resolution = 1
             };
             timer.Tick += OnTick;
+            SystemEvents.PowerModeChanged += OnPowerModeChanged;
         }
 
         public void Start()
@@ -111,6 +115,7 @@ namespace NewHyOnPlayer.Services
             disposed = true;
             try
             {
+                SystemEvents.PowerModeChanged -= OnPowerModeChanged;
                 RestoreMonitor();
                 timer.Stop();
                 timer.Dispose();
@@ -339,9 +344,14 @@ namespace NewHyOnPlayer.Services
             DateTime? scheduledWakeAt = FindNextWakeUpTime(weekly, now);
 
             if (scheduledWakeAt.HasValue && TryResolveWakeTimeForHibernation(now, scheduledWakeAt.Value, out DateTime wakeAt))
+            {
                 SetWakeUpAlarm(wakeAt);
+            }
 
+            Stop();
+            owner?.PrepareForSuspend();
             owner?.Dispatcher?.Invoke(() => { WindowTools.AllowSleep(); });
+            Thread.Sleep(SuspendStabilizationDelayMs);
             return Application.SetSuspendState(PowerState.Suspend, false, false);
         }
 
@@ -385,9 +395,27 @@ namespace NewHyOnPlayer.Services
 
         private void _wakeupAlarm_Woken(object sender, EventArgs e)
         {
+            RebootAfterResume();
+        }
+
+        private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
+        {
+            if (e.Mode == PowerModes.Resume)
+            {
+                ThreadPool.QueueUserWorkItem(_ => RebootAfterResume());
+            }
+        }
+
+        private void RebootAfterResume()
+        {
+            if (Interlocked.Exchange(ref hibernationResumeStarted, 1) == 1)
+            {
+                return;
+            }
+
             try
             {
-                Thread.Sleep(15000);
+                Thread.Sleep(TimeSpan.FromSeconds(ResumeRebootDelaySeconds));
 
                 Logger.WriteLog("<<<<<< Resume >>>>>>>>>>", Logger.GetLogFileName());
                 Logger.WriteLog(string.Format("깨어난 시간: {0}", DateTime.Now.ToString()), Logger.GetLogFileName());
@@ -396,7 +424,7 @@ namespace NewHyOnPlayer.Services
             }
             catch (Exception ex)
             {
-                Thread.Sleep(15000);
+                Thread.Sleep(TimeSpan.FromSeconds(ResumeRebootDelaySeconds));
                 System.Diagnostics.Process.Start("shutdown", "-r -t 0 -f");
             }
         }

@@ -82,6 +82,7 @@ namespace NewHyOnPlayer
         private int commStarted;
         private int initialPlaybackStarted;
         private int initialScheduleChecksEnabled;
+        private int suspendPreparationStarted;
         private bool isShortcutCursorVisible;
         private bool isShortcutTaskbarVisible;
         private bool isShortcutTestMode;
@@ -489,6 +490,11 @@ namespace NewHyOnPlayer
 
         private void EnsureCommunicationStarted()
         {
+            if (IsSuspendPreparationStarted)
+            {
+                return;
+            }
+
             if (Interlocked.Exchange(ref commStarted, 1) == 1)
             {
                 heartbeatReporter?.Start();
@@ -598,6 +604,11 @@ namespace NewHyOnPlayer
 
         private void StartInitialPlaybackAfterScheduleSync(bool serverSynced)
         {
+            if (IsSuspendPreparationStarted)
+            {
+                return;
+            }
+
             if (Interlocked.Exchange(ref initialPlaybackStarted, 1) == 1)
             {
                 return;
@@ -1154,46 +1165,89 @@ namespace NewHyOnPlayer
         internal string CurrentPageListName => playbackContainer?.CurrentPageListName ?? string.Empty;
         internal string CurrentPageName => playbackContainer?.CurrentPageName ?? g_CurrentPageName;
         internal string NextPageName => playbackContainer?.NextPageName ?? string.Empty;
-        internal bool IsPlaying => playbackContainer?.IsPresentationActive() ?? false;
-        internal bool IsPlaybackAllowedNow() => onAirService?.IsOnAirNow() ?? true;
-        internal bool IsSyncPlaybackActive => playbackSyncCoordinator?.IsSyncPlaybackActive ?? (g_LocalSettingsManager?.Settings?.IsSyncEnabled ?? false);
+        internal bool IsPlaying => !IsSuspendPreparationStarted && (playbackContainer?.IsPresentationActive() ?? false);
+        internal bool IsPlaybackAllowedNow() => !IsSuspendPreparationStarted && (onAirService?.IsOnAirNow() ?? true);
+        internal bool IsSyncPlaybackActive => !IsSuspendPreparationStarted && (playbackSyncCoordinator?.IsSyncPlaybackActive ?? (g_LocalSettingsManager?.Settings?.IsSyncEnabled ?? false));
         internal bool IsSyncLeader => playbackSyncCoordinator?.IsSyncLeader ?? (IsSyncPlaybackActive && (g_LocalSettingsManager?.Settings?.IsLeading ?? false));
         internal RemoteCommandService CommandService => commandService;
         internal ScheduleEvaluator ScheduleEvaluatorService => scheduleEvaluator;
         internal OnAirService OnAirServiceInstance => onAirService;
-        internal long BeginUpdateHeartbeatReporting() => heartbeatReporter?.BeginUpdateReporting() ?? 0;
+        internal long BeginUpdateHeartbeatReporting()
+        {
+            if (IsSuspendPreparationStarted)
+            {
+                return 0;
+            }
+
+            return heartbeatReporter?.BeginUpdateReporting() ?? 0;
+        }
         internal void SendHeartbeatNow()
         {
+            if (IsSuspendPreparationStarted)
+            {
+                return;
+            }
+
             heartbeatReporter?.SendHeartbeatNow();
         }
 
         internal bool RequestPlaybackSyncNow()
         {
+            if (IsSuspendPreparationStarted)
+            {
+                return false;
+            }
+
             return playbackSyncCoordinator?.RequestSyncNow() ?? false;
         }
 
         internal void ReportUpdateHeartbeatNow(string status, int progress, bool force, long sessionId)
         {
+            if (IsSuspendPreparationStarted)
+            {
+                return;
+            }
+
             heartbeatReporter?.ReportUpdateNow(status, progress, force, sessionId);
         }
 
         internal void EndUpdateHeartbeatReporting(long sessionId, bool sendNormalHeartbeatNow)
         {
+            if (IsSuspendPreparationStarted)
+            {
+                return;
+            }
+
             heartbeatReporter?.EndUpdateReporting(sessionId, sendNormalHeartbeatNow);
         }
 
         public void UpdateCurrentPageListName(string pageListName)
         {
+            if (IsSuspendPreparationStarted)
+            {
+                return;
+            }
+
             playbackContainer?.UpdateCurrentPageListName(pageListName);
         }
 
         public void PopPage()
         {
+            if (IsSuspendPreparationStarted)
+            {
+                return;
+            }
+
             playbackContainer?.PlayNextPage();
         }
 
         public void PlayFirstPage()
         {
+            if (IsSuspendPreparationStarted)
+            {
+                return;
+            }
+
             playbackContainer?.PlayFirstPage();
         }
 
@@ -1211,11 +1265,21 @@ namespace NewHyOnPlayer
 
         internal void RequestScheduleEvaluation(bool force = false)
         {
+            if (IsSuspendPreparationStarted)
+            {
+                return;
+            }
+
             playbackContainer?.RequestScheduleEvaluation(force);
         }
 
         internal void HandleWeeklyScheduleUpdated()
         {
+            if (IsSuspendPreparationStarted)
+            {
+                return;
+            }
+
             scheduleEvaluator?.InvalidateWeeklyCache();
             onAirService?.RefreshWeeklySchedule();
             playbackContainer?.HandleWeeklyScheduleUpdated();
@@ -1223,27 +1287,137 @@ namespace NewHyOnPlayer
 
         internal void RequestPlaylistReload(string playlistName, string reason)
         {
+            if (IsSuspendPreparationStarted)
+            {
+                return;
+            }
+
             playbackContainer?.RequestPlaylistReload(playlistName, reason);
         }
 
         internal void RequestWeeklyScheduleSyncNow()
         {
+            if (IsSuspendPreparationStarted)
+            {
+                return;
+            }
+
             rethinkSyncService?.TriggerSyncNow();
         }
 
         internal void RequestPlayerGuidSyncNow()
         {
+            if (IsSuspendPreparationStarted)
+            {
+                return;
+            }
+
             rethinkSyncService?.TriggerSyncNow();
         }
 
         internal void StartPlaybackFromOffAir()
         {
+            if (IsSuspendPreparationStarted)
+            {
+                return;
+            }
+
             playbackContainer?.StartPlaybackFromOffAir();
         }
 
         internal void ResetPlaybackCursor()
         {
+            if (IsSuspendPreparationStarted)
+            {
+                return;
+            }
+
             g_PageIndex = 0;
+        }
+
+        internal bool IsSuspendPreparationStarted => Volatile.Read(ref suspendPreparationStarted) == 1;
+
+        internal void PrepareForSuspend()
+        {
+            if (Interlocked.Exchange(ref suspendPreparationStarted, 1) == 1)
+            {
+                return;
+            }
+
+            Logger.WriteLog("Suspend preparation started. Stopping playback and background timers.", Logger.GetLogFileName());
+
+            try
+            {
+                var commandServiceLocal = commandService;
+                commandService = null;
+                if (commandServiceLocal != null)
+                {
+                    commandServiceLocal.Stop();
+                    commandServiceLocal.Dispose();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog($"Suspend preparation command service stop failed: {ex}", Logger.GetLogFileName());
+            }
+
+            try
+            {
+                var rethinkServiceLocal = rethinkSyncService;
+                rethinkSyncService = null;
+                if (rethinkServiceLocal != null)
+                {
+                    rethinkServiceLocal.Stop();
+                    rethinkServiceLocal.Dispose();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog($"Suspend preparation rethink sync stop failed: {ex}", Logger.GetLogFileName());
+            }
+
+            try
+            {
+                heartbeatReporter?.StopForSuspend();
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog($"Suspend preparation heartbeat stop failed: {ex}", Logger.GetLogFileName());
+            }
+
+            try
+            {
+                var signalRServiceLocal = signalRClientService;
+                signalRClientService = null;
+                signalRServiceLocal?.Stop();
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog($"Suspend preparation SignalR stop failed: {ex}", Logger.GetLogFileName());
+            }
+
+            try
+            {
+                playbackSyncCoordinator?.Dispose();
+                playbackSyncCoordinator = null;
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog($"Suspend preparation playback sync stop failed: {ex}", Logger.GetLogFileName());
+            }
+
+            Dispatcher.Invoke(DispatcherPriority.Send, new Action(() =>
+            {
+                try
+                {
+                    playbackContainer?.StopAll();
+                    playbackContainer?.HideAll();
+                }
+                catch (Exception ex)
+                {
+                    Logger.WriteErrorLog($"Suspend preparation playback stop failed: {ex}", Logger.GetLogFileName());
+                }
+            }));
         }
 
         private void Window_LocationChanged(object sender, EventArgs e)

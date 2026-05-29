@@ -56,6 +56,12 @@ namespace NewHyOnPlayer
             StopTimer();
         }
 
+        public void StopForSuspend()
+        {
+            Interlocked.Exchange(ref terminalStopped, 1);
+            StopTimer();
+        }
+
         public void SendHeartbeatNow()
         {
             if (IsTerminalStopped())
