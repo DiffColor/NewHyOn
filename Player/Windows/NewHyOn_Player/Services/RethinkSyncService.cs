@@ -427,6 +427,7 @@ namespace NewHyOnPlayer
                 {
                     ["PIF_PlayerName"] = player.PIF_PlayerName ?? string.Empty,
                     ["PIF_CurrentPlayList"] = player.PIF_CurrentPlayList ?? string.Empty,
+                    ["PIF_DefaultPlayList"] = player.PIF_DefaultPlayList ?? string.Empty,
                     ["PIF_IPAddress"] = string.IsNullOrWhiteSpace(localIp) ? player.PIF_IPAddress ?? string.Empty : localIp,
                     ["PIF_OSName"] = osName,
                     ["PIF_MacAddress"] = string.IsNullOrWhiteSpace(mac) ? player.PIF_MacAddress ?? string.Empty : mac,

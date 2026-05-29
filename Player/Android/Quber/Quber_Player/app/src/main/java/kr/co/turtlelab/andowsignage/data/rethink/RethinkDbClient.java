@@ -39,6 +39,7 @@ import kr.co.turtlelab.andowsignage.AndoWSignageApp;
 import kr.co.turtlelab.andowsignage.data.DataSyncManager;
 import kr.co.turtlelab.andowsignage.data.realm.RealmPlayer;
 import kr.co.turtlelab.andowsignage.data.update.UpdateQueueContract;
+import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
 import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
 import kr.co.turtlelab.andowsignage.tools.QuberAgentClient;
 
@@ -456,6 +457,12 @@ public class RethinkDbClient {
         }
         if (!TextUtils.isEmpty(playerName)) {
             values.put("PIF_PlayerName", playerName.trim());
+        }
+        String defaultPlaylist = getStoredDefaultPlaylist();
+        values.put("PIF_DefaultPlayList", TextUtils.isEmpty(defaultPlaylist) ? "" : defaultPlaylist.trim());
+        String authKey = resolveLocalAuthKey();
+        if (!TextUtils.isEmpty(authKey)) {
+            values.put("PIF_AuthKey", authKey);
         }
         if (!TextUtils.isEmpty(ip)) {
             values.put("PIF_IPAddress", ip);
@@ -929,6 +936,27 @@ public class RethinkDbClient {
         return null;
     }
 
+    public String getStoredDefaultPlaylist() {
+        Realm realm = Realm.getDefaultInstance();
+        try {
+            RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
+            if (player != null) {
+                return player.getPlaylistName();
+            }
+        } finally {
+            realm.close();
+        }
+        return "";
+    }
+
+    private String resolveLocalAuthKey() {
+        if (!LocalSettingsProvider.hasStoredUsbKeyForDevice()) {
+            return "";
+        }
+        String authKey = LocalSettingsProvider.getUsbAuthKey();
+        return TextUtils.isEmpty(authKey) ? "" : authKey.trim();
+    }
+
     public void preparePlayerNameChange(String playerName) {
         String normalizedPlayerName = playerName == null ? "" : playerName.trim();
         if (TextUtils.isEmpty(normalizedPlayerName)) {
@@ -1041,6 +1069,12 @@ public class RethinkDbClient {
         Map<String, Object> payload = new HashMap<>();
         payload.put("id", guid);
         payload.put("PIF_PlayerName", TextUtils.isEmpty(playerName) ? "" : playerName.trim());
+        String defaultPlaylist = getStoredDefaultPlaylist();
+        payload.put("PIF_DefaultPlayList", TextUtils.isEmpty(defaultPlaylist) ? "" : defaultPlaylist.trim());
+        String authKey = resolveLocalAuthKey();
+        if (!TextUtils.isEmpty(authKey)) {
+            payload.put("PIF_AuthKey", authKey);
+        }
         String ip = resolveLocalIpAddress();
         if (!TextUtils.isEmpty(ip)) {
             payload.put("PIF_IPAddress", ip);
