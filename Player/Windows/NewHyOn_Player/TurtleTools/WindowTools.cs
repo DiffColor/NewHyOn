@@ -701,12 +701,12 @@ namespace TurtleTools
             IntPtr trayShellHandle = FindWindow("Shell_TrayWnd", null);
             IntPtr taryNotiHandle = FindWindowEx(trayShellHandle, IntPtr.Zero, "TrayNotifyWnd", null);
             IntPtr sysPagerHandle = FindWindowEx(taryNotiHandle, IntPtr.Zero, "SysPager", null);
-            
+
             IntPtr notiAreaHandle = FindWindowEx(sysPagerHandle, IntPtr.Zero, "ToolbarWindow32", "Notification Area");
 
             if (notiAreaHandle == IntPtr.Zero)
             {
-                IntPtr notiAreaKorHandle = FindWindowEx(sysPagerHandle, IntPtr.Zero, "ToolbarWindow32", "¾Ë¸² ¿µ¿ª");
+                IntPtr notiAreaKorHandle = FindWindowEx(sysPagerHandle, IntPtr.Zero, "ToolbarWindow32", "ì•Œë¦¼ ì˜ì—­");
                 if (notiAreaKorHandle != IntPtr.Zero)
                     RefreshTrayArea(notiAreaKorHandle);
             }
@@ -718,20 +718,20 @@ namespace TurtleTools
 
             if (notiUserDefAreaHandle == IntPtr.Zero)
             {
-                IntPtr notiUserDefAreaKorHandle = FindWindowEx(sysPagerHandle, IntPtr.Zero, "ToolbarWindow32", "»ç¿ëÀÚ ÁöÁ¤ ¾Ë¸² ¿µ¿ª");
+                IntPtr notiUserDefAreaKorHandle = FindWindowEx(sysPagerHandle, IntPtr.Zero, "ToolbarWindow32", "ì‚¬ìš©ì ì§€ì • ì•Œë¦¼ ì˜ì—­");
                 if (notiUserDefAreaKorHandle != IntPtr.Zero)
                     RefreshTrayArea(notiUserDefAreaKorHandle);
             }
             else
                 RefreshTrayArea(notiUserDefAreaHandle);
-            
+
 
             IntPtr overfNotiWinHandle = FindWindow("NotifyIconOverflowWindow", null);
             IntPtr overfNotiAreaHandle = FindWindowEx(overfNotiWinHandle, IntPtr.Zero, "ToolbarWindow32", "Overflow Notification Area");
 
             if (overfNotiAreaHandle == IntPtr.Zero)
             {
-                IntPtr overfNotiAreaKorHandle = FindWindowEx(overfNotiWinHandle, IntPtr.Zero, "ToolbarWindow32", "¿À¹öÇÃ·Î ¾Ë¸² ¿µ¿ª");
+                IntPtr overfNotiAreaKorHandle = FindWindowEx(overfNotiWinHandle, IntPtr.Zero, "ToolbarWindow32", "ì˜¤ë²„í”Œë¡œ ì•Œë¦¼ ì˜ì—­");
                 if (overfNotiAreaKorHandle != IntPtr.Zero)
                     RefreshTrayArea(overfNotiAreaKorHandle);
             }
