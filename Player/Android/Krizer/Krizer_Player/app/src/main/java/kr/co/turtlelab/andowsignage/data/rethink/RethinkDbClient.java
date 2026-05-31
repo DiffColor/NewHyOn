@@ -261,6 +261,10 @@ public class RethinkDbClient {
     }
 
     public RethinkModels.PlayerInfoRecord fetchPlayerByGuid(String playerGuid) {
+        return fetchPlayerByGuidInternal(playerGuid, true);
+    }
+
+    private RethinkModels.PlayerInfoRecord fetchPlayerByGuidInternal(String playerGuid, boolean persistSkeleton) {
         if (TextUtils.isEmpty(playerGuid)) {
             return null;
         }
@@ -272,7 +276,9 @@ public class RethinkDbClient {
             return null;
         }
         RethinkModels.PlayerInfoRecord record = convert(map, RethinkModels.PlayerInfoRecord.class);
-        saveRealmPlayerSkeleton(record);
+        if (persistSkeleton) {
+            saveRealmPlayerSkeleton(record);
+        }
         return record;
     }
 
@@ -427,8 +433,11 @@ public class RethinkDbClient {
         if (playerId == null || playerId.isEmpty()) {
             return;
         }
+        Map existing = runSingle(R.db(DATABASE).table(TABLE_PLAYER).get(playerId));
+        if (existing == null) {
+            return;
+        }
         Map<String, Object> values = new HashMap<>();
-        values.put("id", playerId);
         String playerName = getStoredPlayerName();
         if (TextUtils.isEmpty(playerName)) {
             playerName = AndoWSignageApp.PLAYER_ID;
@@ -457,8 +466,8 @@ public class RethinkDbClient {
         try {
             R.db(DATABASE)
                     .table(TABLE_PLAYER)
-                    .insert(values)
-                    .optArg("conflict", "update")
+                    .get(playerId)
+                    .update(values)
                     .runNoReply(getConnection());
         } catch (Exception ex) {
             Log.e(TAG, "RethinkDbClient: operation failed", ex);
@@ -864,7 +873,17 @@ public class RethinkDbClient {
                 || (now - lastGuidVerificationEpochMs) >= GUID_VERIFICATION_INTERVAL_MS;
 
         if (shouldVerifyRemotely) {
-            playerRecord = fetchPlayerInternal(normalizedPlayerName, false, storedGuid);
+            if (!TextUtils.isEmpty(guid)) {
+                RethinkModels.PlayerInfoRecord playerByGuid = fetchPlayerByGuidInternal(guid, false);
+                if (playerByGuid != null && isSamePlayerName(playerByGuid.getPlayerName(), normalizedPlayerName)) {
+                    playerRecord = playerByGuid;
+                }
+            }
+
+            if (playerRecord == null) {
+                playerRecord = fetchPlayerInternal(normalizedPlayerName, false, storedGuid);
+            }
+
             if (playerRecord != null && !TextUtils.isEmpty(playerRecord.getGuid())) {
                 guid = playerRecord.getGuid();
                 guidVerified = true;
@@ -1029,59 +1048,6 @@ public class RethinkDbClient {
                 deviceInfoSynced = false;
                 lastSyncedPlayerGuid = null;
             }
-        }
-    }
-
-    private String createNewGuidNotExists() {
-        for (int attempt = 0; attempt < 5; attempt++) {
-            String candidate = UUID.randomUUID().toString();
-            Map exists = runSingle(R.db(DATABASE).table(TABLE_PLAYER).get(candidate));
-            if (exists == null || exists.isEmpty()) {
-                return candidate;
-            }
-        }
-        return UUID.randomUUID().toString();
-    }
-
-    private String upsertPlayerSkeleton(String guid, String normalizedPlayerName, String storedPlayerName) {
-        if (TextUtils.isEmpty(guid)) {
-            return null;
-        }
-        String playerName = !TextUtils.isEmpty(normalizedPlayerName)
-                ? normalizedPlayerName
-                : storedPlayerName;
-        if (TextUtils.isEmpty(playerName)) {
-            playerName = AndoWSignageApp.PLAYER_ID;
-        }
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("id", guid);
-        payload.put("PIF_PlayerName", TextUtils.isEmpty(playerName) ? "" : playerName.trim());
-        String defaultPlaylist = getStoredDefaultPlaylist();
-        payload.put("PIF_DefaultPlayList", TextUtils.isEmpty(defaultPlaylist) ? "" : defaultPlaylist.trim());
-        String authKey = resolveLocalAuthKey();
-        if (!TextUtils.isEmpty(authKey)) {
-            payload.put("PIF_AuthKey", authKey);
-        }
-        String ip = resolveLocalIpAddress();
-        if (!TextUtils.isEmpty(ip)) {
-            payload.put("PIF_IPAddress", ip);
-        }
-        String mac = NetworkUtils.getMACAddress();
-        if (!TextUtils.isEmpty(mac)) {
-            payload.put("PIF_MacAddress", mac);
-        }
-        payload.put("PIF_OSName", "Android " + Build.VERSION.RELEASE);
-        try {
-            R.db(DATABASE)
-                    .table(TABLE_PLAYER)
-                    .insert(payload)
-                    .optArg("conflict", "update")
-                    .runNoReply(getConnection());
-            saveRealmPlayerSkeleton(guid, playerName);
-            return guid;
-        } catch (Exception ex) {
-            Log.e(TAG, "RethinkDbClient: operation failed", ex);
-            return null;
         }
     }
 
