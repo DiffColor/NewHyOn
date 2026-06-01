@@ -338,7 +338,7 @@
                 			<ColumnDefinition Width="7*"/>
                 		</Grid.ColumnDefinitions>
                 		<TextBox x:Name="TextBoxNewPlayerName" TextWrapping="NoWrap" FontFamily="Verdana" Background="#FF9F9F9F" VerticalAlignment="Center" Grid.Column="1" Margin="5,0,30,0" BorderThickness="0"/>
-			<TextBlock HorizontalAlignment="Right" TextWrapping="Wrap" FontFamily="Tahoma" FontSize="16" IsEnabled="False" Text="기기 주소 :" VerticalAlignment="Center" Padding="0,0,0,3" Foreground="White" Margin="0,3.677">
+			<TextBlock HorizontalAlignment="Right" TextWrapping="Wrap" FontFamily="Tahoma" FontSize="16" IsEnabled="False" Text="기기식별키 :" VerticalAlignment="Center" Padding="0,0,0,3" Foreground="White" Margin="0,3.677">
                 			<TextBlock.Effect>
                 				<DropShadowEffect BlurRadius="0" ShadowDepth="1" Opacity="0.1" Color="#FF004A58"/>
                 			</TextBlock.Effect></TextBlock>

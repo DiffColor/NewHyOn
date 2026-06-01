@@ -363,8 +363,10 @@ namespace AndoW_Manager
                     }
 
                     string payloadBase64 = DataShop.Instance.g_UpdatePayloadBuilder.BuildPayloadBase64(player);
-                    MainWindow.Instance.EnqueueCommandForPlayer(player, RP_ORDER.updatelist.ToString(), payloadBase64, pushSignalR: true);
-                    successCount++;
+                    if (MainWindow.Instance.EnqueueCommandForPlayer(player, RP_ORDER.updatelist.ToString(), payloadBase64, pushSignalR: true))
+                    {
+                        successCount++;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -445,8 +447,10 @@ namespace AndoW_Manager
                     }
 
                     string payloadBase64 = DataShop.Instance.g_UpdatePayloadBuilder.BuildPayloadBase64(player);
-                    MainWindow.Instance.EnqueueCommandForPlayer(player, RP_ORDER.updatelist.ToString(), payloadBase64, pushSignalR: true);
-                    successCount++;
+                    if (MainWindow.Instance.EnqueueCommandForPlayer(player, RP_ORDER.updatelist.ToString(), payloadBase64, pushSignalR: true))
+                    {
+                        successCount++;
+                    }
                 }
                 catch (Exception ex)
                 {

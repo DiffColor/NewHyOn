@@ -266,6 +266,23 @@
                     Text="Player Status" TextWrapping="Wrap" FontFamily="Malgun Gothic" Foreground="Black" FontSize="11" HorizontalAlignment="Center" Margin="0,-4,0,0" />
             </StackPanel>
         </Grid>
-        <Path x:Name="SelectIcon" Data="M16.953,2.543C16.953,2.774,16.837,3.005,16.607,3.236Q8.765,11.211 8.765,11.211 7.265,12.714 7.265,12.714C7.035,12.83 6.804,12.945 6.458,12.945 6.227,12.945 5.997,12.83 5.766,12.714Q4.267,11.211 4.267,11.211 0.346,7.166 0.346,7.166C0.115,7.05 0,6.819 0,6.473 0,6.126 0.115,5.895 0.346,5.779Q1.845,4.277,1.845,4.277C2.076,4.045 2.306,3.93 2.537,3.93 2.883,3.93 3.114,4.045 3.344,4.277Q6.458,7.513 6.458,7.513 13.723,0.231 13.723,0.231C13.839,0.116 14.069,0 14.415,0 14.646,0 14.992,0.116 15.107,0.231Q16.607,1.734,16.607,1.734C16.837,1.965,16.953,2.196,16.953,2.543z" Fill="#FFEB0000" HorizontalAlignment="Left" Height="11" Stretch="Fill" StrokeThickness="0" UseLayoutRounding="False" VerticalAlignment="Top" Width="14" Margin="7,28,7,0" Visibility="Hidden"/>
+        <Border x:Name="UnauthenticatedOverlay" Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="50" Width="142" Height="68" HorizontalAlignment="Center" VerticalAlignment="Center" Background="#FFFFF2E6" BorderBrush="#FFC30000" BorderThickness="3" CornerRadius="1" Opacity="0.96" RenderTransformOrigin="0.5,0.5">
+            <Border.RenderTransform>
+                <RotateTransform Angle="-16"/>
+            </Border.RenderTransform>
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="7" ShadowDepth="2" Opacity="0.35" Color="#FF4A0000"/>
+            </Border.Effect>
+            <Grid>
+                <Rectangle Margin="4" Stroke="#FFC30000" StrokeThickness="1" Fill="#18C30000"/>
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock x:Name="UnauthenticatedStampText" Text="미인증" FontFamily="Malgun Gothic" FontSize="28" FontWeight="Black" Foreground="#FFC30000" HorizontalAlignment="Center"/>
+                    <Border x:Name="UnauthenticatedStampSubTextBorder" BorderBrush="#FFC30000" BorderThickness="1" Margin="0,-3,0,0" Padding="7,0">
+                        <TextBlock x:Name="UnauthenticatedStampSubText" Text="전송 차단" FontFamily="Malgun Gothic" FontSize="10" FontWeight="Bold" Foreground="#FFC30000" HorizontalAlignment="Center"/>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+        <Path x:Name="SelectIcon" Panel.ZIndex="60" Data="M16.953,2.543C16.953,2.774,16.837,3.005,16.607,3.236Q8.765,11.211 8.765,11.211 7.265,12.714 7.265,12.714C7.035,12.83 6.804,12.945 6.458,12.945 6.227,12.945 5.997,12.83 5.766,12.714Q4.267,11.211 4.267,11.211 0.346,7.166 0.346,7.166C0.115,7.05 0,6.819 0,6.473 0,6.126 0.115,5.895 0.346,5.779Q1.845,4.277,1.845,4.277C2.076,4.045 2.306,3.93 2.537,3.93 2.883,3.93 3.114,4.045 3.344,4.277Q6.458,7.513 6.458,7.513 13.723,0.231 13.723,0.231C13.839,0.116 14.069,0 14.415,0 14.646,0 14.992,0.116 15.107,0.231Q16.607,1.734,16.607,1.734C16.837,1.965,16.953,2.196,16.953,2.543z" Fill="#FFEB0000" HorizontalAlignment="Left" Height="11" Stretch="Fill" StrokeThickness="0" UseLayoutRounding="False" VerticalAlignment="Top" Width="14" Margin="7,28,7,0" Visibility="Hidden"/>
     </Grid>
 </UserControl>

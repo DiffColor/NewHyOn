@@ -41,11 +41,17 @@ namespace AndoW_Manager
         {
             InitializeComponent();
             InitEventHandler();
+            SizeChanged += PlayerInfoElement_SizeChanged;
             SelectBorder.Visibility = System.Windows.Visibility.Hidden;
 
             ShowAndHideSelectedBorder(false);
 
             DisplayPlayerStatus(PlayerStatus.Stopped);
+        }
+
+        private void PlayerInfoElement_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            ApplyUnauthenticatedOverlayLayout();
         }
 
         public void DisableContentReport()
@@ -116,7 +122,7 @@ namespace AndoW_Manager
 
             if (string.IsNullOrWhiteSpace(target))
             {
-                MessageTools.ShowMessageBox("원격 번호 또는 기기 주소를 입력해주세요.", "확인");
+                MessageTools.ShowMessageBox("원격 번호 또는 IP 주소를 입력해주세요.", "확인");
                 return;
             }
 
@@ -308,8 +314,34 @@ namespace AndoW_Manager
             if (MessageTools.ShowMessageBox("플레이어를 깨우시겠습니까?"))
             {
                 MainWindow.Instance.EnqueueCommandForPlayer(g_PlayerInfoClass, RP_ORDER.updateschedule.ToString(), pushSignalR: true);
-                WOL_Sender.SendWOLPacket(this.g_PlayerInfoClass.PIF_MacAddress);
+                string wakeOnLanMacAddress = AuthTools.NormalizeMacAddress(this.g_PlayerInfoClass.PIF_MacAddress);
+                if (IsWakeOnLanMacAddress(wakeOnLanMacAddress) == false)
+                {
+                    MessageTools.ShowMessageBox("기기식별키는 WOL MAC 주소가 아니므로 원격 전원 켜기를 사용할 수 없습니다.", "확인");
+                    return;
+                }
+
+                WOL_Sender.SendWOLPacket(wakeOnLanMacAddress);
             }
+        }
+
+        private static bool IsWakeOnLanMacAddress(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value) || value.Length != 12)
+            {
+                return false;
+            }
+
+            foreach (char ch in value)
+            {
+                bool isHex = (ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'F');
+                if (isHex == false)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         void MC_PowerOff_Click(object sender, RoutedEventArgs e)
@@ -588,6 +620,8 @@ namespace AndoW_Manager
             {
                 BTN0DO_Copy6.Visibility = System.Windows.Visibility.Hidden;
             }
+
+            ApplyUnauthenticatedOverlayLayout();
         }
 
         public void UpdateDataInfo(PlayerInfoClass paramCls, List<PageListInfoClass> paramPageList)
@@ -627,6 +661,7 @@ namespace AndoW_Manager
             }
 
             ApplyCurrentPlaylistSelection();
+            RefreshAuthenticationOverlay();
         }
 
         public void DisplayDataInfo()
@@ -646,6 +681,76 @@ namespace AndoW_Manager
             }
 
             ApplyCurrentPlaylistSelection();
+            RefreshAuthenticationOverlay();
+        }
+
+        public void RefreshAuthenticationOverlay()
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(RefreshAuthenticationOverlay), DispatcherPriority.Background);
+                return;
+            }
+
+            if (UnauthenticatedOverlay == null)
+            {
+                return;
+            }
+
+            SyncPlayerInfoFromManager();
+            bool visible = IsUnauthenticatedPlayer();
+            UnauthenticatedOverlay.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            ApplyUnauthenticatedOverlayLayout();
+        }
+
+        private bool IsUnauthenticatedPlayer()
+        {
+            if (g_PlayerInfoClass == null)
+            {
+                return false;
+            }
+
+            bool hasPlayerIdentity = !string.IsNullOrWhiteSpace(g_PlayerInfoClass.PIF_GUID)
+                || !string.IsNullOrWhiteSpace(g_PlayerInfoClass.PIF_PlayerName);
+            if (hasPlayerIdentity == false)
+            {
+                return false;
+            }
+
+            var playerInfoManager = DataShop.Instance?.g_PlayerInfoManager;
+            if (playerInfoManager == null)
+            {
+                return false;
+            }
+
+            return playerInfoManager.HasValidAuthKey(g_PlayerInfoClass) == false;
+        }
+
+        private void ApplyUnauthenticatedOverlayLayout()
+        {
+            if (UnauthenticatedOverlay == null || UnauthenticatedStampText == null || UnauthenticatedStampSubTextBorder == null)
+            {
+                return;
+            }
+
+            bool compact = ActualHeight > 0 && ActualHeight <= 70;
+            if (compact)
+            {
+                UnauthenticatedOverlay.Width = 104;
+                UnauthenticatedOverlay.Height = 31;
+                UnauthenticatedOverlay.Margin = new Thickness(0, 3, 0, 0);
+                UnauthenticatedOverlay.VerticalAlignment = VerticalAlignment.Center;
+                UnauthenticatedStampText.FontSize = 18;
+                UnauthenticatedStampSubTextBorder.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            UnauthenticatedOverlay.Width = 142;
+            UnauthenticatedOverlay.Height = 68;
+            UnauthenticatedOverlay.Margin = new Thickness(0);
+            UnauthenticatedOverlay.VerticalAlignment = VerticalAlignment.Center;
+            UnauthenticatedStampText.FontSize = 28;
+            UnauthenticatedStampSubTextBorder.Visibility = Visibility.Visible;
         }
 
         private void SyncPlayerInfoFromManager()
@@ -657,15 +762,17 @@ namespace AndoW_Manager
 
             PlayerInfoClass latest = null;
 
+            List<PlayerInfoClass> players = DataShop.Instance.g_PlayerInfoManager.g_PlayerInfoClassList.ToList();
+
             if (!string.IsNullOrWhiteSpace(g_PlayerInfoClass.PIF_GUID))
             {
-                latest = DataShop.Instance.g_PlayerInfoManager.g_PlayerInfoClassList.FirstOrDefault(x =>
+                latest = players.FirstOrDefault(x =>
                     x != null && x.PIF_GUID == g_PlayerInfoClass.PIF_GUID);
             }
 
             if (latest == null && !string.IsNullOrWhiteSpace(g_PlayerInfoClass.PIF_PlayerName))
             {
-                latest = DataShop.Instance.g_PlayerInfoManager.g_PlayerInfoClassList.FirstOrDefault(x =>
+                latest = players.FirstOrDefault(x =>
                     x != null && x.PIF_PlayerName.Equals(g_PlayerInfoClass.PIF_PlayerName, StringComparison.CurrentCultureIgnoreCase));
             }
 

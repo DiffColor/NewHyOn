@@ -38,6 +38,8 @@ namespace AndoW_Manager
         public List<string> onlineList = new List<string>();
 
         DispatcherTimer checkTimer = new DispatcherTimer();
+        private DateTime _nextAuthOverlayRefreshAt = DateTime.MinValue;
+        private bool _authOverlayRefreshQueued;
 
         public static MainWindow Instance { get; set; }
 
@@ -94,9 +96,15 @@ namespace AndoW_Manager
             g_Page3 = new Page3();
             g_Page5 = new Page5();
 
+            DataShop.Instance.g_PlayerInfoManager.AuthValidationChanged -= PlayerInfoManager_AuthValidationChanged;
+            DataShop.Instance.g_PlayerInfoManager.AuthValidationChanged += PlayerInfoManager_AuthValidationChanged;
+
             RefreshSavedPageList();
             g_Page2.RefreshPageNameList();
             g_Page3.RefreshPlayerInfoList();
+            DataShop.Instance.g_PlayerInfoManager.RequestAuthValidationForAll(
+                DataShop.Instance.g_PlayerInfoManager.g_PlayerInfoClassList,
+                forceRefresh: true);
         }
 
         public void RefreshSavedPageList()
@@ -276,6 +284,36 @@ namespace AndoW_Manager
 
         private void checkTimer_Tick(object sender, EventArgs e)
         {
+            if (DateTime.UtcNow < _nextAuthOverlayRefreshAt)
+            {
+                return;
+            }
+
+            _nextAuthOverlayRefreshAt = DateTime.UtcNow.AddSeconds(30);
+            DataShop.Instance.g_PlayerInfoManager.RequestAuthValidationForAll(
+                DataShop.Instance.g_PlayerInfoManager.g_PlayerInfoClassList,
+                forceRefresh: true);
+            ScheduleAuthOverlayRefresh();
+        }
+
+        private void PlayerInfoManager_AuthValidationChanged(object sender, EventArgs e)
+        {
+            ScheduleAuthOverlayRefresh();
+        }
+
+        private void ScheduleAuthOverlayRefresh()
+        {
+            if (_authOverlayRefreshQueued)
+            {
+                return;
+            }
+
+            _authOverlayRefreshQueued = true;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                _authOverlayRefreshQueued = false;
+                g_Page3?.RefreshPlayerAuthenticationOverlays();
+            }), DispatcherPriority.Background);
         }
 
         public bool EnqueueCommandForPlayer(PlayerInfoClass player, string command, string payloadBase64 = "", bool pushSignalR = true)
@@ -286,6 +324,13 @@ namespace AndoW_Manager
             }
             string playerId = player.PIF_GUID.Trim();
             string normalizedCommand = command.Trim();
+            if (RequiresAuthenticatedPlayer(normalizedCommand)
+                && !DataShop.Instance.g_PlayerInfoManager.HasValidAuthKey(player))
+            {
+                NotifyUnauthenticatedCommandBlocked(player, normalizedCommand);
+                return false;
+            }
+
             string resolvedPayload = payloadBase64 ?? string.Empty;
             if (string.IsNullOrWhiteSpace(resolvedPayload)
                 && string.Equals(normalizedCommand, RP_ORDER.updateschedule.ToString(), StringComparison.OrdinalIgnoreCase))
@@ -327,10 +372,23 @@ namespace AndoW_Manager
             return true;
         }
 
+        private static bool RequiresAuthenticatedPlayer(string command)
+        {
+            return string.Equals(command, RP_ORDER.updatelist.ToString(), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(command, RP_ORDER.updateschedule.ToString(), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(command, RP_ORDER.updateweekly.ToString(), StringComparison.OrdinalIgnoreCase);
+        }
+
         public bool SendUrgentUpdateList(PlayerInfoClass player)
         {
             if (player == null || string.IsNullOrWhiteSpace(player.PIF_GUID))
             {
+                return false;
+            }
+
+            if (!DataShop.Instance.g_PlayerInfoManager.HasValidAuthKey(player))
+            {
+                NotifyUnauthenticatedCommandBlocked(player, RP_ORDER.updatelist.ToString());
                 return false;
             }
 
@@ -383,6 +441,7 @@ namespace AndoW_Manager
                 return;
             }
 
+            int blockedCount = 0;
             foreach (var player in playerManager.g_PlayerInfoClassList ?? new List<PlayerInfoClass>())
             {
                 if (player == null
@@ -390,6 +449,12 @@ namespace AndoW_Manager
                     || string.IsNullOrWhiteSpace(player.PIF_PlayerName)
                     || !onlinePlayers.Contains(player.PIF_PlayerName))
                 {
+                    continue;
+                }
+
+                if (!playerManager.HasValidAuthKey(player))
+                {
+                    blockedCount++;
                     continue;
                 }
 
@@ -405,6 +470,40 @@ namespace AndoW_Manager
 
                 SignalRClientTools.TrySendCommandToClient(player.PIF_GUID, envelope);
             }
+
+            if (blockedCount > 0)
+            {
+                EnqueueSnackMsg($"미인증 플레이어 {blockedCount}대의 콘텐츠 기간 업데이트 전송을 차단했습니다.");
+            }
+        }
+
+        private void NotifyUnauthenticatedCommandBlocked(PlayerInfoClass player, string command)
+        {
+            string playerName = string.IsNullOrWhiteSpace(player?.PIF_PlayerName)
+                ? "이름 없음"
+                : player.PIF_PlayerName;
+            EnqueueSnackMsg($"미인증 플레이어 명령을 차단했습니다. ({playerName}, {GetCommandDisplayName(command)})");
+            ScheduleAuthOverlayRefresh();
+        }
+
+        private static string GetCommandDisplayName(string command)
+        {
+            if (string.Equals(command, RP_ORDER.updatelist.ToString(), StringComparison.OrdinalIgnoreCase))
+            {
+                return "온라인 플레이리스트";
+            }
+
+            if (string.Equals(command, RP_ORDER.updateschedule.ToString(), StringComparison.OrdinalIgnoreCase))
+            {
+                return "온라인 스케줄";
+            }
+
+            if (string.Equals(command, RP_ORDER.updateweekly.ToString(), StringComparison.OrdinalIgnoreCase))
+            {
+                return "주간 스케줄";
+            }
+
+            return string.IsNullOrWhiteSpace(command) ? "알 수 없는 명령" : command;
         }
 
         private static string BuildSchedulePayloadBase64(PlayerInfoClass player)

@@ -567,6 +567,10 @@ namespace AndoW_Manager
 
             RefreshPlayerElementLookup();
 
+            DataShop.Instance.g_PlayerInfoManager.RequestAuthValidationForAll(
+                g_PlayerInfoElementList.Select(x => x.g_PlayerInfoClass),
+                forceRefresh: true);
+
             ScheduleVisibleRefresh();
 
             Is_ComboBoxInit = false;
@@ -963,8 +967,29 @@ namespace AndoW_Manager
                 if (item.g_PlayerInfoClass.PIF_PlayerName == playerName)
                 {
                     item.g_PlayerInfoClass.PIF_MacAddress = normalized;
+                    DataShop.Instance.g_PlayerInfoManager.RequestAuthValidation(item.g_PlayerInfoClass, forceRefresh: true);
+                    item.RefreshAuthenticationOverlay();
                     break;
                 }
+            }
+        }
+
+        public void RefreshPlayerAuthenticationOverlays()
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(RefreshPlayerAuthenticationOverlays), DispatcherPriority.Background);
+                return;
+            }
+
+            foreach (PlayerInfoElement item in g_PlayerInfoElementList.ToList())
+            {
+                if (item == null || item.Dispatcher.HasShutdownStarted)
+                {
+                    continue;
+                }
+
+                item.RefreshAuthenticationOverlay();
             }
         }
 

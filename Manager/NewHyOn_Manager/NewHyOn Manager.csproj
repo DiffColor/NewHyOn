@@ -17,7 +17,7 @@
     <FileAlignment>512</FileAlignment>
     <ProjectTypeGuids>{60dc8134-eba5-43b8-bcc9-bb4bc16c2548};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
     <WarningLevel>4</WarningLevel>
-    <ApplicationIcon>turtle_icon.ico</ApplicationIcon>
+    <ApplicationIcon>NewHyon_M_256.ico</ApplicationIcon>
     <Utf8Output>true</Utf8Output>
     <PublishUrl>게시\</PublishUrl>
     <Install>true</Install>
@@ -110,6 +110,14 @@
     </Reference>
     <Reference Include="K4os.Hash.xxHash, Version=1.0.8.0, Culture=neutral, PublicKeyToken=32cd54395057cec3, processorArchitecture=MSIL">
       <HintPath>..\packages\K4os.Hash.xxHash.1.0.8\lib\net462\K4os.Hash.xxHash.dll</HintPath>
+    </Reference>
+    <Reference Include="BouncyCastle.Crypto">
+      <HintPath>..\..\Player\Windows\Dependencies\LicenseHub.DeviceAuth\net472\BouncyCastle.Crypto.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="LicenseHub.DeviceAuth.Core">
+      <HintPath>..\..\Player\Windows\Dependencies\LicenseHub.DeviceAuth\netstandard2.0\LicenseHub.DeviceAuth.Core.dll</HintPath>
+      <Private>True</Private>
     </Reference>
     <Reference Include="LiteDB, Version=5.0.21.0, Culture=neutral, PublicKeyToken=4ee40123013c9f27, processorArchitecture=MSIL">
       <HintPath>..\packages\LiteDB.5.0.21\lib\net45\LiteDB.dll</HintPath>
@@ -398,6 +406,9 @@
     <Compile Include="DataManager\PlayerInfoManager.cs" />
     <Compile Include="DataManager\CommandQueueManager.cs" />
     <Compile Include="DataManager\UpdatePayloadBuilder.cs" />
+    <Compile Include="..\..\Player\Windows\SharedAuth\LicenseHubAuthRuntime.cs">
+      <Link>Shared\Auth\LicenseHubAuthRuntime.cs</Link>
+    </Compile>
     <Compile Include="DataManager\ContentDetailsManager.cs" />
     <Compile Include="DataManager\UpdateThrottleSettingsManager.cs" />
     <Compile Include="DataManager\ServerSettingsManager.cs" />
@@ -973,6 +984,7 @@
     <Content Include="MediaInfo.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Resource Include="NewHyon_M_256.ico" />
     <Content Include="Scripts\jquery-1.6.4-vsdoc.js" />
     <Content Include="Scripts\jquery-1.6.4.js" />
     <Content Include="Scripts\jquery-1.6.4.min.js" />

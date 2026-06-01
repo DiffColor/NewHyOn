@@ -1,8 +1,11 @@
 ﻿using Newtonsoft.Json;
+using NewHyOn.Shared.Auth;
 using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using TurtleTools;
 
 
@@ -10,7 +13,18 @@ namespace AndoW_Manager
 {
     public class PlayerInfoManager : RethinkDbManagerBase<PlayerInfoClass>
     {
+        private const int AuthValidationBatchSize = 16;
+        private const int AuthValidationMaxConcurrency = 4;
+        private static readonly TimeSpan AuthValidationRefreshInterval = TimeSpan.FromSeconds(30);
+        private readonly object authValidationLock = new object();
+        private readonly Queue<AuthValidationRequest> authValidationQueue = new Queue<AuthValidationRequest>();
+        private readonly HashSet<string> queuedAuthValidationKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, AuthValidationCacheEntry> authValidationCache =
+            new Dictionary<string, AuthValidationCacheEntry>(StringComparer.OrdinalIgnoreCase);
+        private bool authValidationWorkerRunning;
+
         public List<PlayerInfoClass> g_PlayerInfoClassList = new List<PlayerInfoClass>();
+        public event EventHandler AuthValidationChanged;
 
         public PlayerInfoManager()
             : base(RethinkDbConfigurator.GetDataDatabaseName(), nameof(PlayerInfoManager), "id")
@@ -590,6 +604,90 @@ namespace AndoW_Manager
                 return false;
             }
 
+            string authKey = player.PIF_AuthKey?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(authKey))
+            {
+                return false;
+            }
+
+            LicenseHubLocalLicenseFile license = LicenseHubLocalLicenseStore.TryDeserialize(authKey);
+            if (license != null)
+            {
+                string deviceFingerprint = ResolveLicenseHubDeviceFingerprint(player, license);
+                if (string.IsNullOrWhiteSpace(deviceFingerprint))
+                {
+                    UpdateAuthValidationCache(player, BuildAuthSignature(authKey, deviceFingerprint), false);
+                    return false;
+                }
+
+                string signature = BuildAuthSignature(authKey, deviceFingerprint);
+                if (TryGetCachedAuthState(player, signature, out bool cachedValid, out bool shouldRefresh))
+                {
+                    if (shouldRefresh)
+                    {
+                        QueueAuthValidation(player, license, deviceFingerprint, signature, forceRefresh: true);
+                    }
+
+                    return cachedValid;
+                }
+
+                QueueAuthValidation(player, license, deviceFingerprint, signature, forceRefresh: false);
+                return false;
+            }
+
+            bool legacyValid = HasValidLegacyAuthKey(player, authKey);
+            UpdateAuthValidationCache(player, BuildAuthSignature(authKey, player.PIF_MacAddress), legacyValid);
+            return legacyValid;
+        }
+
+        public void RequestAuthValidationForAll(IEnumerable<PlayerInfoClass> players, bool forceRefresh = false)
+        {
+            if (players == null)
+            {
+                return;
+            }
+
+            foreach (PlayerInfoClass player in players.ToList())
+            {
+                RequestAuthValidation(player, forceRefresh);
+            }
+        }
+
+        public void RequestAuthValidation(PlayerInfoClass player, bool forceRefresh = false)
+        {
+            if (player == null)
+            {
+                return;
+            }
+
+            string authKey = player.PIF_AuthKey?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(authKey))
+            {
+                UpdateAuthValidationCache(player, BuildAuthSignature(authKey, player.PIF_MacAddress), false);
+                return;
+            }
+
+            LicenseHubLocalLicenseFile license = LicenseHubLocalLicenseStore.TryDeserialize(authKey);
+            if (license == null)
+            {
+                bool legacyValid = HasValidLegacyAuthKey(player, authKey);
+                UpdateAuthValidationCache(player, BuildAuthSignature(authKey, player.PIF_MacAddress), legacyValid);
+                return;
+            }
+
+            string deviceFingerprint = ResolveLicenseHubDeviceFingerprint(player, license);
+            string signature = BuildAuthSignature(authKey, deviceFingerprint);
+            if (string.IsNullOrWhiteSpace(deviceFingerprint))
+            {
+                UpdateAuthValidationCache(player, signature, false);
+                return;
+            }
+
+            QueueAuthValidation(player, license, deviceFingerprint, signature, forceRefresh);
+        }
+
+        private static bool HasValidLegacyAuthKey(PlayerInfoClass player, string authKey)
+        {
             string normalizedMac = AuthTools.NormalizeMacAddress(player.PIF_MacAddress);
             if (string.IsNullOrWhiteSpace(normalizedMac))
             {
@@ -597,7 +695,233 @@ namespace AndoW_Manager
             }
 
             string expectedKey = AuthTools.EncodeAuthKey(normalizedMac);
-            return string.Equals(player.PIF_AuthKey, expectedKey, StringComparison.CurrentCultureIgnoreCase);
+            return string.Equals(authKey, expectedKey, StringComparison.CurrentCultureIgnoreCase);
+        }
+
+        private bool TryGetCachedAuthState(PlayerInfoClass player, string signature, out bool isValid, out bool shouldRefresh)
+        {
+            isValid = false;
+            shouldRefresh = false;
+
+            string cacheKey = GetAuthCacheKey(player);
+            if (string.IsNullOrWhiteSpace(cacheKey) || string.IsNullOrWhiteSpace(signature))
+            {
+                return false;
+            }
+
+            lock (authValidationLock)
+            {
+                if (!authValidationCache.TryGetValue(cacheKey, out AuthValidationCacheEntry entry))
+                {
+                    return false;
+                }
+
+                if (!string.Equals(entry.Signature, signature, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                isValid = entry.IsValid;
+                shouldRefresh = DateTime.UtcNow - entry.CheckedAtUtc >= AuthValidationRefreshInterval;
+                return true;
+            }
+        }
+
+        private void QueueAuthValidation(
+            PlayerInfoClass player,
+            LicenseHubLocalLicenseFile license,
+            string deviceFingerprint,
+            string signature,
+            bool forceRefresh)
+        {
+            string cacheKey = GetAuthCacheKey(player);
+            if (string.IsNullOrWhiteSpace(cacheKey) ||
+                license == null ||
+                string.IsNullOrWhiteSpace(deviceFingerprint) ||
+                string.IsNullOrWhiteSpace(signature))
+            {
+                return;
+            }
+
+            string queueKey = cacheKey + "|" + signature;
+            lock (authValidationLock)
+            {
+                if (!forceRefresh &&
+                    authValidationCache.TryGetValue(cacheKey, out AuthValidationCacheEntry entry) &&
+                    string.Equals(entry.Signature, signature, StringComparison.Ordinal) &&
+                    DateTime.UtcNow - entry.CheckedAtUtc < AuthValidationRefreshInterval)
+                {
+                    return;
+                }
+
+                if (!queuedAuthValidationKeys.Add(queueKey))
+                {
+                    return;
+                }
+
+                authValidationQueue.Enqueue(new AuthValidationRequest
+                {
+                    CacheKey = cacheKey,
+                    QueueKey = queueKey,
+                    Signature = signature,
+                    DeviceFingerprint = deviceFingerprint,
+                    License = CloneLicense(license)
+                });
+
+                if (authValidationWorkerRunning)
+                {
+                    return;
+                }
+
+                authValidationWorkerRunning = true;
+                Task.Run(() => ProcessAuthValidationQueueAsync());
+            }
+        }
+
+        private async Task ProcessAuthValidationQueueAsync()
+        {
+            while (true)
+            {
+                List<AuthValidationRequest> batch = DequeueAuthValidationBatch();
+                if (batch.Count == 0)
+                {
+                    lock (authValidationLock)
+                    {
+                        if (authValidationQueue.Count == 0)
+                        {
+                            authValidationWorkerRunning = false;
+                            return;
+                        }
+                    }
+
+                    continue;
+                }
+
+                using (SemaphoreSlim semaphore = new SemaphoreSlim(AuthValidationMaxConcurrency))
+                {
+                    Task[] tasks = batch
+                        .Select(request => ProcessAuthValidationRequestAsync(request, semaphore))
+                        .ToArray();
+                    await Task.WhenAll(tasks).ConfigureAwait(false);
+                }
+            }
+        }
+
+        private List<AuthValidationRequest> DequeueAuthValidationBatch()
+        {
+            List<AuthValidationRequest> batch = new List<AuthValidationRequest>();
+            lock (authValidationLock)
+            {
+                while (authValidationQueue.Count > 0 && batch.Count < AuthValidationBatchSize)
+                {
+                    AuthValidationRequest request = authValidationQueue.Dequeue();
+                    queuedAuthValidationKeys.Remove(request.QueueKey);
+                    batch.Add(request);
+                }
+            }
+
+            return batch;
+        }
+
+        private async Task ProcessAuthValidationRequestAsync(AuthValidationRequest request, SemaphoreSlim semaphore)
+        {
+            await semaphore.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                ValidationResult result = await Task.Run(() =>
+                    LicenseHubLocalValidator.ValidateForDeviceFingerprint(
+                        request.License,
+                        request.DeviceFingerprint)).ConfigureAwait(false);
+
+                UpdateAuthValidationCache(request.CacheKey, request.Signature, result.IsValid);
+            }
+            catch
+            {
+                UpdateAuthValidationCache(request.CacheKey, request.Signature, false);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        }
+
+        private void UpdateAuthValidationCache(PlayerInfoClass player, string signature, bool isValid)
+        {
+            string cacheKey = GetAuthCacheKey(player);
+            if (string.IsNullOrWhiteSpace(cacheKey))
+            {
+                return;
+            }
+
+            UpdateAuthValidationCache(cacheKey, signature, isValid);
+        }
+
+        private void UpdateAuthValidationCache(string cacheKey, string signature, bool isValid)
+        {
+            bool changed = false;
+            lock (authValidationLock)
+            {
+                if (!authValidationCache.TryGetValue(cacheKey, out AuthValidationCacheEntry entry) ||
+                    !string.Equals(entry.Signature, signature, StringComparison.Ordinal) ||
+                    entry.IsValid != isValid)
+                {
+                    changed = true;
+                }
+
+                authValidationCache[cacheKey] = new AuthValidationCacheEntry
+                {
+                    Signature = signature ?? string.Empty,
+                    IsValid = isValid,
+                    CheckedAtUtc = DateTime.UtcNow
+                };
+            }
+
+            if (changed)
+            {
+                AuthValidationChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+
+        private static LicenseHubLocalLicenseFile CloneLicense(LicenseHubLocalLicenseFile license)
+        {
+            if (license == null)
+            {
+                return null;
+            }
+
+            return new LicenseHubLocalLicenseFile
+            {
+                ProductId = license.ProductId,
+                DeviceFingerprint = license.DeviceFingerprint,
+                DeviceId = license.DeviceId,
+                LicenseToken = license.LicenseToken,
+                SavedAt = license.SavedAt
+            };
+        }
+
+        private static string BuildAuthSignature(string authKey, string deviceFingerprint)
+        {
+            return (authKey ?? string.Empty).Trim() + "|" + (deviceFingerprint ?? string.Empty).Trim();
+        }
+
+        private static string GetAuthCacheKey(PlayerInfoClass player)
+        {
+            if (player == null)
+            {
+                return string.Empty;
+            }
+
+            if (!string.IsNullOrWhiteSpace(player.PIF_GUID))
+            {
+                return "id:" + player.PIF_GUID.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(player.PIF_PlayerName))
+            {
+                return "name:" + NormalizePlayerName(player.PIF_PlayerName);
+            }
+
+            return string.Empty;
         }
 
         public bool ApplyAuthKey(string encodedKey)
@@ -613,6 +937,21 @@ namespace AndoW_Manager
                 {
                     continue;
                 }
+                LicenseHubLocalLicenseFile license = LicenseHubLocalLicenseStore.TryDeserialize(encodedKey);
+                if (license != null)
+                {
+                    string deviceFingerprint = ResolveLicenseHubDeviceFingerprint(player, license);
+                    if (LicenseHubLocalValidator.ValidateForDeviceFingerprint(license, deviceFingerprint).IsValid)
+                    {
+                        player.PIF_AuthKey = encodedKey;
+                        player.PIF_MacAddress = deviceFingerprint;
+                        SavePlayer(player);
+                        return true;
+                    }
+
+                    continue;
+                }
+
                 string normalizedMac = AuthTools.NormalizeMacAddress(player.PIF_MacAddress);
                 if (string.IsNullOrWhiteSpace(normalizedMac))
                 {
@@ -651,6 +990,25 @@ namespace AndoW_Manager
             return applied;
         }
 
+        private static string ResolveLicenseHubDeviceFingerprint(PlayerInfoClass player, LicenseHubLocalLicenseFile license)
+        {
+            string licenseFingerprint = license?.DeviceFingerprint?.Trim() ?? string.Empty;
+            string storedIdentity = player?.PIF_MacAddress?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(storedIdentity))
+            {
+                return licenseFingerprint;
+            }
+
+            if (string.IsNullOrWhiteSpace(licenseFingerprint))
+            {
+                return storedIdentity;
+            }
+
+            return string.Equals(storedIdentity, licenseFingerprint, StringComparison.OrdinalIgnoreCase)
+                ? storedIdentity
+                : string.Empty;
+        }
+
         public List<string> GetAllAuthKeys()
         {
             return g_PlayerInfoClassList
@@ -682,6 +1040,22 @@ namespace AndoW_Manager
         private static bool IsSamePlayerName(string left, string right)
         {
             return string.Equals(NormalizePlayerName(left), NormalizePlayerName(right), StringComparison.CurrentCultureIgnoreCase);
+        }
+
+        private sealed class AuthValidationRequest
+        {
+            public string CacheKey { get; set; } = string.Empty;
+            public string QueueKey { get; set; } = string.Empty;
+            public string Signature { get; set; } = string.Empty;
+            public string DeviceFingerprint { get; set; } = string.Empty;
+            public LicenseHubLocalLicenseFile License { get; set; }
+        }
+
+        private sealed class AuthValidationCacheEntry
+        {
+            public string Signature { get; set; } = string.Empty;
+            public bool IsValid { get; set; }
+            public DateTime CheckedAtUtc { get; set; } = DateTime.MinValue;
         }
 
     }

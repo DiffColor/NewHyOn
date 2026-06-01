@@ -33,6 +33,9 @@ namespace AndoW_Manager
             if (string.IsNullOrEmpty(normalizedMac))
                 return;
 
+            DataShop.Instance.g_PlayerInfoManager.AuthValidationChanged -= PlayerInfoManager_AuthValidationChanged;
+            DataShop.Instance.g_PlayerInfoManager.AuthValidationChanged += PlayerInfoManager_AuthValidationChanged;
+            DataShop.Instance.g_PlayerInfoManager.RequestAuthValidation(g_pic, forceRefresh: true);
             bool authorized = DataShop.Instance.g_PlayerInfoManager.HasValidAuthKey(g_pic.PIF_PlayerName);
             SetAuthState(authorized);
         }
@@ -40,6 +43,7 @@ namespace AndoW_Manager
         void InitWindowChrome()
         {
             this.StateChanged += GetAuthWindow_StateChanged;
+            this.Closed += GetAuthWindow_Closed;
 
             if (minBTN_Copy != null)
             {
@@ -95,6 +99,20 @@ namespace AndoW_Manager
         void ExitBTN_Click(object sender, RoutedEventArgs e)
         {
             this.Close();
+        }
+
+        private void GetAuthWindow_Closed(object sender, EventArgs e)
+        {
+            DataShop.Instance.g_PlayerInfoManager.AuthValidationChanged -= PlayerInfoManager_AuthValidationChanged;
+        }
+
+        private void PlayerInfoManager_AuthValidationChanged(object sender, EventArgs e)
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                bool authorized = DataShop.Instance.g_PlayerInfoManager.HasValidAuthKey(g_pic.PIF_PlayerName);
+                SetAuthState(authorized);
+            }));
         }
 
         void GetAuthWindow_StateChanged(object sender, EventArgs e)
@@ -175,7 +193,7 @@ namespace AndoW_Manager
                 string macStr = AuthTools.NormalizeMacAddress(MacAddress.Text);
                 if (string.IsNullOrEmpty(macStr))
                 {
-                    MessageTools.ShowMessageBox("기기 코드가 없습니다. 플레이어 정보를 확인해주세요.", "확인");
+                    MessageTools.ShowMessageBox("기기식별키가 없습니다. 플레이어 정보를 확인해주세요.", "확인");
                     return;
                 }
                 string checkVal = AuthTools.GetPasswd2(macStr);
