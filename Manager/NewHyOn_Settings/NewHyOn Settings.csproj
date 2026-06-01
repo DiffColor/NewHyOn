@@ -8,9 +8,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
-    <ApplicationIcon>turtle_icon.ico</ApplicationIcon>
+    <ApplicationIcon>NewHyon_M_256.ico</ApplicationIcon>
     <Platforms>AnyCPU;x64</Platforms>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <PackageIcon>NewHyon_Manager_TMl.png</PackageIcon>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
@@ -34,6 +35,17 @@
     <Compile Include="..\..\Shared\Windows\FirewallRuleSynchronizer.cs">
       <Link>Shared\FirewallRuleSynchronizer.cs</Link>
     </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="NewHyon_M_256.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\..\..\Installer\Prerequisites\icons\NewHyon_icon\NewHyon_Manager_TMl.png">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
   </ItemGroup>
 
 </Project>

@@ -221,6 +221,11 @@ Test/
 Player/Windows/NewHyOn_Player/lib/mpv-2.dll
 Player/Windows/NewHyOn_Player/mpv-2.dll
 
+# Local filesystem aliases/shortcuts
+**/* alias
+**/* alias.lnk
+**/*.lnk
+
 # Misc
 **/ClientBin/
 tmp/
