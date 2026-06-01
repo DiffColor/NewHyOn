@@ -1,5 +1,6 @@
 ﻿using Newtonsoft.Json;
 using NewHyOn.Shared.Auth;
+using LicenseHub.DeviceAuth.Core;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -589,6 +590,48 @@ namespace AndoW_Manager
 
             player.PIF_AuthKey = authKey ?? string.Empty;
             SavePlayer(player);
+            RequestAuthValidation(player, forceRefresh: true);
+        }
+
+        public void SetLegacyAuthKeyForPlayer(string playerName, string deviceFingerprint, string authKey)
+        {
+            PlayerInfoClass player = GetTrackedPlayer(playerName);
+            if (player == null)
+            {
+                return;
+            }
+
+            string normalizedFingerprint = AuthTools.NormalizeMacAddress(deviceFingerprint);
+            if (!string.IsNullOrWhiteSpace(normalizedFingerprint))
+            {
+                player.PIF_MacAddress = normalizedFingerprint;
+            }
+
+            player.PIF_AuthKey = authKey ?? string.Empty;
+            SavePlayer(player);
+            RequestAuthValidation(player, forceRefresh: true);
+        }
+
+        public bool IsLegacyDeviceAuthenticationCandidate(PlayerInfoClass player)
+        {
+            if (player == null)
+            {
+                return false;
+            }
+
+            string deviceFingerprint = AuthTools.NormalizeMacAddress(player.PIF_MacAddress);
+            if (string.IsNullOrWhiteSpace(deviceFingerprint))
+            {
+                return false;
+            }
+
+            string authKey = player.PIF_AuthKey?.Trim() ?? string.Empty;
+            if (LicenseHubLocalLicenseStore.TryDeserialize(authKey) != null)
+            {
+                return false;
+            }
+
+            return HasValidLegacyAuthKey(player, authKey) == false;
         }
 
         public bool HasValidAuthKey(string playerName)
@@ -631,8 +674,12 @@ namespace AndoW_Manager
                     return cachedValid;
                 }
 
-                QueueAuthValidation(player, license, deviceFingerprint, signature, forceRefresh: false);
-                return false;
+                ValidationResult localResult = LicenseHubLocalValidator.ValidateLocalForDeviceFingerprintOnly(
+                    license,
+                    deviceFingerprint);
+                UpdateAuthValidationCache(player, signature, localResult.IsValid);
+                QueueAuthValidation(player, license, deviceFingerprint, signature, forceRefresh: true);
+                return localResult.IsValid;
             }
 
             bool legacyValid = HasValidLegacyAuthKey(player, authKey);

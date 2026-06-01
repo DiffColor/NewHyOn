@@ -106,6 +106,18 @@ namespace AndoW_Manager
             //MC_Upgrade.Click += MC_Upgrade_Click;
             // MC_Auth.Click += MC_Auth_Click;
             MC_ClearQueue.Click += MC_ClearQueue_Click;
+            MC_DeviceAuth.Click += MC_DeviceAuth_Click;
+            DisplayCotextMenu.Opened += DisplayCotextMenu_Opened;
+        }
+
+        private void DisplayCotextMenu_Opened(object sender, RoutedEventArgs e)
+        {
+            SyncPlayerInfoFromManager();
+            bool showLegacyDeviceAuth = DataShop.Instance?.g_PlayerInfoManager
+                ?.IsLegacyDeviceAuthenticationCandidate(g_PlayerInfoClass) == true;
+
+            MC_DeviceAuth.Visibility = showLegacyDeviceAuth ? Visibility.Visible : Visibility.Collapsed;
+            MC_DeviceAuthSeparator.Visibility = showLegacyDeviceAuth ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void MC_RemoteCotrol_Click(object sender, RoutedEventArgs e)
@@ -140,6 +152,35 @@ namespace AndoW_Manager
         void MC_Auth_Click(object sender, RoutedEventArgs e)
         {
             // 플레이어 인증은 더이상 매니저에서 처리하지 않는다.
+        }
+
+        private void MC_DeviceAuth_Click(object sender, RoutedEventArgs e)
+        {
+            SyncPlayerInfoFromManager();
+            if (DataShop.Instance?.g_PlayerInfoManager?.IsLegacyDeviceAuthenticationCandidate(g_PlayerInfoClass) != true)
+            {
+                MessageTools.ShowMessageBox("구버전 기기 인증 대상이 아닙니다.", "확인");
+                RefreshAuthenticationOverlay();
+                return;
+            }
+
+            string deviceFingerprint = AuthTools.NormalizeMacAddress(g_PlayerInfoClass.PIF_MacAddress);
+            if (string.IsNullOrWhiteSpace(deviceFingerprint))
+            {
+                MessageTools.ShowMessageBox("기기식별키가 없습니다. 플레이어 정보를 확인해주세요.", "확인");
+                return;
+            }
+
+            GetAuthWindow authWindow = new GetAuthWindow(g_PlayerInfoClass)
+            {
+                Owner = Window.GetWindow(this)
+            };
+            authWindow.ShowDialog();
+
+            SyncPlayerInfoFromManager();
+            DataShop.Instance.g_PlayerInfoManager.RequestAuthValidation(g_PlayerInfoClass, forceRefresh: true);
+            RefreshAuthenticationOverlay();
+            Page3.Instance?.RefreshPlayerAuthenticationOverlays();
         }
 
         async void MC_Upgrade_Click(object sender, RoutedEventArgs e)

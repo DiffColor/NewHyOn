@@ -119,8 +119,8 @@
 
                 <Separator/>
                 <MenuItem Header="업데이트 큐 삭제" ToolTip="진행중인 업데이트 큐를 즉시 삭제합니다." x:Name="MC_ClearQueue"/>
-                <!--<Separator/>
-                <MenuItem Header="기기 등록" ToolTip="플레이어의 확인 번호를 입력합니다."  x:Name="MC_Auth" />-->
+                <Separator x:Name="MC_DeviceAuthSeparator"/>
+                <MenuItem Header="기기 인증" ToolTip="구버전 플레이어의 기기식별키를 확인하고 확인 번호로 인증합니다."  x:Name="MC_DeviceAuth" />
 
             </ContextMenu>
         </Grid.ContextMenu>

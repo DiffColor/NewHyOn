@@ -29,9 +29,13 @@ namespace AndoW_Manager
         {
             string normalizedMac = AuthTools.NormalizeMacAddress(g_pic.PIF_MacAddress);
             MacAddress.Text = normalizedMac;
+            MacAddress.IsReadOnly = true;
 
             if (string.IsNullOrEmpty(normalizedMac))
+            {
+                MessageTools.ShowMessageBox("기기식별키가 없습니다. 플레이어 정보를 확인해주세요.", "확인");
                 return;
+            }
 
             DataShop.Instance.g_PlayerInfoManager.AuthValidationChanged -= PlayerInfoManager_AuthValidationChanged;
             DataShop.Instance.g_PlayerInfoManager.AuthValidationChanged += PlayerInfoManager_AuthValidationChanged;
@@ -204,6 +208,8 @@ namespace AndoW_Manager
                     this.Close();
                     return;
                 }
+
+                MessageTools.ShowMessageBox("확인 번호가 일치하지 않습니다.", "확인");
             }
             catch (Exception ex)
             {
@@ -219,7 +225,10 @@ namespace AndoW_Manager
             }
 
             g_pic.PIF_AuthKey = authkey;
-            DataShop.Instance.g_PlayerInfoManager.SetAuthKeyForPlayer(g_pic.PIF_PlayerName, authkey);
+            DataShop.Instance.g_PlayerInfoManager.SetLegacyAuthKeyForPlayer(
+                g_pic.PIF_PlayerName,
+                MacAddress.Text,
+                authkey);
         }
 	}
 }

@@ -158,6 +158,11 @@ namespace NewHyOn.Shared.Auth
                 allowServerBootstrap: false);
         }
 
+        public static ValidationResult ValidateLocalForDeviceFingerprintOnly(LicenseHubLocalLicenseFile license, string expectedFingerprint)
+        {
+            return ValidateLocalForDeviceFingerprint(license, expectedFingerprint);
+        }
+
         private static ValidationResult ValidateUsingCore(
             LicenseHubLocalLicenseFile license,
             string expectedFingerprint,
