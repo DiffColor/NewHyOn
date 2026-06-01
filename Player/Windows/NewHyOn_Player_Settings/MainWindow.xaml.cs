@@ -65,7 +65,7 @@ public partial class MainWindow : Window
         suppressManagerIpTextChanged = false;
         PlayerIpTextBox.Text = snapshot.PlayerIp;
         PlayerNameTextBox.Text = snapshot.PlayerName;
-        SourceKeyTextBox.Text = snapshot.SourceKey;
+        SourceKeyTextBlock.Text = snapshot.SourceKey;
         SignalRPortTextBox.Text = snapshot.SignalRPort;
         FtpPortTextBox.Text = snapshot.FtpPort;
         SyncPortTextBox.Text = snapshot.SyncPort;
@@ -517,18 +517,25 @@ public partial class MainWindow : Window
         ScheduleTransferServerSync(500);
     }
 
-    private void AuthButton_Click(object sender, RoutedEventArgs e)
+    private async void AuthButton_Click(object sender, RoutedEventArgs e)
     {
-        AuthResult result = configurationService.Authenticate(AuthPasswordBox.Password);
-        ApplyAuthState(result.StatusText, result.IsLicensed, !result.DisablePasswordInput);
-        CustomDialog.Show(
-            this,
-            result.Success ? "인증 완료" : "인증 실패",
-            result.Message,
-            result.Success ? result.StatusText : SimplifyDialogIssue(result.StatusText, "인증 실패"));
-        if (result.Success)
+        AuthButton.IsEnabled = false;
+        try
         {
-            AuthPasswordBox.Password = string.Empty;
+            AuthResult result = await configurationService.AuthenticateAsync();
+            ApplyAuthState(result.StatusText, result.IsLicensed, !result.DisablePasswordInput);
+            CustomDialog.Show(
+                this,
+                result.Success ? "인증 완료" : "인증 실패",
+                result.Message,
+                result.Success ? result.StatusText : SimplifyDialogIssue(result.StatusText, "인증 실패"));
+        }
+        finally
+        {
+            if (!string.Equals(AuthStatusTextBlock.Text, "인증 상태 : 정품 인증 완료", StringComparison.Ordinal))
+            {
+                AuthButton.IsEnabled = true;
+            }
         }
     }
 
@@ -655,7 +662,6 @@ public partial class MainWindow : Window
         Brush color = isLicensed ? (Brush)FindResource("SuccessBrush") : Brushes.DarkRed;
         AuthStatusTextBlock.Foreground = color;
 
-        AuthPasswordBox.IsEnabled = authInputEnabled;
         AuthButton.IsEnabled = authInputEnabled;
     }
 
@@ -666,7 +672,7 @@ public partial class MainWindow : Window
             ManagerIp = ManagerIpTextBox.Text.Trim(),
             PlayerIp = PlayerIpTextBox.Text.Trim(),
             PlayerName = PlayerNameTextBox.Text.Trim(),
-            SourceKey = SourceKeyTextBox.Text.Trim(),
+            SourceKey = SourceKeyTextBlock.Text.Trim(),
             SignalRPort = LegacyNetworkService.SIGNALR_PORT.ToString(),
             FtpPort = FtpPortTextBox.Text.Trim(),
             SyncPort = SyncPortTextBox.Text.Trim(),

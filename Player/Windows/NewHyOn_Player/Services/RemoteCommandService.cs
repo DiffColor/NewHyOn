@@ -120,21 +120,6 @@ namespace NewHyOnPlayer
             bool handled = false;
             string playerId = string.Empty;
 
-            if (string.Equals(command, "authkey", StringComparison.OrdinalIgnoreCase))
-            {
-                handled = HandleAuthKeyCommand(playerInfo, entry.PayloadBase64);
-                playerId = playerInfo.PIF_GUID;
-                if (handled)
-                {
-                    commandQueueClient.MarkAck(entry.Id, playerId);
-                }
-                else
-                {
-                    commandQueueClient.MarkFailed(entry.Id, playerId);
-                }
-                return;
-            }
-
             var payload = DecodePayload(entry.PayloadBase64);
             handled = HandleCommandCore(playerInfo, command, payload, isUrgent);
             playerId = playerInfo.PIF_GUID;
@@ -593,23 +578,6 @@ namespace NewHyOnPlayer
             string playerId = string.Empty;
 
             string normalized = envelope.Command.Trim().ToLowerInvariant();
-            if (string.Equals(normalized, "authkey", StringComparison.OrdinalIgnoreCase))
-            {
-                handled = HandleAuthKeyCommand(infoManager.g_PlayerInfo, envelope.PayloadJson);
-                if (!string.IsNullOrWhiteSpace(envelope.CommandId))
-                {
-                    playerId = infoManager.g_PlayerInfo?.PIF_GUID;
-                    if (handled)
-                    {
-                        commandQueueClient.MarkAck(envelope.CommandId, playerId);
-                    }
-                    else
-                    {
-                        commandQueueClient.MarkFailed(envelope.CommandId, playerId);
-                    }
-                }
-                return;
-            }
             var payload = DecodePayload(envelope.PayloadJson);
             handled = HandleCommandCore(infoManager.g_PlayerInfo, normalized, payload, envelope.IsUrgent);
             if (!string.IsNullOrWhiteSpace(envelope.CommandId))
@@ -655,12 +623,6 @@ namespace NewHyOnPlayer
                     EnqueueScheduleDownloads(playerInfo, new[] { target });
                 }
             }
-        }
-
-        private bool HandleAuthKeyCommand(PlayerInfoClass playerInfo, string authKey)
-        {
-            Logger.WriteLog("authkey command ignored: player auth is no longer updated by remote command.", Logger.GetLogFileName());
-            return false;
         }
 
         private void EnqueueScheduleDownloads(PlayerInfoClass playerInfo, IEnumerable<SchedulePlaylistPayload> playlists)

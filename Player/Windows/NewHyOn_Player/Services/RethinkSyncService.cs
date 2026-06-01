@@ -1,4 +1,5 @@
 ﻿using AndoW.Shared;
+using NewHyOn.Shared.Auth;
 using RethinkDb.Driver;
 using RethinkDb.Driver.Ast;
 using RethinkDb.Driver.Net;
@@ -199,7 +200,7 @@ namespace NewHyOnPlayer
                 }
 
                 UpdatePlayerInfoToRethink(remoteGuid);
-                SyncAuthKey(manager.g_PlayerInfo, remoteGuid);
+                SyncAuthKey(remoteGuid);
 
                 bool shouldSyncSchedulesForConnection = guidChanged || !infoSyncedAfterConnect;
                 bool shouldNotifyPlayerSynced = shouldSyncSchedulesForConnection;
@@ -315,7 +316,6 @@ namespace NewHyOnPlayer
                 .OrderByDescending(player => !string.IsNullOrWhiteSpace(localGuid)
                     && string.Equals(player.PIF_GUID, localGuid, StringComparison.OrdinalIgnoreCase))
                 .ThenByDescending(HasPlayableConfiguration)
-                .ThenByDescending(player => !string.IsNullOrWhiteSpace(player.PIF_AuthKey))
                 .ThenBy(player => player.PIF_GUID, StringComparer.OrdinalIgnoreCase)
                 .First();
         }
@@ -426,14 +426,14 @@ namespace NewHyOnPlayer
                 }
 
                 ResolveCurrentNetworkInfo(out string localIp, out string mac, out List<string> allMacs);
-                string authKeyToStore = EnsureAuthKeyForCurrentNic(player, mac, allMacs);
+                string deviceFingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
                 string osName = string.IsNullOrWhiteSpace(player.PIF_OSName)
                     ? Environment.OSVersion.ToString()
                     : player.PIF_OSName;
 
-                if (!string.IsNullOrWhiteSpace(localIp) || !string.IsNullOrWhiteSpace(mac))
+                if (!string.IsNullOrWhiteSpace(localIp) || !string.IsNullOrWhiteSpace(deviceFingerprint))
                 {
-                    UpdateLocalNetworkInfo(localIp, mac);
+                    UpdateLocalNetworkInfo(localIp, deviceFingerprint);
                 }
 
                 var payload = new Dictionary<string, object>
@@ -443,13 +443,9 @@ namespace NewHyOnPlayer
                     ["PIF_DefaultPlayList"] = player.PIF_DefaultPlayList ?? string.Empty,
                     ["PIF_IPAddress"] = string.IsNullOrWhiteSpace(localIp) ? player.PIF_IPAddress ?? string.Empty : localIp,
                     ["PIF_OSName"] = osName,
-                    ["PIF_MacAddress"] = string.IsNullOrWhiteSpace(mac) ? player.PIF_MacAddress ?? string.Empty : mac,
+                    ["PIF_MacAddress"] = string.IsNullOrWhiteSpace(deviceFingerprint) ? player.PIF_MacAddress ?? string.Empty : deviceFingerprint,
                     ["command"] = player.PendingCommand ?? string.Empty
                 };
-                if (!string.IsNullOrWhiteSpace(authKeyToStore) && IsAuthKeyMatchedCurrentDevice(authKeyToStore, allMacs))
-                {
-                    payload["PIF_AuthKey"] = authKeyToStore;
-                }
 
                 R.Db(DatabaseName)
                     .Table(PlayerTable)
@@ -462,6 +458,180 @@ namespace NewHyOnPlayer
                 Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
                 ResetConnection();
             }
+        }
+
+        private void SyncAuthKey(string remoteGuid)
+        {
+            if (string.IsNullOrWhiteSpace(remoteGuid) || manager?.g_PlayerInfo == null)
+            {
+                return;
+            }
+
+            try
+            {
+                PlayerInfoClass remote = FetchPlayerByGuid(remoteGuid);
+                if (remote == null)
+                {
+                    return;
+                }
+
+                string localAuth = ResolveLocalAuthPayload();
+                string remoteAuth = remote.PIF_AuthKey?.Trim() ?? string.Empty;
+
+                LicenseHubLocalLicenseFile localLicense = LicenseHubLocalLicenseStore.TryDeserialize(localAuth);
+                LicenseHubLocalLicenseFile remoteLicense = LicenseHubLocalLicenseStore.TryDeserialize(remoteAuth);
+                bool localNewValid = LicenseHubLocalValidator.ValidateForCurrentDevice(localLicense).IsValid;
+                bool remoteNewValid = LicenseHubLocalValidator.ValidateForCurrentDevice(remoteLicense).IsValid;
+                bool localLegacyValid = !localNewValid && LegacyAuthKeyValidator.IsValidForCurrentDevice(localAuth);
+                bool remoteLegacyValid = !remoteNewValid && LegacyAuthKeyValidator.IsValidForCurrentDevice(remoteAuth);
+
+                if (localNewValid && remoteNewValid)
+                {
+                    if (IsSameAuthPayload(localAuth, remoteAuth))
+                    {
+                        EnsureLocalAuthPayload(localAuth);
+                        return;
+                    }
+
+                    if (remoteLicense.SavedAt > localLicense.SavedAt)
+                    {
+                        ApplyRemoteLicense(remoteLicense, remoteAuth);
+                    }
+                    else
+                    {
+                        UpdateAuthFieldsInRethink(remoteGuid, localAuth);
+                    }
+                    return;
+                }
+
+                if (localNewValid)
+                {
+                    UpdateAuthFieldsInRethink(remoteGuid, localAuth);
+                    return;
+                }
+
+                if (remoteNewValid)
+                {
+                    ApplyRemoteLicense(remoteLicense, remoteAuth);
+                    return;
+                }
+
+                if (localLegacyValid)
+                {
+                    if (!IsSameAuthPayload(localAuth, remoteAuth))
+                    {
+                        UpdateAuthFieldsInRethink(remoteGuid, localAuth);
+                    }
+                    return;
+                }
+
+                if (remoteLegacyValid)
+                {
+                    EnsureLocalAuthPayload(remoteAuth);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
+                ResetConnection();
+            }
+        }
+
+        private string ResolveLocalAuthPayload()
+        {
+            LicenseHubLocalLicenseFile license = LicenseHubLocalLicenseStore.Read();
+            if (LicenseHubLocalValidator.ValidateForCurrentDevice(license).IsValid)
+            {
+                string serialized = LicenseHubLocalLicenseStore.Serialize(license);
+                EnsureLocalAuthPayload(serialized);
+                return serialized;
+            }
+
+            string localAuth = manager?.g_PlayerInfo?.PIF_AuthKey?.Trim() ?? string.Empty;
+            LicenseHubLocalLicenseFile storedLicense = LicenseHubLocalLicenseStore.TryDeserialize(localAuth);
+            if (LicenseHubLocalValidator.ValidateForCurrentDevice(storedLicense).IsValid)
+            {
+                LicenseHubLocalLicenseStore.Write(storedLicense);
+                EnsureLocalAuthPayload(localAuth);
+                return localAuth;
+            }
+
+            return localAuth;
+        }
+
+        private void ApplyRemoteLicense(LicenseHubLocalLicenseFile license, string serialized)
+        {
+            if (!LicenseHubLocalValidator.ValidateForCurrentDevice(license).IsValid)
+            {
+                return;
+            }
+
+            LicenseHubLocalLicenseStore.Write(license);
+            EnsureLocalAuthPayload(string.IsNullOrWhiteSpace(serialized)
+                ? LicenseHubLocalLicenseStore.Serialize(license)
+                : serialized);
+        }
+
+        private void EnsureLocalAuthPayload(string authPayload)
+        {
+            if (string.IsNullOrWhiteSpace(authPayload) || manager?.g_PlayerInfo == null)
+            {
+                return;
+            }
+
+            string fingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
+            bool changed = false;
+            if (!string.Equals(manager.g_PlayerInfo.PIF_AuthKey ?? string.Empty, authPayload, StringComparison.Ordinal))
+            {
+                manager.g_PlayerInfo.PIF_AuthKey = authPayload;
+                changed = true;
+            }
+
+            if (!string.Equals(manager.g_PlayerInfo.PIF_MacAddress ?? string.Empty, fingerprint, StringComparison.OrdinalIgnoreCase))
+            {
+                manager.g_PlayerInfo.PIF_MacAddress = fingerprint;
+                changed = true;
+            }
+
+            if (changed)
+            {
+                manager.SaveData();
+            }
+        }
+
+        private void UpdateAuthFieldsInRethink(string playerGuid, string authPayload)
+        {
+            if (string.IsNullOrWhiteSpace(playerGuid) || string.IsNullOrWhiteSpace(authPayload))
+            {
+                return;
+            }
+
+            var conn = GetConnection();
+            if (conn == null)
+            {
+                return;
+            }
+
+            EnsureLocalAuthPayload(authPayload);
+            var payload = new Dictionary<string, object>
+            {
+                ["PIF_AuthKey"] = authPayload,
+                ["PIF_MacAddress"] = LicenseHubDeviceFingerprint.Generate().Fingerprint
+            };
+
+            R.Db(DatabaseName)
+                .Table(PlayerTable)
+                .Get(playerGuid)
+                .Update(payload)
+                .RunNoReply(conn);
+        }
+
+        private static bool IsSameAuthPayload(string left, string right)
+        {
+            return string.Equals(
+                left?.Trim() ?? string.Empty,
+                right?.Trim() ?? string.Empty,
+                StringComparison.Ordinal);
         }
 
         private void ResetConnection()
@@ -484,71 +654,13 @@ namespace NewHyOnPlayer
             }
         }
 
-        private void SyncAuthKey(PlayerInfoClass localPlayer, string remoteGuid)
-        {
-            if (localPlayer == null || string.IsNullOrWhiteSpace(remoteGuid))
-            {
-                return;
-            }
-
-            ResolveCurrentNetworkInfo(out _, out string currentMac, out List<string> allMacs);
-            string localKeyForCurrent = EnsureAuthKeyForCurrentNic(localPlayer, currentMac, allMacs);
-
-            PlayerInfoClass remote = FetchPlayerByGuid(remoteGuid);
-            if (remote == null)
-            {
-                return;
-            }
-
-            string localKey = localKeyForCurrent?.Trim() ?? string.Empty;
-            string remoteKey = remote.PIF_AuthKey?.Trim() ?? string.Empty;
-            bool localMatchesCurrentDevice = IsAuthKeyMatchedCurrentDevice(localKey, allMacs);
-            bool remoteMatchesCurrentDevice = IsAuthKeyMatchedCurrentDevice(remoteKey, allMacs);
-
-            if (string.IsNullOrWhiteSpace(localKey) && !string.IsNullOrWhiteSpace(remoteKey))
-            {
-                if (remoteMatchesCurrentDevice)
-                {
-                    localPlayer.PIF_AuthKey = remoteKey;
-                    manager.SaveData();
-                }
-                return;
-            }
-
-            if (!string.IsNullOrWhiteSpace(localKey) && string.IsNullOrWhiteSpace(remoteKey))
-            {
-                if (localMatchesCurrentDevice)
-                {
-                    UpdateAuthKeyInRethink(remoteGuid, localKey);
-                }
-                return;
-            }
-
-            if (!string.IsNullOrWhiteSpace(localKey) && !string.IsNullOrWhiteSpace(remoteKey)
-                && !string.Equals(localKey, remoteKey, StringComparison.OrdinalIgnoreCase))
-            {
-                if (localMatchesCurrentDevice)
-                {
-                    UpdateAuthKeyInRethink(remoteGuid, localKey);
-                }
-                else if (remoteMatchesCurrentDevice)
-                {
-                    localPlayer.PIF_AuthKey = remoteKey;
-                    manager.SaveData();
-                }
-                else
-                {
-                    Logger.WriteLog($"AuthKey mismatch detected. local={localKey}, remote={remoteKey}", Logger.GetLogFileName());
-                }
-            }
-        }
-
         private void RefreshLocalNetworkInfo()
         {
             ResolveCurrentNetworkInfo(out string localIp, out string mac, out List<string> allMacs);
-            if (!string.IsNullOrWhiteSpace(localIp) || !string.IsNullOrWhiteSpace(mac))
+            string deviceFingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
+            if (!string.IsNullOrWhiteSpace(localIp) || !string.IsNullOrWhiteSpace(deviceFingerprint))
             {
-                UpdateLocalNetworkInfo(localIp, mac);
+                UpdateLocalNetworkInfo(localIp, deviceFingerprint);
             }
         }
 
@@ -655,97 +767,6 @@ namespace NewHyOnPlayer
             return string.Empty;
         }
 
-        private string EnsureAuthKeyForCurrentNic(PlayerInfoClass player, string currentMac, List<string> allMacs)
-        {
-            if (player == null)
-            {
-                return string.Empty;
-            }
-
-            string localKey = player.PIF_AuthKey?.Trim() ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(localKey) || string.IsNullOrWhiteSpace(currentMac))
-            {
-                return localKey;
-            }
-
-            if (IsAuthKeyMatchedMac(localKey, currentMac))
-            {
-                return localKey;
-            }
-
-            if (!IsAuthKeyMatchedAnyNic(localKey, allMacs))
-            {
-                return localKey;
-            }
-
-            string currentKey = AuthTools.EncodeAuthKey(currentMac);
-            if (!string.Equals(localKey, currentKey, StringComparison.OrdinalIgnoreCase))
-            {
-                player.PIF_AuthKey = currentKey;
-                manager?.SaveData();
-            }
-
-            return currentKey;
-        }
-
-        private bool IsAuthKeyMatchedMac(string authKey, string mac)
-        {
-            if (string.IsNullOrWhiteSpace(authKey) || string.IsNullOrWhiteSpace(mac))
-            {
-                return false;
-            }
-
-            string expected = AuthTools.EncodeAuthKey(mac);
-            return string.Equals(authKey.Trim(), expected, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private bool IsAuthKeyMatchedAnyNic(string authKey, List<string> macs)
-        {
-            if (string.IsNullOrWhiteSpace(authKey) || macs == null || macs.Count == 0)
-            {
-                return false;
-            }
-
-            string localKey = authKey.Trim();
-            foreach (string mac in macs)
-            {
-                if (string.IsNullOrWhiteSpace(mac))
-                {
-                    continue;
-                }
-
-                string expected = AuthTools.EncodeAuthKey(mac);
-                if (string.Equals(localKey, expected, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        private bool IsAuthKeyMatchedCurrentDevice(string authKey, List<string> macs)
-        {
-            if (IsAuthKeyMatchedAnyNic(authKey, macs))
-            {
-                return true;
-            }
-
-            if (string.IsNullOrWhiteSpace(authKey) || (macs != null && macs.Count > 0))
-            {
-                return false;
-            }
-
-            string uuid = AuthTools.getUUID12();
-            if (string.IsNullOrWhiteSpace(uuid))
-            {
-                return false;
-            }
-
-            string expected = AuthTools.EncodeAuthKey(uuid);
-            return string.Equals(authKey.Trim(), expected, StringComparison.OrdinalIgnoreCase);
-        }
-
         private PlayerInfoClass FetchPlayerByGuid(string playerGuid)
         {
             if (string.IsNullOrWhiteSpace(playerGuid))
@@ -771,39 +792,6 @@ namespace NewHyOnPlayer
                 Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
                 ResetConnection();
                 return null;
-            }
-        }
-
-        private void UpdateAuthKeyInRethink(string playerGuid, string authKey)
-        {
-            if (string.IsNullOrWhiteSpace(playerGuid) || string.IsNullOrWhiteSpace(authKey))
-            {
-                return;
-            }
-
-            try
-            {
-                var conn = GetConnection();
-                if (conn == null)
-                {
-                    return;
-                }
-
-                var payload = new Dictionary<string, object>
-                {
-                    ["PIF_AuthKey"] = authKey
-                };
-
-                R.Db(DatabaseName)
-                    .Table(PlayerTable)
-                    .Get(playerGuid)
-                    .Update(payload)
-                    .RunNoReply(conn);
-            }
-            catch (Exception ex)
-            {
-                Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
-                ResetConnection();
             }
         }
 

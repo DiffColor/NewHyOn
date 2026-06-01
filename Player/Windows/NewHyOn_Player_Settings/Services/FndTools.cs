@@ -45,17 +45,6 @@ public static class FndTools
         return directPath;
     }
 
-    public static string GetAuthKeyPath()
-    {
-        string? playerDirectory = Path.GetDirectoryName(GetPlayerExeFilePath());
-        if (string.IsNullOrWhiteSpace(playerDirectory))
-        {
-            playerDirectory = GetCurrentExecutableDirectory();
-        }
-
-        return Path.Combine(playerDirectory, "AuthKeys");
-    }
-
     public static string GetCurrentExecutableDirectory()
     {
         string executablePath = GetCurrentExecutablePath();

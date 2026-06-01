@@ -1,9 +1,11 @@
 using AndoW.Shared;
+using LicenseHub.DeviceAuth.Core;
+using LicenseHub.DeviceAuth.Wpf;
 using NewHyOn.Player.Settings.DataManager;
 using NewHyOn.Player.Settings.Models;
+using NewHyOn.Shared.Auth;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Threading;
@@ -23,14 +25,8 @@ public sealed class PlayerConfigurationService
 
     public PlayerConfigurationService()
     {
-        sourceKey = LegacyNetworkService.GetFirstMacAddress();
-        if (string.IsNullOrWhiteSpace(sourceKey))
-        {
-            sourceKey = AuthRegistryService.GetUuid12FromWmi();
-        }
-
+        sourceKey = LicenseHubDeviceFingerprint.Generate().Fingerprint;
         SystemPolicyService.DisableUac();
-        AuthRegistryService.WriteDemoReg();
     }
 
     public ConfigPlayerSnapshot Load()
@@ -256,70 +252,58 @@ public sealed class PlayerConfigurationService
         return mergedSnapshot;
     }
 
-    public AuthResult Authenticate(string password)
+    public async Task<AuthResult> AuthenticateAsync(CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(password))
-        {
-            return new AuthResult
+        AuthCompletionResult authResult = await LicenseHub.DeviceAuth.Wpf.DeviceAuthClient.AuthenticateAsync(
+            new AuthenticateOptions
             {
-                Success = false,
-                StatusText = EvaluateAuthState().statusText,
-                Message = "인증 비밀번호를 입력해주세요."
-            };
-        }
+                ApiBaseUrl = LicenseHubAuthPolicy.ApiBaseUrl,
+                ProductId = LicenseHubAuthPolicy.ProductId,
+                WindowTitle = LicenseHubAuthPolicy.AuthWindowTitle,
+                WindowWidth = LicenseHubAuthPolicy.AuthWindowWidth,
+                WindowHeight = LicenseHubAuthPolicy.AuthWindowHeight,
+                LocalLicensePath = LicenseHubAuthPolicy.LicenseFilePath
+            },
+            cancellationToken).ConfigureAwait(true);
 
-        string checkValue = GetPasswd2(sourceKey);
-        if (password == checkValue || password == "turtle0419")
+        (string statusText, bool isLicensed, bool authInputEnabled) = EvaluateAuthState();
+        if (isLicensed)
         {
-            ExecuteAuthLogic();
-            playerInfoManager.LoadData();
-            (string statusText, bool isLicensed, bool authInputEnabled) = EvaluateAuthState();
-            if (!isLicensed)
-            {
-                return new AuthResult
-                {
-                    Success = false,
-                    StatusText = statusText,
-                    IsLicensed = false,
-                    DisablePasswordInput = !authInputEnabled,
-                    Message = "인증키 생성 후 현재 장비 기준 검증에 실패했습니다."
-                };
-            }
-
+            PersistLicenseHubAuthToPlayerInfo();
             return new AuthResult
             {
                 Success = true,
                 StatusText = statusText,
-                IsLicensed = isLicensed,
+                IsLicensed = true,
                 DisablePasswordInput = !authInputEnabled,
-                Message = "로컬 인증키 생성에 성공했습니다. 서버 연결 시 플레이어 정보와 함께 동기화됩니다."
+                Message = "인증이 완료되었습니다."
             };
         }
 
-        if (!HasCompletedAuth())
+        string message;
+        if (authResult.Status == AuthCompletionStatus.Cancelled)
         {
-            AuthRegistryService.WriteTryAuthReg();
-            bool prohibitTrying = AuthRegistryService.ProhibitTrying();
-            return new AuthResult
-            {
-                Success = false,
-                StatusText = "인증 상태 : 시험판",
-                IsLicensed = false,
-                DisablePasswordInput = prohibitTrying,
-                Message = "인증키 생성에 실패했습니다. \r\n3회 인증 실패 후에는 비밀번호 인증이 제한됩니다."
-            };
+            message = "인증이 취소되었습니다.";
+        }
+        else if (!string.IsNullOrWhiteSpace(authResult.Message))
+        {
+            message = authResult.Message;
+        }
+        else
+        {
+            ValidationResult validation = LicenseHubLocalValidator.Validate();
+            message = string.IsNullOrWhiteSpace(validation.Reason)
+                ? "인증 결과를 확인하지 못했습니다."
+                : validation.Reason;
         }
 
-        (string currentStatusText, bool currentIsLicensed, bool currentAuthInputEnabled) = EvaluateAuthState();
         return new AuthResult
         {
             Success = false,
-            StatusText = currentStatusText,
-            IsLicensed = currentIsLicensed,
-            DisablePasswordInput = !currentAuthInputEnabled,
-            Message = currentIsLicensed
-                ? "이미 인증된 장치입니다."
-                : "인증키 생성에 실패했습니다. DB 인증키와 인증파일을 모두 확인해 주세요."
+            StatusText = statusText,
+            IsLicensed = false,
+            DisablePasswordInput = !authInputEnabled,
+            Message = message
         };
     }
 
@@ -446,7 +430,7 @@ public sealed class PlayerConfigurationService
     {
         playerInfoManager.PlayerInfo.PIF_PlayerName = snapshot.PlayerName.Trim();
         playerInfoManager.PlayerInfo.PIF_IPAddress = snapshot.PlayerIp.Trim();
-        playerInfoManager.PlayerInfo.PIF_MacAddress = LegacyNetworkService.GetMacAddressFromIp(snapshot.PlayerIp.Trim());
+        playerInfoManager.PlayerInfo.PIF_MacAddress = sourceKey;
         playerInfoManager.SaveData();
     }
 
@@ -542,13 +526,6 @@ public sealed class PlayerConfigurationService
             !string.IsNullOrWhiteSpace(remotePlayer.PIF_CurrentPlayList))
         {
             playerInfoManager.PlayerInfo.PIF_CurrentPlayList = remotePlayer.PIF_CurrentPlayList.Trim();
-            changed = true;
-        }
-
-        if (CheckInvalidAuthKey(playerInfoManager.PlayerInfo.PIF_AuthKey) &&
-            !string.IsNullOrWhiteSpace(remotePlayer.PIF_AuthKey))
-        {
-            playerInfoManager.PlayerInfo.PIF_AuthKey = remotePlayer.PIF_AuthKey.Trim();
             changed = true;
         }
 
@@ -656,193 +633,57 @@ public sealed class PlayerConfigurationService
 
     private (string statusText, bool isLicensed, bool authInputEnabled) EvaluateAuthState()
     {
-        bool isLicensed = HasCompletedAuth();
-        if (isLicensed)
+        ValidationResult validation = LicenseHubLocalValidator.Validate();
+        if (validation.IsValid)
+        {
+            PersistLicenseHubAuthToPlayerInfo();
+            return ("인증 상태 : 정품 인증 완료", true, false);
+        }
+
+        LicenseHubLocalLicenseFile storedLicense = LicenseHubLocalLicenseStore.TryDeserialize(playerInfoManager.PlayerInfo.PIF_AuthKey);
+        validation = LicenseHubLocalValidator.ValidateForCurrentDevice(storedLicense);
+        if (validation.IsValid)
+        {
+            LicenseHubLocalLicenseStore.Write(storedLicense);
+            playerInfoManager.PlayerInfo.PIF_MacAddress = sourceKey;
+            playerInfoManager.SaveData();
+            return ("인증 상태 : 정품 인증 완료", true, false);
+        }
+
+        if (LegacyAuthKeyValidator.IsValidForCurrentDevice(playerInfoManager.PlayerInfo.PIF_AuthKey))
         {
             return ("인증 상태 : 정품 인증 완료", true, false);
         }
 
-        if (HasNoAuthHistory(playerInfoManager.PlayerInfo.PIF_AuthKey))
-        {
-            return ("인증 상태 : 미인증", false, true);
-        }
-
-        return ("인증 상태 : 시험판", false, !AuthRegistryService.ProhibitTrying());
+        return ("인증 상태 : 미인증", false, true);
     }
 
-    private void ExecuteAuthLogic()
+    private void PersistLicenseHubAuthToPlayerInfo()
     {
-        List<string> networkCards = LegacyNetworkService.GetAllMacAddresses();
-        string encodedKey = playerInfoManager.PlayerInfo.PIF_AuthKey;
-
-        bool hasValid = networkCards.Any(nic =>
-            string.Equals(encodedKey, AuthRegistryService.EncodeAuthKey(nic), StringComparison.CurrentCultureIgnoreCase));
-
-        if (!hasValid && networkCards.Count < 1)
-        {
-            string uuid = AuthRegistryService.GetUuid12FromWmi();
-            string uuidKey = string.IsNullOrWhiteSpace(uuid)
-                ? string.Empty
-                : AuthRegistryService.EncodeAuthKey(uuid);
-            hasValid = !string.IsNullOrWhiteSpace(uuidKey) &&
-                string.Equals(encodedKey, uuidKey, StringComparison.CurrentCultureIgnoreCase);
-            if (!hasValid && !string.IsNullOrWhiteSpace(uuidKey))
-            {
-                encodedKey = uuidKey;
-            }
-        }
-
-        if (!hasValid)
-        {
-            if (networkCards.Count > 0)
-            {
-                encodedKey = AuthRegistryService.EncodeAuthKey(networkCards[0]);
-            }
-
-            if (string.IsNullOrWhiteSpace(encodedKey))
-            {
-                return;
-            }
-
-            playerInfoManager.PlayerInfo.PIF_AuthKey = encodedKey;
-            playerInfoManager.SaveData();
-        }
-
-        WriteAuthKeyFile(encodedKey);
-    }
-
-    private bool HasCompletedAuth()
-    {
-        string dbAuthKey = playerInfoManager.PlayerInfo.PIF_AuthKey;
-        if (!CheckInvalidAuthKey(dbAuthKey))
-        {
-            return true;
-        }
-
-        string fileAuthKey = ReadValidAuthKeyFromFile();
-        if (string.IsNullOrWhiteSpace(fileAuthKey))
-        {
-            return false;
-        }
-
-        playerInfoManager.PlayerInfo.PIF_AuthKey = fileAuthKey;
-        playerInfoManager.SaveData();
-        return true;
-    }
-
-    private string ReadValidAuthKeyFromFile()
-    {
-        string authKeyPath = FndTools.GetAuthKeyPath();
-        if (!File.Exists(authKeyPath))
-        {
-            return string.Empty;
-        }
-
-        try
-        {
-            foreach (string line in File.ReadLines(authKeyPath))
-            {
-                string candidate = line?.Trim() ?? string.Empty;
-                if (!CheckInvalidAuthKey(candidate))
-                {
-                    return candidate;
-                }
-            }
-        }
-        catch
-        {
-        }
-
-        return string.Empty;
-    }
-
-    private static void WriteAuthKeyFile(string encodedKey)
-    {
-        if (string.IsNullOrWhiteSpace(encodedKey))
+        LicenseHubLocalLicenseFile license = LicenseHubLocalLicenseStore.Read();
+        if (!LicenseHubLocalValidator.ValidateForCurrentDevice(license).IsValid)
         {
             return;
         }
 
-        string authKeyPath = FndTools.GetAuthKeyPath();
-        string? directory = Path.GetDirectoryName(authKeyPath);
-        if (!string.IsNullOrWhiteSpace(directory))
+        string serialized = LicenseHubLocalLicenseStore.Serialize(license);
+        bool changed = false;
+        if (!string.Equals(playerInfoManager.PlayerInfo.PIF_AuthKey ?? string.Empty, serialized, StringComparison.Ordinal))
         {
-            Directory.CreateDirectory(directory);
+            playerInfoManager.PlayerInfo.PIF_AuthKey = serialized;
+            changed = true;
         }
 
-        File.WriteAllText(authKeyPath, encodedKey.Trim() + Environment.NewLine);
-    }
-
-    private bool CheckInvalidAuthKey(string encodedKey)
-    {
-        if (string.IsNullOrWhiteSpace(encodedKey))
+        if (!string.Equals(playerInfoManager.PlayerInfo.PIF_MacAddress ?? string.Empty, sourceKey, StringComparison.OrdinalIgnoreCase))
         {
-            return true;
+            playerInfoManager.PlayerInfo.PIF_MacAddress = sourceKey;
+            changed = true;
         }
 
-        List<string> networkCards = LegacyNetworkService.GetAllMacAddresses();
-        foreach (string nic in networkCards)
+        if (changed)
         {
-            if (encodedKey.Equals(AuthRegistryService.EncodeAuthKey(nic), StringComparison.CurrentCultureIgnoreCase))
-            {
-                return false;
-            }
+            playerInfoManager.SaveData();
         }
-
-        if (networkCards.Count < 1 &&
-            encodedKey.Equals(AuthRegistryService.EncodeAuthKey(AuthRegistryService.GetUuid12FromWmi()), StringComparison.CurrentCultureIgnoreCase))
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    private static bool HasNoAuthHistory(string? encodedKey)
-    {
-        if (AuthRegistryService.HasTryAuthHistory())
-        {
-            return false;
-        }
-
-        if (string.IsNullOrWhiteSpace(encodedKey))
-        {
-            return true;
-        }
-
-        return Guid.TryParse(encodedKey, out _);
-    }
-
-    private static string GetPasswd2(string macString)
-    {
-        if (string.IsNullOrWhiteSpace(macString) || macString.Length < 4)
-        {
-            return string.Empty;
-        }
-
-        char[] chars = macString[^4..].ToCharArray();
-        string numberString = string.Empty;
-        foreach (char character in chars)
-        {
-            numberString += Convert.ToInt32(character.ToString(), 16);
-        }
-
-        if (numberString.Length < 4)
-        {
-            return string.Empty;
-        }
-
-        numberString = numberString[^4..];
-        char[] reverseChars = numberString.ToCharArray();
-        Array.Reverse(reverseChars);
-        string reversed = new(reverseChars);
-        reversed = reversed.TrimStart('0');
-        if (string.IsNullOrWhiteSpace(reversed))
-        {
-            reversed = "0";
-        }
-
-        return (((int.Parse(reversed) * 2) - 1) * 2).ToString();
     }
 
     private static ScheduleRowModel ToRowModel(WeeklyPlayScheduleInfo row)

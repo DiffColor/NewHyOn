@@ -11,8 +11,9 @@
     <UseWPF>true</UseWPF>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <Platforms>AnyCPU;x64</Platforms>
-    <ApplicationIcon>hyon_p_install.ico</ApplicationIcon>
+    <ApplicationIcon>NewHyon_256.ico</ApplicationIcon>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <PackageIcon>NewHyon_Player_TM.png</PackageIcon>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
@@ -29,11 +30,28 @@
     <PackageReference Include="LiteDB" Version="5.0.21" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.14" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="Portable.BouncyCastle" Version="1.9.0" />
+    <PackageReference Include="QRCoder" Version="1.7.0" />
+    <PackageReference Include="jsoncanonicalizer" Version="1.0.0" />
     <PackageReference Include="System.Management" Version="9.0.0" />
     <PackageReference Include="RethinkDb.Driver" Version="2.3.150" />
   </ItemGroup>
 
   <ItemGroup>
+    <Reference Include="LicenseHub.DeviceAuth.Core">
+      <HintPath>..\Dependencies\LicenseHub.DeviceAuth\net10.0-windows\LicenseHub.DeviceAuth.Core.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="LicenseHub.DeviceAuth.Wpf">
+      <HintPath>..\Dependencies\LicenseHub.DeviceAuth\net10.0-windows\LicenseHub.DeviceAuth.Wpf.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\SharedAuth\LicenseHubAuthRuntime.cs">
+      <Link>Shared\Auth\LicenseHubAuthRuntime.cs</Link>
+    </Compile>
     <Compile Include="..\SharedLiteDb\LiteDbContext.cs">
       <Link>Infrastructure\LiteDbContext.cs</Link>
     </Compile>
@@ -52,6 +70,17 @@
     <Compile Include="..\..\..\Shared\Windows\FirewallRuleSynchronizer.cs">
       <Link>Shared\FirewallRuleSynchronizer.cs</Link>
     </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="NewHyon_256.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Z:\Documents\Workspaces\Installer\Prerequisites\icons\NewHyon_icon\NewHyon_Player_TM.png">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
   </ItemGroup>
 
 </Project>

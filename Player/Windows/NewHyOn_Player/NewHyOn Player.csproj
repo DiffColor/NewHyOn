@@ -62,7 +62,7 @@
     <UseWinFormsOutOfProcDesigner>False</UseWinFormsOutOfProcDesigner>
   </PropertyGroup>
   <PropertyGroup>
-    <ApplicationIcon>hyon_p.ico</ApplicationIcon>
+    <ApplicationIcon>NewHyon_256.ico</ApplicationIcon>
   </PropertyGroup>
   <PropertyGroup>
     <ManifestCertificateThumbprint>87EE9E3948A83FA064AFCC1F0BF9032D0DEFD0F7</ManifestCertificateThumbprint>
@@ -115,6 +115,14 @@
     </Reference>
     <Reference Include="K4os.Hash.xxHash, Version=1.0.8.0, Culture=neutral, PublicKeyToken=32cd54395057cec3, processorArchitecture=MSIL">
       <HintPath>..\packages\K4os.Hash.xxHash.1.0.8\lib\net462\K4os.Hash.xxHash.dll</HintPath>
+    </Reference>
+    <Reference Include="BouncyCastle.Crypto">
+      <HintPath>..\Dependencies\LicenseHub.DeviceAuth\net472\BouncyCastle.Crypto.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="LicenseHub.DeviceAuth.Core">
+      <HintPath>..\Dependencies\LicenseHub.DeviceAuth\netstandard2.0\LicenseHub.DeviceAuth.Core.dll</HintPath>
+      <Private>True</Private>
     </Reference>
     <Reference Include="MediaInfo.DotNetWrapper, Version=1.0.7.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\packages\MediaInfo.DotNetWrapper.1.0.7\lib\net40\MediaInfo.DotNetWrapper.dll</HintPath>
@@ -348,7 +356,6 @@
       <DesignTime>True</DesignTime>
     </Compile>
     <Compile Include="Services\OnAirService.cs" />
-    <Compile Include="TurtleTools\AuthTools.cs" />
     <Compile Include="TurtleTools\ColorTools.cs" />
     <Compile Include="TurtleTools\ConvertTools.cs" />
     <Compile Include="TurtleTools\DispatcherWinformsCombatAdapter.cs" />
@@ -369,6 +376,10 @@
     <Compile Include="Services\CommandHistoryClient.cs" />
     <Compile Include="Services\CommandQueueClient.cs" />
     <Compile Include="Services\HeartbeatReporter.cs" />
+    <Compile Include="Services\LicenseHubAuthService.cs" />
+    <Compile Include="..\SharedAuth\LicenseHubAuthRuntime.cs">
+      <Link>Shared\Auth\LicenseHubAuthRuntime.cs</Link>
+    </Compile>
     <Compile Include="Services\RethinkSyncService.cs" />
     <Compile Include="Services\SignalRClientService.cs" />
     <Compile Include="Services\ServerSettingsClient.cs" />
@@ -483,9 +494,6 @@
     <AppDesigner Include="Properties\" />
   </ItemGroup>
   <ItemGroup>
-    <Resource Include="hyon_p.ico" />
-  </ItemGroup>
-  <ItemGroup>
     <BootstrapperPackage Include="Microsoft.Net.Client.3.5">
       <Visible>False</Visible>
       <ProductName>.NET Framework 3.5 SP1 Client Profile</ProductName>
@@ -507,6 +515,7 @@
     <Content Include="lib\mpv-2.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Resource Include="NewHyon_256.ico" />
     <Content Include="one_black_pixel.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>

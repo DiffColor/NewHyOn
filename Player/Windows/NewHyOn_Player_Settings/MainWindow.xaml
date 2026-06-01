@@ -589,7 +589,7 @@
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="*" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
 
                                     <TextBlock x:Name="AuthStatusTextBlock"
@@ -599,34 +599,38 @@
                                                    Text="인증 상태 : 미인증" />
 
                                     <StackPanel Grid.Row="1"
-                                                    Margin="0,14,0,0">
-                                        <TextBlock Style="{StaticResource FieldLabelStyle}" Text="승인키" />
-                                        <TextBox x:Name="SourceKeyTextBox"
-                                                     Style="{StaticResource TextInputStyle}"
-                                                     IsReadOnly="True" />
+                                                    Margin="0,12,0,0">
+                                        <TextBlock Style="{StaticResource FieldLabelStyle}" Text="장비 식별값" />
+                                        <Border Height="52"
+                                                Background="{StaticResource SurfaceBrush}"
+                                                BorderBrush="#E2E8F0"
+                                                BorderThickness="1"
+                                                CornerRadius="6"
+                                                Padding="12"
+                                                ClipToBounds="True">
+                                            <TextBlock x:Name="SourceKeyTextBlock"
+                                                       Margin="0"
+                                                       Padding="0"
+                                                       FontFamily="Consolas"
+                                                       FontSize="10"
+                                                       LineHeight="12"
+                                                       TextAlignment="Center"
+                                                       TextWrapping="Wrap"
+                                                       Foreground="{StaticResource PrimaryBrush}"
+                                                       VerticalAlignment="Center" />
+                                        </Border>
                                     </StackPanel>
 
-                                    <Canvas Grid.Row="2"
-                                                Margin="0,12,0,0"
-                                                Height="82">
-                                        <StackPanel Canvas.Left="0"
-                                                        Canvas.Top="0"
-                                                        Width="102">
-                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="인증 암호" />
-                                            <PasswordBox x:Name="AuthPasswordBox"
-                                                             Width="100"
-                                                             Style="{StaticResource PasswordInputStyle}" />
-                                        </StackPanel>
-
+                                    <Grid Grid.Row="2"
+                                          Margin="0,12,0,0">
                                         <Button x:Name="AuthButton"
-                                                    Canvas.Left="123"
-                                                    Canvas.Top="14"
+                                                    HorizontalAlignment="Right"
                                                     Width="88"
                                                     Height="38"
                                                     Style="{StaticResource PrimaryButtonStyle}"
                                                     Content="인 증"
                                                     Click="AuthButton_Click" />
-                                    </Canvas>
+                                    </Grid>
                                 </Grid>
                             </Border>
                         </StackPanel>
