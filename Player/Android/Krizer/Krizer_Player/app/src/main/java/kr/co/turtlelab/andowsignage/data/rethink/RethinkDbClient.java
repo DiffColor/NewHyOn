@@ -40,6 +40,7 @@ import kr.co.turtlelab.andowsignage.data.DataSyncManager;
 import kr.co.turtlelab.andowsignage.data.realm.RealmPlayer;
 import kr.co.turtlelab.andowsignage.data.update.UpdateQueueContract;
 import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
+import kr.co.turtlelab.andowsignage.tools.AuthUtils;
 import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
 
 /**
@@ -429,13 +430,13 @@ public class RethinkDbClient {
         return convert(map, RethinkModels.ServerSettingsRecord.class);
     }
 
-    public void updatePlayerDeviceInfo(String playerId, String ip, String mac, String osName) {
+    public boolean updatePlayerDeviceInfo(String playerId, String ip, String mac, String osName) {
         if (playerId == null || playerId.isEmpty()) {
-            return;
+            return false;
         }
         Map existing = runSingle(R.db(DATABASE).table(TABLE_PLAYER).get(playerId));
         if (existing == null) {
-            return;
+            return false;
         }
         Map<String, Object> values = new HashMap<>();
         String playerName = getStoredPlayerName();
@@ -447,14 +448,16 @@ public class RethinkDbClient {
         }
         String defaultPlaylist = getStoredDefaultPlaylist();
         values.put("PIF_DefaultPlayList", TextUtils.isEmpty(defaultPlaylist) ? "" : defaultPlaylist.trim());
-        String authKey = resolveLocalAuthKey();
-        if (!TextUtils.isEmpty(authKey)) {
-            values.put("PIF_AuthKey", authKey);
+        AuthSyncSelection authSelection = resolveAuthSync(existing, mac);
+        if (!TextUtils.isEmpty(authSelection.authKey)) {
+            values.put("PIF_AuthKey", authSelection.authKey);
         }
         if (!TextUtils.isEmpty(ip)) {
             values.put("PIF_IPAddress", ip);
         }
-        String deviceIdentity = resolveDeviceIdentity(authKey, mac);
+        String deviceIdentity = TextUtils.isEmpty(authSelection.deviceIdentity)
+                ? resolveDeviceIdentity("", mac)
+                : authSelection.deviceIdentity;
         if (!TextUtils.isEmpty(deviceIdentity)) {
             values.put("PIF_MacAddress", deviceIdentity);
         }
@@ -462,7 +465,7 @@ public class RethinkDbClient {
             values.put("PIF_OSName", osName);
         }
         if (values.isEmpty()) {
-            return;
+            return false;
         }
         try {
             R.db(DATABASE)
@@ -470,8 +473,10 @@ public class RethinkDbClient {
                     .get(playerId)
                     .update(values)
                     .runNoReply(getConnection());
+            return true;
         } catch (Exception ex) {
             Log.e(TAG, "RethinkDbClient: operation failed", ex);
+            return false;
         }
     }
 
@@ -823,7 +828,9 @@ public class RethinkDbClient {
             String ip = resolveLocalIpAddress();
             String mac = NetworkUtils.getMACAddress();
             String os = "Android " + Build.VERSION.RELEASE;
-            updatePlayerDeviceInfo(playerId, ip, mac, os);
+            if (!updatePlayerDeviceInfo(playerId, ip, mac, os)) {
+                return;
+            }
             synchronized (deviceInfoLock) {
                 deviceInfoSynced = true;
                 lastSyncedPlayerGuid = playerId;
@@ -956,12 +963,43 @@ public class RethinkDbClient {
         return "";
     }
 
-    private String resolveLocalAuthKey() {
-        if (!LocalSettingsProvider.hasStoredUsbKeyForDevice()) {
-            return "";
+    private AuthSyncSelection resolveAuthSync(Map existing, String mac) {
+        String localAuthKey = normalizeAuthKey(LocalSettingsProvider.getUsbAuthKey());
+        String serverAuthKey = normalizeAuthKey(getString(existing, "PIF_AuthKey"));
+        String serverIdentity = getString(existing, "PIF_MacAddress");
+
+        AuthSyncSelection localSelection = buildValidAuthSelection(localAuthKey, mac, serverIdentity);
+        if (!TextUtils.isEmpty(localSelection.authKey)) {
+            return localSelection;
         }
-        String authKey = LocalSettingsProvider.getUsbAuthKey();
-        return TextUtils.isEmpty(authKey) ? "" : authKey.trim();
+
+        AuthSyncSelection serverSelection = buildValidAuthSelection(serverAuthKey, mac, serverIdentity);
+        if (!TextUtils.isEmpty(serverSelection.authKey)) {
+            if (!TextUtils.equals(localAuthKey, serverSelection.authKey)) {
+                LocalSettingsProvider.updateUsbAuthKey(serverSelection.authKey);
+            }
+            return serverSelection;
+        }
+
+        return new AuthSyncSelection("", resolveDeviceIdentity("", mac));
+    }
+
+    private AuthSyncSelection buildValidAuthSelection(String authKey, String mac, String serverIdentity) {
+        if (TextUtils.isEmpty(authKey)) {
+            return new AuthSyncSelection("", "");
+        }
+
+        String licenseHubFingerprint = extractLicenseHubDeviceFingerprint(authKey);
+        if (!TextUtils.isEmpty(licenseHubFingerprint)) {
+            return new AuthSyncSelection(authKey, licenseHubFingerprint);
+        }
+
+        String legacyIdentity = resolveLegacyAuthIdentity(authKey, mac, serverIdentity);
+        if (!TextUtils.isEmpty(legacyIdentity)) {
+            return new AuthSyncSelection(authKey, legacyIdentity);
+        }
+
+        return new AuthSyncSelection("", "");
     }
 
     private String resolveDeviceIdentity(String authKey, String mac) {
@@ -970,6 +1008,32 @@ public class RethinkDbClient {
             return fingerprint;
         }
         return TextUtils.isEmpty(mac) ? "" : mac;
+    }
+
+    private String resolveLegacyAuthIdentity(String authKey, String mac, String serverIdentity) {
+        String primaryMac = normalizeMacAddress(mac);
+        if (primaryMac.length() == 12 && isLegacyAuthKeyForMac(authKey, primaryMac)) {
+            return formatMacAddress(primaryMac);
+        }
+
+        String serverMac = normalizeMacAddress(serverIdentity);
+        if (primaryMac.length() != 12 && serverMac.length() == 12 && isLegacyAuthKeyForMac(authKey, serverMac)) {
+            return formatMacAddress(serverMac);
+        }
+
+        return "";
+    }
+
+    private boolean isLegacyAuthKeyForMac(String authKey, String normalizedMac) {
+        if (TextUtils.isEmpty(authKey) || normalizedMac.length() != 12) {
+            return false;
+        }
+        String expected = AuthUtils.EncodeAuthKey(normalizedMac);
+        return authKey.equalsIgnoreCase(expected);
+    }
+
+    private String normalizeAuthKey(String value) {
+        return value == null ? "" : value.trim();
     }
 
     private String extractLicenseHubDeviceFingerprint(String authKey) {
@@ -987,6 +1051,46 @@ public class RethinkDbClient {
             return value == null || value.isJsonNull() ? "" : value.getAsString();
         } catch (Exception ignored) {
             return "";
+        }
+    }
+
+    private String formatMacAddress(String value) {
+        String normalized = normalizeMacAddress(value);
+        if (normalized.length() != 12) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder(17);
+        for (int i = 0; i < normalized.length(); i += 2) {
+            if (builder.length() > 0) {
+                builder.append(':');
+            }
+            builder.append(normalized, i, i + 2);
+        }
+        return builder.toString();
+    }
+
+    private String normalizeMacAddress(String value) {
+        if (TextUtils.isEmpty(value)) {
+            return "";
+        }
+        return value.replaceAll("[^0-9A-Fa-f]", "").toUpperCase(Locale.US);
+    }
+
+    private String getString(Map map, String key) {
+        if (map == null || TextUtils.isEmpty(key)) {
+            return "";
+        }
+        Object value = map.get(key);
+        return value == null ? "" : String.valueOf(value).trim();
+    }
+
+    private static class AuthSyncSelection {
+        final String authKey;
+        final String deviceIdentity;
+
+        AuthSyncSelection(String authKey, String deviceIdentity) {
+            this.authKey = authKey == null ? "" : authKey;
+            this.deviceIdentity = deviceIdentity == null ? "" : deviceIdentity;
         }
     }
 
