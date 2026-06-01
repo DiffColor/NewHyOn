@@ -959,10 +959,20 @@ public class USBReceiver extends BroadcastReceiver {
             return true;
         }
 
-        String localMac = NetworkUtils.getMACAddress();
-        if (!TextUtils.isEmpty(player.PIF_MacAddress)
-                && normalizeMac(player.PIF_MacAddress).equalsIgnoreCase(normalizeMac(localMac))) {
-            return true;
+        if (!TextUtils.isEmpty(player.PIF_MacAddress)) {
+            String localDeviceFingerprint = extractLicenseHubField(
+                    LocalSettingsProvider.getUsbAuthKey(),
+                    "DeviceFingerprint",
+                    "deviceFingerprint");
+            if (!TextUtils.isEmpty(localDeviceFingerprint)
+                    && player.PIF_MacAddress.equalsIgnoreCase(localDeviceFingerprint)) {
+                return true;
+            }
+
+            String localMac = NetworkUtils.getMACAddress();
+            if (normalizeMac(player.PIF_MacAddress).equalsIgnoreCase(normalizeMac(localMac))) {
+                return true;
+            }
         }
 
         return false;
@@ -999,6 +1009,36 @@ public class USBReceiver extends BroadcastReceiver {
 
     private String normalizeMac(String value) {
         return value == null ? "" : value.replace(":", "").replace("-", "").trim();
+    }
+
+    private String extractLicenseHubField(String json, String pascalName, String camelName) {
+        if (TextUtils.isEmpty(json)) {
+            return "";
+        }
+
+        String value = extractJsonString(json, pascalName);
+        return TextUtils.isEmpty(value) ? extractJsonString(json, camelName) : value;
+    }
+
+    private String extractJsonString(String json, String name) {
+        String key = "\"" + name + "\"";
+        int keyIndex = json.indexOf(key);
+        if (keyIndex < 0) {
+            return "";
+        }
+        int colonIndex = json.indexOf(":", keyIndex + key.length());
+        if (colonIndex < 0) {
+            return "";
+        }
+        int startQuote = json.indexOf("\"", colonIndex + 1);
+        if (startQuote < 0) {
+            return "";
+        }
+        int endQuote = json.indexOf("\"", startQuote + 1);
+        if (endQuote <= startQuote) {
+            return "";
+        }
+        return json.substring(startQuote + 1, endQuote).trim();
     }
 
     private String safe(String value) {

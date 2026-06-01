@@ -478,8 +478,9 @@ public class RethinkDbClient {
         if (!TextUtils.isEmpty(ip)) {
             values.put("PIF_IPAddress", ip);
         }
-        if (!TextUtils.isEmpty(mac)) {
-            values.put("PIF_MacAddress", mac);
+        String deviceIdentity = resolveDeviceIdentity(authKey, mac);
+        if (!TextUtils.isEmpty(deviceIdentity)) {
+            values.put("PIF_MacAddress", deviceIdentity);
         }
         if (!TextUtils.isEmpty(osName)) {
             values.put("PIF_OSName", osName);
@@ -1013,6 +1014,32 @@ public class RethinkDbClient {
         }
         String authKey = LocalSettingsProvider.getUsbAuthKey();
         return TextUtils.isEmpty(authKey) ? "" : authKey.trim();
+    }
+
+    private String resolveDeviceIdentity(String authKey, String mac) {
+        String fingerprint = extractLicenseHubDeviceFingerprint(authKey);
+        if (!TextUtils.isEmpty(fingerprint)) {
+            return fingerprint;
+        }
+        return TextUtils.isEmpty(mac) ? "" : mac;
+    }
+
+    private String extractLicenseHubDeviceFingerprint(String authKey) {
+        if (TextUtils.isEmpty(authKey)) {
+            return "";
+        }
+        try {
+            JsonObject json = gson.fromJson(authKey.trim(), JsonObject.class);
+            if (json == null || (!json.has("LicenseToken") && !json.has("licenseToken"))) {
+                return "";
+            }
+            JsonElement value = json.has("DeviceFingerprint")
+                    ? json.get("DeviceFingerprint")
+                    : json.get("deviceFingerprint");
+            return value == null || value.isJsonNull() ? "" : value.getAsString();
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
     public void preparePlayerNameChange(String playerName) {
