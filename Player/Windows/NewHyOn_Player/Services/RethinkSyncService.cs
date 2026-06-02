@@ -513,7 +513,13 @@ namespace NewHyOnPlayer
                     return;
                 }
 
-                ClearAuthFieldsInRethink(remoteGuid);
+                if (!string.IsNullOrWhiteSpace(remoteAuth) && !LicenseHubLocalLicenseStore.IsLicenseHubPayload(remoteAuth))
+                {
+                    ClearAuthFieldsInRethink(remoteGuid);
+                    return;
+                }
+
+                ClearLocalAuthPayload();
             }
             catch (Exception ex)
             {

@@ -22,6 +22,7 @@ import android.os.IBinder;
 import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
@@ -113,6 +114,7 @@ public class AndoWSignage extends Activity {
     static final String ACTION_REFRESH_CS = "andowsignage.intent.action.REFRESH_CS";
     
     private ConfigDialog m_settingDlg;
+	private boolean licenseHubAuthBlocked = false;
 	
 	public PlayerDataModel playerData = new PlayerDataModel();
 	List<PageDataModel> pageDataList = new ArrayList<PageDataModel>();
@@ -540,6 +542,51 @@ public class AndoWSignage extends Activity {
 		SystemUtils.systemBarVisibility(act, true);
 	}
 
+	private boolean ensureLicenseHubAuthForPlayback() {
+		LocalSettingsProvider.clearLegacyUsbAuthKey();
+		if (LocalSettingsProvider.hasStoredUsbKeyForDevice()) {
+			licenseHubAuthBlocked = false;
+			return true;
+		}
+
+		licenseHubAuthBlocked = true;
+		AndoWSignageApp.isRunning = false;
+		AndoWSignageApp.markStoppedState();
+		stopTimerAndElements();
+		syncCurrentDeviceInfoForAuthState();
+		return false;
+	}
+
+	private void syncCurrentDeviceInfoForAuthState() {
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+				try {
+					String host = resolveRethinkHostForAuthSync();
+					if (TextUtils.isEmpty(host)) {
+						return;
+					}
+					RethinkDbClient client = RethinkDbClient.getInstance();
+					client.updateHost(host);
+					client.refreshPlayerGuidForPlayerName(AndoWSignageApp.PLAYER_ID);
+					client.syncCurrentDeviceInfo();
+				} catch (Exception ex) {
+					Log.w("AndoWSignage", "LicenseHub auth device sync failed", ex);
+				}
+			}
+		}).start();
+	}
+
+	private String resolveRethinkHostForAuthSync() {
+		String host = LocalSettingsProvider.getDataServerIp();
+		if (TextUtils.isEmpty(host)) {
+			host = AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)
+					? AndoWSignageApp.MANUAL_IP
+					: AndoWSignageApp.MANAGER_IP;
+		}
+		return NetworkUtils.normalizeAddress(host);
+	}
+
 //	public void setScreen(boolean turnon) {
 ////		WindowManager.LayoutParams params = getWindow().getAttributes();
 //
@@ -579,10 +626,16 @@ public class AndoWSignage extends Activity {
 
 		getPrefValues();
 
+		registerRcv();
+		if (!ensureLicenseHubAuthForPlayback()) {
+			releaseSettings();
+			requestKeyInputOverlayFocus();
+			return;
+		}
+
 		settingsForPlaying();
 		requestKeyInputOverlayFocus();
 
-		registerRcv();
 		enableWatchDog();
 		startWatchdogPing();
 
@@ -882,6 +935,10 @@ public class AndoWSignage extends Activity {
 	}
 	
 	public void updateAndRestart(boolean setOrientation) {
+		if (!ensureLicenseHubAuthForPlayback()) {
+			return;
+		}
+
 		queuedUpdateRestartPending = false;
 		if(tickTimer != null)
 			tickTimer.stop();
@@ -956,8 +1013,8 @@ public class AndoWSignage extends Activity {
 	}
 	
 	public void stopTimerAndElements() {
-		tickTimer.stop();
-		pageTimer.stop();
+		if (tickTimer != null) tickTimer.stop();
+		if (pageTimer != null) pageTimer.stop();
 		stopAllElement();
 	}
 	

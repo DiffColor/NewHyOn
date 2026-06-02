@@ -473,7 +473,9 @@ public class RethinkDbClient {
         String defaultPlaylist = getStoredDefaultPlaylist();
         values.put("PIF_DefaultPlayList", TextUtils.isEmpty(defaultPlaylist) ? "" : defaultPlaylist.trim());
         AuthSyncSelection authSelection = resolveAuthSync(existing, mac);
-        values.put("PIF_AuthKey", authSelection.authKey);
+        if (authSelection.shouldWriteAuthKey) {
+            values.put("PIF_AuthKey", authSelection.authKey);
+        }
         if (!TextUtils.isEmpty(ip)) {
             values.put("PIF_IPAddress", ip);
         }
@@ -877,6 +879,10 @@ public class RethinkDbClient {
         }
     }
 
+    public void syncCurrentDeviceInfo() {
+        updateDeviceInfoIfNeeded();
+    }
+
     private String resolveDeviceUniqueId() {
         String mac = NetworkUtils.getMACAddress();
         if (!TextUtils.isEmpty(mac)) {
@@ -1034,21 +1040,23 @@ public class RethinkDbClient {
         if (!TextUtils.isEmpty(localAuthKey)) {
             LocalSettingsProvider.updateUsbAuthKey("");
         }
-        return new AuthSyncSelection("", resolveDeviceIdentity("", mac));
+        boolean shouldClearLegacyServerAuth = !TextUtils.isEmpty(serverAuthKey)
+                && !LicenseHubAuthUtils.isLicenseHubAuthPayload(serverAuthKey);
+        return new AuthSyncSelection("", resolveDeviceIdentity("", mac), shouldClearLegacyServerAuth);
     }
 
     private AuthSyncSelection buildValidAuthSelection(String authKey, String mac, String serverIdentity) {
         if (TextUtils.isEmpty(authKey)) {
-            return new AuthSyncSelection("", "");
+            return new AuthSyncSelection("", "", false);
         }
 
         String licenseHubFingerprint = extractLicenseHubDeviceFingerprint(authKey);
         if (!TextUtils.isEmpty(licenseHubFingerprint)
                 && LicenseHubAuthUtils.isValidForCurrentDevice(AndoWSignageApp.getApplication(), authKey)) {
-            return new AuthSyncSelection(authKey, licenseHubFingerprint);
+            return new AuthSyncSelection(authKey, licenseHubFingerprint, true);
         }
 
-        return new AuthSyncSelection("", "");
+        return new AuthSyncSelection("", "", false);
     }
 
     private String resolveDeviceIdentity(String authKey, String mac) {
@@ -1118,10 +1126,16 @@ public class RethinkDbClient {
     private static class AuthSyncSelection {
         final String authKey;
         final String deviceIdentity;
+        final boolean shouldWriteAuthKey;
 
         AuthSyncSelection(String authKey, String deviceIdentity) {
+            this(authKey, deviceIdentity, false);
+        }
+
+        AuthSyncSelection(String authKey, String deviceIdentity, boolean shouldWriteAuthKey) {
             this.authKey = authKey == null ? "" : authKey;
             this.deviceIdentity = deviceIdentity == null ? "" : deviceIdentity;
+            this.shouldWriteAuthKey = shouldWriteAuthKey;
         }
     }
 

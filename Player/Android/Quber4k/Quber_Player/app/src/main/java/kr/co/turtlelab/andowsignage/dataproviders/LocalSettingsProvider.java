@@ -173,6 +173,15 @@ public class LocalSettingsProvider {
         persistCurrentSettings();
     }
 
+    public static boolean clearLegacyUsbAuthKey() {
+        String authKey = getUsbAuthKey();
+        if (TextUtils.isEmpty(authKey) || LicenseHubAuthUtils.isLicenseHubAuthPayload(authKey)) {
+            return false;
+        }
+        updateUsbAuthKey("");
+        return true;
+    }
+
     public static void updatePlayerId(String playerId) {
         ObjectBoxDb storeDb = ObjectBoxDb.getDefaultInstance();
         storeDb.executeTransaction(r -> {
