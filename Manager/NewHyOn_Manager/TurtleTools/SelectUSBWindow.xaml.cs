@@ -52,14 +52,19 @@ namespace TurtleTools
                 List<PageInfoClass> pages = ClonePages(DataShop.Instance.g_PageInfoManager.g_PageInfoClassList);
                 NormalizeContentPaths(pages);
                 List<PlayerInfoClass> players = CollectPlayersForPlaylist(g_listName);
-                // CopyAuthKeyToUsb(usbname);
+                List<PlayerInfoClass> legacyPlayers = players
+                    .Where(p => IsNewUsbTargetPlayer(p) == false)
+                    .ToList();
+                List<PlayerInfoClass> newPlayers = players
+                    .Where(IsNewUsbTargetPlayer)
+                    .ToList();
 
                 var playlistSnapshot = new PlaylistExportBundle
                 {
                     PlaylistName = g_listName,
                     PageList = ClonePageList(DataShop.Instance.g_PageListInfoManager.GetPageListByName(g_listName)),
                     Pages = pages,
-                    Players = players,
+                    Players = legacyPlayers,
                     ExportedAt = DateTime.Now
                 };
 
@@ -68,16 +73,18 @@ namespace TurtleTools
                 var weeklySnapshot = new WeeklyScheduleExportBundle
                 {
                     ExportedAt = DateTime.Now,
-                    Items = BuildWeeklyScheduleSnapshots(players)
+                    Items = BuildWeeklyScheduleSnapshots(legacyPlayers)
                 };
                 WriteJson(Path.Combine(usbRoot, "weekly_schedule.bin"), weeklySnapshot);
 
                 var specialSnapshot = new SpecialScheduleExportBundle
                 {
                     ExportedAt = DateTime.Now,
-                    Items = BuildSpecialScheduleSnapshots(players)
+                    Items = BuildSpecialScheduleSnapshots(legacyPlayers)
                 };
                 WriteJson(Path.Combine(usbRoot, "special_schedule.bin"), specialSnapshot);
+
+                WriteNewUsbTargetPackages(usbRoot, g_listName, pages, newPlayers);
 
                 string targetContentFolder = FNDTools.GetUSBContentPath(usbname);
                 List<CopyFileInfo> copyfilelist = BuildCopyFileList(pages, targetContentFolder);
@@ -118,29 +125,6 @@ namespace TurtleTools
             FileTools.DeleteDirectory(usbRoot);
             return FNDTools.GetUSBRootPath(usbName);
         }
-
-        // private static void CopyAuthKeyToUsb(string usbName)
-        // {
-        //     string target = FNDTools.GetUSBAuthKeyPath(usbName);
-        //     List<string> authKeys = DataShop.Instance.g_PlayerInfoManager.GetAllAuthKeys();
-        //
-        //     if (authKeys == null || authKeys.Count == 0)
-        //     {
-        //         if (File.Exists(target))
-        //         {
-        //             File.Delete(target);
-        //         }
-        //         return;
-        //     }
-        //
-        //     string directory = Path.GetDirectoryName(target);
-        //     if (string.IsNullOrEmpty(directory) == false)
-        //     {
-        //         Directory.CreateDirectory(directory);
-        //     }
-        //
-        //     File.WriteAllLines(target, authKeys);
-        // }
 
         private static List<PageInfoClass> ClonePages(IEnumerable<PageInfoClass> pages)
         {
@@ -197,6 +181,29 @@ namespace TurtleTools
                         {
                             content.CIF_FileFullPath = FNDTools.GetTargetContentsFilePath(content.CIF_FileName);
                         }
+
+                        string targetFileName = GetTargetFileName(content);
+                        if (string.IsNullOrWhiteSpace(targetFileName) == false)
+                        {
+                            content.CIF_FileName = targetFileName;
+                            content.CIF_RelativePath = $"Contents/{targetFileName}";
+
+                            if (string.IsNullOrWhiteSpace(content.CIF_FileFullPath) == false && File.Exists(content.CIF_FileFullPath))
+                            {
+                                try
+                                {
+                                    FileInfo info = new FileInfo(content.CIF_FileFullPath);
+                                    content.CIF_FileSize = info.Length;
+                                    content.CIF_FileHash = XXHash64.ComputePartialSignature(content.CIF_FileFullPath);
+                                    content.CIF_FileExist = true;
+                                }
+                                catch
+                                {
+                                    content.CIF_FileSize = 0;
+                                    content.CIF_FileHash = string.Empty;
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -225,7 +232,36 @@ namespace TurtleTools
 
             PlayerInfoClass clone = new PlayerInfoClass();
             clone.CopyData(source);
+            clone.PIF_AuthKey = string.Empty;
             return clone;
+        }
+
+        private static bool IsNewUsbTargetPlayer(PlayerInfoClass player)
+        {
+            return string.IsNullOrWhiteSpace(BuildDeviceIdentity(player)) == false;
+        }
+
+        private static string BuildDeviceIdentity(PlayerInfoClass player)
+        {
+            return SanitizeDeviceIdentity(player?.PIF_MacAddress);
+        }
+
+        private static string SanitizeDeviceIdentity(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            string trimmed = value.Trim().ToUpperInvariant();
+            HashSet<char> invalidChars = new HashSet<char>(Path.GetInvalidFileNameChars());
+            StringBuilder builder = new StringBuilder(trimmed.Length);
+            foreach (char ch in trimmed)
+            {
+                builder.Append(invalidChars.Contains(ch) ? '_' : ch);
+            }
+
+            return builder.ToString();
         }
 
         private static PageListInfoClass ClonePageList(PageListInfoClass source)
@@ -256,6 +292,104 @@ namespace TurtleTools
             {
                 Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
             }
+        }
+
+        private static void WritePlainJson(string filePath, object data)
+        {
+            if (string.IsNullOrWhiteSpace(filePath) || data == null)
+            {
+                return;
+            }
+
+            try
+            {
+                string directory = Path.GetDirectoryName(filePath);
+                if (string.IsNullOrWhiteSpace(directory) == false)
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                string json = JsonConvert.SerializeObject(data, Formatting.Indented);
+                File.WriteAllText(filePath, json, Encoding.UTF8);
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
+            }
+        }
+
+        private static void WriteNewUsbTargetPackages(string usbRoot,
+            string playlistName,
+            List<PageInfoClass> pages,
+            List<PlayerInfoClass> players)
+        {
+            var targets = new List<UsbTargetInfo>();
+            var usedFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (string.IsNullOrWhiteSpace(usbRoot) == false && players != null)
+            {
+                foreach (PlayerInfoClass player in players)
+                {
+                    string identity = BuildDeviceIdentity(player);
+                    if (string.IsNullOrWhiteSpace(identity))
+                    {
+                        continue;
+                    }
+
+                    string folderName = identity;
+                    if (usedFolders.Add(folderName) == false)
+                    {
+                        Logger.WriteErrorLog($"USB export duplicate device identity skipped: {identity}", Logger.GetLogFileName());
+                        continue;
+                    }
+
+                    string targetFolder = Path.Combine(usbRoot, folderName);
+                    Directory.CreateDirectory(targetFolder);
+
+                    List<PlayerInfoClass> targetPlayers = new List<PlayerInfoClass> { ClonePlayer(player) };
+                    List<PageInfoClass> targetPages = ClonePages(pages);
+                    NormalizeContentPaths(targetPages);
+
+                    var playlistSnapshot = new PlaylistExportBundle
+                    {
+                        PlaylistName = playlistName,
+                        PageList = ClonePageList(DataShop.Instance.g_PageListInfoManager.GetPageListByName(playlistName)),
+                        Pages = targetPages,
+                        Players = targetPlayers,
+                        ExportedAt = DateTime.Now
+                    };
+                    WriteJson(Path.Combine(targetFolder, "playlist.bin"), playlistSnapshot);
+
+                    var weeklySnapshot = new WeeklyScheduleExportBundle
+                    {
+                        ExportedAt = DateTime.Now,
+                        Items = BuildWeeklyScheduleSnapshots(targetPlayers)
+                    };
+                    WriteJson(Path.Combine(targetFolder, "weekly_schedule.bin"), weeklySnapshot);
+
+                    var specialSnapshot = new SpecialScheduleExportBundle
+                    {
+                        ExportedAt = DateTime.Now,
+                        Items = BuildSpecialScheduleSnapshots(targetPlayers)
+                    };
+                    WriteJson(Path.Combine(targetFolder, "special_schedule.bin"), specialSnapshot);
+
+                    targets.Add(new UsbTargetInfo
+                    {
+                        Folder = folderName,
+                        PlayerName = player.PIF_PlayerName ?? string.Empty,
+                        PlayerGuid = player.PIF_GUID ?? string.Empty,
+                        DeviceIdentity = identity
+                    });
+                }
+            }
+
+            WritePlainJson(Path.Combine(usbRoot, "targets.json"), new UsbTargetsManifest
+            {
+                Version = 1,
+                ExportedAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                Targets = targets
+            });
         }
 
         private static List<WeeklyScheduleExportItem> BuildWeeklyScheduleSnapshots(IEnumerable<PlayerInfoClass> players)
@@ -426,7 +560,7 @@ namespace TurtleTools
                         }
 
                         string sourcePath = ResolveContentPath(content);
-                        string dedupeKey = $"{fileName}|{sourcePath}";
+                        string dedupeKey = BuildContentDedupeKey(fileName, sourcePath);
                         if (dedupeKeys.Add(dedupeKey) == false)
                         {
                             continue;
@@ -448,6 +582,26 @@ namespace TurtleTools
             }
 
             return copyList;
+        }
+
+        private static string BuildContentDedupeKey(string fileName, string sourcePath)
+        {
+            string normalizedName = fileName ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(sourcePath) || File.Exists(sourcePath) == false)
+            {
+                return normalizedName;
+            }
+
+            try
+            {
+                FileInfo info = new FileInfo(sourcePath);
+                string hash = XXHash64.ComputePartialSignature(sourcePath);
+                return $"{normalizedName}|{info.Length}|{hash}";
+            }
+            catch
+            {
+                return $"{normalizedName}|{sourcePath}";
+            }
         }
 
         private static string ResolveContentPath(ContentsInfoClass content)
@@ -511,6 +665,33 @@ namespace TurtleTools
         {
             public PlayerInfoClass Player { get; set; }
             public List<SpecialScheduleInfoClass> Schedules { get; set; } = new List<SpecialScheduleInfoClass>();
+        }
+
+        private class UsbTargetsManifest
+        {
+            [JsonProperty("version")]
+            public int Version { get; set; }
+
+            [JsonProperty("exportedAt")]
+            public string ExportedAt { get; set; }
+
+            [JsonProperty("targets")]
+            public List<UsbTargetInfo> Targets { get; set; } = new List<UsbTargetInfo>();
+        }
+
+        private class UsbTargetInfo
+        {
+            [JsonProperty("folder")]
+            public string Folder { get; set; }
+
+            [JsonProperty("playerName")]
+            public string PlayerName { get; set; }
+
+            [JsonProperty("playerGuid")]
+            public string PlayerGuid { get; set; }
+
+            [JsonProperty("deviceIdentity")]
+            public string DeviceIdentity { get; set; }
         }
     }
 

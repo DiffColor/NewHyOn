@@ -10,6 +10,8 @@ import android.os.Environment;
 import android.text.TextUtils;
 import android.util.Log;
 
+import com.google.gson.Gson;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -28,7 +30,6 @@ import kr.co.turtlelab.andowsignage.data.DataSyncManager;
 import kr.co.turtlelab.andowsignage.data.update.FileIntegrityUtils;
 import kr.co.turtlelab.andowsignage.data.update.UpdatePayloadModels;
 import kr.co.turtlelab.andowsignage.datamodels.PlayerDataModel;
-import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
 import kr.co.turtlelab.andowsignage.dataproviders.PlayerDataProvider;
 import kr.co.turtlelab.andowsignage.tools.FileUtils;
 import kr.co.turtlelab.andowsignage.tools.ImageUtils;
@@ -46,14 +47,13 @@ public class USBReceiver extends BroadcastReceiver {
     private static final String PLAYLIST_FILENAME = "playlist.bin";
     private static final String WEEKLY_SCHEDULE_FILENAME = "weekly_schedule.bin";
     private static final String SPECIAL_SCHEDULE_FILENAME = "special_schedule.bin";
+    private static final String TARGETS_FILENAME = "targets.json";
     private static final int USB_COPY_BUFFER_SIZE = 4 * 1024 * 1024;
 
     CopyWorker mCopyWorker = null;
     USBCopyWorker mUSBCopyWorker = null;
 
     File usbSourceDir = null;
-    boolean hasKey = false;
-
     @Override
     public void onReceive(Context context, Intent intent) {
 
@@ -76,10 +76,10 @@ public class USBReceiver extends BroadcastReceiver {
         if(installDir != null)
         {
             usbSourceDir = installDir;
-            hasKey = LocalSettingsProvider.hasStoredUsbKeyForDevice();
-            if(hasKey) {
+            File packageDir = resolveManagerUsbPackageDir(context, installDir);
+            if (packageDir != null) {
                 mCopyWorker = new CopyWorker();
-                CopyAll(installDir);
+                CopyAll(packageDir);
             }
             return;
         }
@@ -96,15 +96,10 @@ public class USBReceiver extends BroadcastReceiver {
         if(mediaDir != null)
         {
             usbSourceDir = mediaDir;
-            hasKey = LocalSettingsProvider.hasStoredUsbKeyForDevice();
-
-            if(hasKey) {
-                mUSBCopyWorker = new USBCopyWorker();
-                mUSBCopyWorker.executeOnExecutor(AsyncTask.SERIAL_EXECUTOR);
-            }
+            mUSBCopyWorker = new USBCopyWorker();
+            mUSBCopyWorker.executeOnExecutor(AsyncTask.SERIAL_EXECUTOR);
         }
 
-        hasKey = false;
         usbSourceDir = null;
     }
 
@@ -385,6 +380,110 @@ public class USBReceiver extends BroadcastReceiver {
         return false;
     }
 
+    private File resolveManagerUsbPackageDir(Context context, File usbRoot) {
+        if (usbRoot == null || !usbRoot.exists() || !usbRoot.isDirectory()) {
+            return null;
+        }
+
+        File targetsFile = new File(usbRoot, TARGETS_FILENAME);
+        if (!targetsFile.exists()) {
+            File playlistFile = new File(usbRoot, PLAYLIST_FILENAME);
+            return playlistFile.exists() ? usbRoot : null;
+        }
+
+        UsbTargetsManifest manifest;
+        try {
+            String json = FileUtils.ReadTextFile(targetsFile.getAbsolutePath());
+            manifest = new Gson().fromJson(json, UsbTargetsManifest.class);
+        } catch (Exception ex) {
+            Log.e(TAG, "targets.json read failed", ex);
+            return null;
+        }
+
+        Set<String> candidates = buildCurrentDeviceIdentityCandidates(context);
+        if (candidates.isEmpty()) {
+            Log.i(TAG, "Targeted USB ignored: current device identity empty");
+            return null;
+        }
+
+        UsbTargetInfo matched = null;
+        List<UsbTargetInfo> targets = manifest == null ? null : manifest.targets;
+        if (targets != null) {
+            for (UsbTargetInfo target : targets) {
+                String deviceIdentity = normalizeDeviceIdentity(target == null ? "" : target.deviceIdentity);
+                String folder = normalizeDeviceIdentity(target == null ? "" : target.folder);
+                if ((!TextUtils.isEmpty(deviceIdentity) && candidates.contains(deviceIdentity))
+                        || (!TextUtils.isEmpty(folder) && candidates.contains(folder))) {
+                    matched = target;
+                    break;
+                }
+            }
+        }
+
+        if (matched == null) {
+            Log.i(TAG, "Targeted USB ignored: current device is not a target");
+            return null;
+        }
+
+        String folderName = sanitizeDeviceIdentity(TextUtils.isEmpty(matched.folder) ? matched.deviceIdentity : matched.folder);
+        File packageDir = new File(usbRoot, folderName);
+        if (!packageDir.exists() || !packageDir.isDirectory()) {
+            Log.i(TAG, "Targeted USB ignored: missing target folder " + folderName);
+            return null;
+        }
+        if (!new File(packageDir, PLAYLIST_FILENAME).exists()) {
+            Log.i(TAG, "Targeted USB ignored: missing target playlist.bin " + folderName);
+            return null;
+        }
+
+        return packageDir;
+    }
+
+    private Set<String> buildCurrentDeviceIdentityCandidates(Context context) {
+        Set<String> result = new LinkedHashSet<>();
+        try {
+            addDeviceIdentityCandidate(result, LicenseHubAuthUtils.generateDeviceFingerprint(context));
+        } catch (Exception ex) {
+            Log.e(TAG, "Device fingerprint generation failed", ex);
+        }
+
+        return result;
+    }
+
+    private void addDeviceIdentityCandidate(Set<String> values, String value) {
+        if (values == null) {
+            return;
+        }
+        String normalized = normalizeDeviceIdentity(value);
+        if (!TextUtils.isEmpty(normalized)) {
+            values.add(normalized);
+        }
+    }
+
+    private String normalizeDeviceIdentity(String value) {
+        return sanitizeDeviceIdentity(value);
+    }
+
+    private String sanitizeDeviceIdentity(String value) {
+        if (TextUtils.isEmpty(value)) {
+            return "";
+        }
+
+        String trimmed = value.trim().toUpperCase(Locale.US);
+        StringBuilder builder = new StringBuilder(trimmed.length());
+        for (int i = 0; i < trimmed.length(); i++) {
+            char ch = trimmed.charAt(i);
+            if (ch == '\\' || ch == '/' || ch == ':' || ch == '*' || ch == '?'
+                    || ch == '"' || ch == '<' || ch == '>' || ch == '|'
+                    || Character.isISOControl(ch)) {
+                builder.append('_');
+            } else {
+                builder.append(ch);
+            }
+        }
+        return builder.toString();
+    }
+
     private boolean isEmulatedStorageEvent(Intent intent) {
         if (intent == null || intent.getData() == null) {
             return false;
@@ -506,12 +605,12 @@ public class USBReceiver extends BroadcastReceiver {
 					@Override
 					public void run() {
 
-                        if (result != null && result.success && !TextUtils.isEmpty(result.playlistName)) {
-                            PlayerDataProvider.updateCurrentPListName(result.playlistName);
-                        } else {
+                        if (result == null || !result.success || TextUtils.isEmpty(result.playlistName)) {
                             Log.e(TAG, "USB update failed: " + (result == null ? "unknown" : result.message));
+                            return;
                         }
 
+                        PlayerDataProvider.updateCurrentPListName(result.playlistName);
 						ImageUtils.cleanDiskcache();
 
 						File contentDir = usbSourceDir == null ? null : new File(usbSourceDir, "Contents");
@@ -525,7 +624,7 @@ public class USBReceiver extends BroadcastReceiver {
 
 	                    //LocalPathUtils.RemoveGarbageContents(clist);
 
-					AndoWSignage.act.updateAndRestart(false);
+					    AndoWSignage.act.updateAndRestart(false);
 				}
 			});
 		}
@@ -581,6 +680,9 @@ public class USBReceiver extends BroadcastReceiver {
         }
 
         File contentsDir = new File(packageDir, "Contents");
+        if ((!contentsDir.exists() || !contentsDir.isDirectory()) && usbSourceDir != null && !packageDir.equals(usbSourceDir)) {
+            contentsDir = new File(usbSourceDir, "Contents");
+        }
         if (!contentsDir.exists() || !contentsDir.isDirectory()) {
             throw new IOException("USB Contents directory missing");
         }
@@ -897,15 +999,14 @@ public class USBReceiver extends BroadcastReceiver {
         }
 
         if (!TextUtils.isEmpty(player.PIF_MacAddress)) {
-            String localAuth = LocalSettingsProvider.getUsbAuthKey();
-            String localDeviceFingerprint = LicenseHubAuthUtils.isValidForCurrentDevice(
-                    AndoWSignageApp.getApplication(),
-                    localAuth)
-                    ? LicenseHubAuthUtils.extractDeviceFingerprint(localAuth)
-                    : "";
-            if (!TextUtils.isEmpty(localDeviceFingerprint)
-                    && player.PIF_MacAddress.equalsIgnoreCase(localDeviceFingerprint)) {
-                return true;
+            try {
+                String localDeviceFingerprint = LicenseHubAuthUtils.generateDeviceFingerprint(AndoWSignageApp.getApplication());
+                if (!TextUtils.isEmpty(localDeviceFingerprint)
+                        && normalizeDeviceIdentity(player.PIF_MacAddress).equalsIgnoreCase(normalizeDeviceIdentity(localDeviceFingerprint))) {
+                    return true;
+                }
+            } catch (Exception ex) {
+                Log.e(TAG, "Device fingerprint generation failed", ex);
             }
         }
 
@@ -979,6 +1080,19 @@ public class USBReceiver extends BroadcastReceiver {
         }
     }
 
+    private static class UsbTargetsManifest {
+        int version;
+        String exportedAt = "";
+        List<UsbTargetInfo> targets = new ArrayList<>();
+    }
+
+    private static class UsbTargetInfo {
+        String folder = "";
+        String playerName = "";
+        String playerGuid = "";
+        String deviceIdentity = "";
+    }
+
     private static class PlaylistExportBundle {
         String PlaylistName = "";
         UpdatePayloadModels.PageListInfoClass PageList;
@@ -1009,7 +1123,6 @@ public class USBReceiver extends BroadcastReceiver {
         String PIF_GUID = "";
         String PIF_PlayerName = "";
         String PIF_MacAddress = "";
-        String PIF_AuthKey = "";
     }
 
     private static class SpecialScheduleInfoExport {

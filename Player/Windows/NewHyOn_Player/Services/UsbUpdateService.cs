@@ -1,6 +1,8 @@
 extern alias USBDetector;
 
 using AndoW.Shared;
+using LicenseHub.DeviceAuth.Core;
+using NewHyOn.Shared.Auth;
 using NewHyOnPlayer.DataManager;
 using Newtonsoft.Json;
 using System;
@@ -27,6 +29,7 @@ namespace NewHyOnPlayer
         private const string PlaylistFileName = "playlist.bin";
         private const string WeeklyScheduleFileName = "weekly_schedule.bin";
         private const string SpecialScheduleFileName = "special_schedule.bin";
+        private const string TargetsFileName = "targets.json";
 
         private readonly MainWindow owner;
         private readonly UsbManager usbManager;
@@ -88,13 +91,7 @@ namespace NewHyOnPlayer
                     return;
                 }
 
-                string packageId = BuildPackageIdentity(usbRoot);
-                if (string.IsNullOrWhiteSpace(packageId))
-                {
-                    return;
-                }
-
-                TryProcessPackage(usbRoot, packageId);
+                TryProcessPackage(usbRoot);
             }
             catch (Exception ex)
             {
@@ -123,19 +120,35 @@ namespace NewHyOnPlayer
             return value + @":\";
         }
 
-        private bool TryProcessPackage(string usbRoot, string packageId)
+        private bool TryProcessPackage(string usbRoot)
         {
             try
             {
                 Logger.WriteLog($"UsbUpdateService package detected: {usbRoot}", Logger.GetLogFileName());
 
-                var package = ReadPackage(usbRoot, packageId);
+                UsbPackageSelection selection = ResolvePackageSelection(usbRoot);
+                if (selection == null)
+                {
+                    return false;
+                }
+
+                string packageId = BuildPackageIdentity(selection.PackageDir, selection.ContentRoot);
+                if (string.IsNullOrWhiteSpace(packageId))
+                {
+                    return false;
+                }
+
+                var package = ReadPackage(selection.PackageDir, packageId, selection.IsTargetedStructure);
                 if (package == null)
                 {
                     return false;
                 }
 
-                string stagingContentsPath = StageContents(usbRoot, packageId);
+                string stagingContentsPath = selection.IsTargetedStructure
+                    ? string.Empty
+                    : StageContents(usbRoot, packageId);
+                package.ContentSourcePath = selection.ContentRoot;
+                package.IsTargetedStructure = selection.IsTargetedStructure;
                 package.StagingContentsPath = stagingContentsPath;
 
                 ApplyPackage(package);
@@ -149,7 +162,86 @@ namespace NewHyOnPlayer
             }
         }
 
-        private UsbUpdatePackage ReadPackage(string usbRoot, string packageId)
+        private UsbPackageSelection ResolvePackageSelection(string usbRoot)
+        {
+            string targetsPath = Path.Combine(usbRoot, TargetsFileName);
+            if (!File.Exists(targetsPath))
+            {
+                string playlistPath = Path.Combine(usbRoot, PlaylistFileName);
+                if (!File.Exists(playlistPath))
+                {
+                    Logger.WriteLog($"UsbUpdateService package ignored: missing {PlaylistFileName}.", Logger.GetLogFileName());
+                    return null;
+                }
+
+                return new UsbPackageSelection
+                {
+                    PackageDir = usbRoot,
+                    ContentRoot = Path.Combine(usbRoot, ContentsDirName),
+                    IsTargetedStructure = false
+                };
+            }
+
+            UsbTargetsManifest manifest;
+            try
+            {
+                manifest = JsonConvert.DeserializeObject<UsbTargetsManifest>(File.ReadAllText(targetsPath));
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog($"UsbUpdateService targets.json read failed: {ex}", Logger.GetLogFileName());
+                return null;
+            }
+
+            HashSet<string> identities = BuildCurrentDeviceIdentityCandidates();
+            if (identities.Count == 0)
+            {
+                Logger.WriteLog("UsbUpdateService targeted package ignored: current device identity empty.", Logger.GetLogFileName());
+                return null;
+            }
+
+            UsbTargetInfo matched = null;
+            foreach (UsbTargetInfo target in manifest?.Targets ?? new List<UsbTargetInfo>())
+            {
+                string deviceIdentity = NormalizeDeviceIdentity(target?.DeviceIdentity);
+                string folder = NormalizeDeviceIdentity(target?.Folder);
+                if ((!string.IsNullOrWhiteSpace(deviceIdentity) && identities.Contains(deviceIdentity))
+                    || (!string.IsNullOrWhiteSpace(folder) && identities.Contains(folder)))
+                {
+                    matched = target;
+                    break;
+                }
+            }
+
+            if (matched == null)
+            {
+                Logger.WriteLog("UsbUpdateService targeted package ignored: current device is not a target.", Logger.GetLogFileName());
+                return null;
+            }
+
+            string matchedFolder = SanitizeDeviceIdentity(string.IsNullOrWhiteSpace(matched.Folder) ? matched.DeviceIdentity : matched.Folder);
+            string packageDir = Path.Combine(usbRoot, matchedFolder);
+            if (!Directory.Exists(packageDir))
+            {
+                Logger.WriteLog($"UsbUpdateService targeted package ignored: missing target folder. folder={matchedFolder}", Logger.GetLogFileName());
+                return null;
+            }
+
+            if (!File.Exists(Path.Combine(packageDir, PlaylistFileName)))
+            {
+                Logger.WriteLog($"UsbUpdateService targeted package ignored: missing target {PlaylistFileName}. folder={matchedFolder}", Logger.GetLogFileName());
+                return null;
+            }
+
+            return new UsbPackageSelection
+            {
+                PackageDir = packageDir,
+                ContentRoot = Path.Combine(usbRoot, ContentsDirName),
+                IsTargetedStructure = true
+            };
+        }
+
+        private UsbUpdatePackage ReadPackage(string usbRoot, string packageId, bool isTargetedStructure)
         {
             string playlistPath = Path.Combine(usbRoot, PlaylistFileName);
             if (!File.Exists(playlistPath))
@@ -186,7 +278,9 @@ namespace NewHyOnPlayer
                 return null;
             }
 
-            PlayerInfoClass matchedPlayer = ResolvePackagePlayer(playlist.Players);
+            PlayerInfoClass matchedPlayer = isTargetedStructure
+                ? (playlist.Players ?? new List<PlayerInfoClass>()).FirstOrDefault(x => x != null)
+                : ResolvePackagePlayer(playlist.Players);
             if (playlist.Players != null && playlist.Players.Count > 0 && matchedPlayer == null)
             {
                 Logger.WriteLog("UsbUpdateService package ignored: current player is not included in playlist package.", Logger.GetLogFileName());
@@ -258,7 +352,14 @@ namespace NewHyOnPlayer
                 owner.StopPlayback();
             }));
 
-            CopyStagedContentsToLocal(package.StagingContentsPath);
+            if (package.IsTargetedStructure)
+            {
+                CopyReferencedContentsToLocal(package.ContentSourcePath, package.Playlist?.Pages);
+            }
+            else
+            {
+                CopyStagedContentsToLocal(package.StagingContentsPath);
+            }
             ApplyDataToLiteDb(package);
 
             owner.Dispatcher.BeginInvoke(new Action(() =>
@@ -279,6 +380,203 @@ namespace NewHyOnPlayer
             }
 
             CopyDirectoryVerified(stagingContentsPath, FNDTools.GetContentsRootDirPath());
+        }
+
+        private void CopyReferencedContentsToLocal(string sourceContentsPath, IEnumerable<PageInfoClass> pages)
+        {
+            if (string.IsNullOrWhiteSpace(sourceContentsPath) || !Directory.Exists(sourceContentsPath))
+            {
+                return;
+            }
+
+            Dictionary<string, ContentCopySpec> specs = CollectContentCopySpecs(pages);
+            if (specs.Count == 0)
+            {
+                return;
+            }
+
+            string targetRoot = FNDTools.GetContentsRootDirPath();
+            Directory.CreateDirectory(targetRoot);
+
+            foreach (ContentCopySpec spec in specs.Values)
+            {
+                string sourceFile = ResolveSourceContentFile(sourceContentsPath, spec);
+                if (string.IsNullOrWhiteSpace(sourceFile) || !File.Exists(sourceFile))
+                {
+                    throw new IOException($"USB content missing. file={spec.FileName}");
+                }
+
+                string targetFile = Path.Combine(targetRoot, spec.FileName);
+                if (IsSameExpectedContent(sourceFile, targetFile, spec))
+                {
+                    continue;
+                }
+
+                if (!FileTools.CopyFile(sourceFile, targetFile, true, true))
+                {
+                    throw new IOException($"USB content copy failed. source={sourceFile}, target={targetFile}");
+                }
+            }
+        }
+
+        private static Dictionary<string, ContentCopySpec> CollectContentCopySpecs(IEnumerable<PageInfoClass> pages)
+        {
+            var result = new Dictionary<string, ContentCopySpec>(StringComparer.OrdinalIgnoreCase);
+            if (pages == null)
+            {
+                return result;
+            }
+
+            foreach (var page in pages)
+            {
+                foreach (var element in page?.PIC_Elements ?? new List<ElementInfoClass>())
+                {
+                    if (!string.Equals(element?.EIF_Type, "Media", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    foreach (var content in element.EIF_ContentsInfoClassList ?? new List<ContentsInfoClass>())
+                    {
+                        AddContentCopySpec(result, content);
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        private static void AddContentCopySpec(Dictionary<string, ContentCopySpec> specs, ContentsInfoClass content)
+        {
+            if (specs == null || content == null || !IsFileBasedContent(content))
+            {
+                return;
+            }
+
+            string fileName = ResolveContentFileName(content);
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                return;
+            }
+
+            if (!specs.TryGetValue(fileName, out ContentCopySpec existing))
+            {
+                specs[fileName] = new ContentCopySpec
+                {
+                    FileName = fileName,
+                    RelativePath = content.CIF_RelativePath ?? string.Empty,
+                    SizeBytes = Math.Max(0, content.CIF_FileSize),
+                    Hash = string.IsNullOrWhiteSpace(content.CIF_FileHash) ? content.CIF_StrGUID : content.CIF_FileHash
+                };
+                return;
+            }
+
+            if (existing.SizeBytes <= 0 && content.CIF_FileSize > 0)
+            {
+                existing.SizeBytes = content.CIF_FileSize;
+            }
+
+            if (string.IsNullOrWhiteSpace(existing.Hash))
+            {
+                existing.Hash = string.IsNullOrWhiteSpace(content.CIF_FileHash) ? content.CIF_StrGUID : content.CIF_FileHash;
+            }
+
+            if (string.IsNullOrWhiteSpace(existing.RelativePath) && !string.IsNullOrWhiteSpace(content.CIF_RelativePath))
+            {
+                existing.RelativePath = content.CIF_RelativePath;
+            }
+        }
+
+        private static bool IsFileBasedContent(ContentsInfoClass content)
+        {
+            if (content == null || string.IsNullOrWhiteSpace(content.CIF_ContentType))
+            {
+                return true;
+            }
+
+            return !string.Equals(content.CIF_ContentType, "WebSiteURL", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(content.CIF_ContentType, "Browser", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string ResolveContentFileName(ContentsInfoClass content)
+        {
+            if (content == null)
+            {
+                return string.Empty;
+            }
+
+            if (!string.IsNullOrWhiteSpace(content.CIF_FileName))
+            {
+                return Path.GetFileName(content.CIF_FileName);
+            }
+
+            if (!string.IsNullOrWhiteSpace(content.CIF_RelativePath))
+            {
+                return Path.GetFileName(content.CIF_RelativePath);
+            }
+
+            return string.IsNullOrWhiteSpace(content.CIF_FileFullPath)
+                ? string.Empty
+                : Path.GetFileName(content.CIF_FileFullPath);
+        }
+
+        private static string ResolveSourceContentFile(string sourceContentsPath, ContentCopySpec spec)
+        {
+            if (string.IsNullOrWhiteSpace(sourceContentsPath) || spec == null || string.IsNullOrWhiteSpace(spec.FileName))
+            {
+                return string.Empty;
+            }
+
+            string direct = Path.Combine(sourceContentsPath, spec.FileName);
+            if (File.Exists(direct))
+            {
+                return direct;
+            }
+
+            string relativeName = string.IsNullOrWhiteSpace(spec.RelativePath)
+                ? string.Empty
+                : Path.GetFileName(spec.RelativePath);
+            if (!string.IsNullOrWhiteSpace(relativeName))
+            {
+                string relative = Path.Combine(sourceContentsPath, relativeName);
+                if (File.Exists(relative))
+                {
+                    return relative;
+                }
+            }
+
+            return direct;
+        }
+
+        private static bool IsSameExpectedContent(string sourceFile, string targetFile, ContentCopySpec spec)
+        {
+            if (!File.Exists(sourceFile) || !File.Exists(targetFile))
+            {
+                return false;
+            }
+
+            long sourceLength = new FileInfo(sourceFile).Length;
+            long targetLength = new FileInfo(targetFile).Length;
+            if (sourceLength != targetLength)
+            {
+                return false;
+            }
+
+            if (spec != null && spec.SizeBytes > 0 && targetLength != spec.SizeBytes)
+            {
+                return false;
+            }
+
+            string hash = spec?.Hash ?? string.Empty;
+            if (hash.Length == 16)
+            {
+                return string.Equals(
+                    XXHash64.ComputePartialSignature(sourceFile),
+                    XXHash64.ComputePartialSignature(targetFile),
+                    StringComparison.OrdinalIgnoreCase);
+            }
+
+            return true;
         }
 
         private void CopyDirectoryVerified(string sourceRoot, string targetRoot)
@@ -707,21 +1005,21 @@ namespace NewHyOnPlayer
             }
         }
 
-        private string BuildPackageIdentity(string usbRoot)
+        private string BuildPackageIdentity(string packageRoot, string contentRoot)
         {
-            string playlistPath = Path.Combine(usbRoot, PlaylistFileName);
+            string playlistPath = Path.Combine(packageRoot, PlaylistFileName);
             if (!File.Exists(playlistPath))
             {
                 return string.Empty;
             }
 
             var sb = new StringBuilder();
-            sb.Append(Path.GetFullPath(usbRoot)).Append('|');
+            sb.Append(Path.GetFullPath(packageRoot)).Append('|');
             AppendFileIdentity(sb, playlistPath);
-            AppendFileIdentity(sb, Path.Combine(usbRoot, WeeklyScheduleFileName));
-            AppendFileIdentity(sb, Path.Combine(usbRoot, SpecialScheduleFileName));
+            AppendFileIdentity(sb, Path.Combine(packageRoot, WeeklyScheduleFileName));
+            AppendFileIdentity(sb, Path.Combine(packageRoot, SpecialScheduleFileName));
 
-            string contentsPath = Path.Combine(usbRoot, ContentsDirName);
+            string contentsPath = contentRoot;
             if (Directory.Exists(contentsPath))
             {
                 var files = Directory.GetFiles(contentsPath, "*", SearchOption.AllDirectories)
@@ -803,6 +1101,60 @@ namespace NewHyOnPlayer
             return value.Replace(":", string.Empty).Replace("-", string.Empty).Trim();
         }
 
+        private HashSet<string> BuildCurrentDeviceIdentityCandidates()
+        {
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            try
+            {
+                AddDeviceIdentityCandidate(result, LicenseHubDeviceFingerprint.Generate().Fingerprint);
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog($"UsbUpdateService fingerprint generation failed: {ex}", Logger.GetLogFileName());
+            }
+
+            AddDeviceIdentityCandidate(result, owner.g_PlayerInfoManager?.g_PlayerInfo?.PIF_MacAddress);
+            return result;
+        }
+
+        private static void AddDeviceIdentityCandidate(HashSet<string> values, string value)
+        {
+            if (values == null)
+            {
+                return;
+            }
+
+            string normalized = NormalizeDeviceIdentity(value);
+            if (!string.IsNullOrWhiteSpace(normalized))
+            {
+                values.Add(normalized);
+            }
+        }
+
+        private static string NormalizeDeviceIdentity(string value)
+        {
+            return SanitizeDeviceIdentity(value);
+        }
+
+        private static string SanitizeDeviceIdentity(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            string trimmed = value.Trim().ToUpperInvariant();
+            HashSet<char> invalidChars = new HashSet<char>(Path.GetInvalidFileNameChars());
+            StringBuilder builder = new StringBuilder(trimmed.Length);
+            foreach (char ch in trimmed)
+            {
+                builder.Append(invalidChars.Contains(ch) ? '_' : ch);
+            }
+
+            return builder.ToString();
+        }
+
         private static bool ContainsIgnoreCase(IEnumerable<string> values, string value)
         {
             if (string.IsNullOrWhiteSpace(value) || values == null)
@@ -818,10 +1170,54 @@ namespace NewHyOnPlayer
             public string UsbRoot { get; set; }
             public string PackageId { get; set; }
             public string StagingContentsPath { get; set; }
+            public string ContentSourcePath { get; set; }
+            public bool IsTargetedStructure { get; set; }
             public PlaylistExportBundle Playlist { get; set; }
             public WeeklyScheduleExportBundle Weekly { get; set; }
             public SpecialScheduleExportBundle Special { get; set; }
             public PlayerInfoClass MatchedPlayer { get; set; }
+        }
+
+        private sealed class UsbPackageSelection
+        {
+            public string PackageDir { get; set; }
+            public string ContentRoot { get; set; }
+            public bool IsTargetedStructure { get; set; }
+        }
+
+        private sealed class ContentCopySpec
+        {
+            public string FileName { get; set; }
+            public string RelativePath { get; set; }
+            public long SizeBytes { get; set; }
+            public string Hash { get; set; }
+        }
+
+        private sealed class UsbTargetsManifest
+        {
+            [JsonProperty("version")]
+            public int Version { get; set; }
+
+            [JsonProperty("exportedAt")]
+            public string ExportedAt { get; set; }
+
+            [JsonProperty("targets")]
+            public List<UsbTargetInfo> Targets { get; set; } = new List<UsbTargetInfo>();
+        }
+
+        private sealed class UsbTargetInfo
+        {
+            [JsonProperty("folder")]
+            public string Folder { get; set; }
+
+            [JsonProperty("playerName")]
+            public string PlayerName { get; set; }
+
+            [JsonProperty("playerGuid")]
+            public string PlayerGuid { get; set; }
+
+            [JsonProperty("deviceIdentity")]
+            public string DeviceIdentity { get; set; }
         }
 
         private sealed class PlaylistExportBundle

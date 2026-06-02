@@ -2371,7 +2371,7 @@ public class AndoWSignage extends Activity {
 	}
 
 	private boolean hasAuthorizedUsbKey() {
-		return LocalSettingsProvider.hasStoredUsbKeyForDevice();
+		return true;
 	}
 
 	void addSingleMediaElement() {

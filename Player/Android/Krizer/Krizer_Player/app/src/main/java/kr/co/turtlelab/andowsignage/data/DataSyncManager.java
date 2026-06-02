@@ -225,6 +225,35 @@ public class DataSyncManager {
         return enqueued != null ? enqueued.getId() : -1;
     }
 
+    public boolean applyUsbUpdatePayload(UpdatePayloadModels.UpdatePayload payload) {
+        if (payload == null || payload.PageList == null || payload.Pages == null || payload.Pages.isEmpty()) {
+            return false;
+        }
+
+        UpdateQueueContract.PlaylistPayload contract = buildContractPayload(payload);
+        if (contract == null || TextUtils.isEmpty(contract.playlistName)) {
+            return false;
+        }
+
+        writePlaylistPayload(contract, new ArrayList<UpdateQueueContract.DownloadEntry>(), true);
+        kr.co.turtlelab.andowsignage.dataproviders.PlayerDataProvider.updateCurrentPListName(contract.playlistName);
+
+        if (payload.Schedule != null) {
+            String playerKey = !TextUtils.isEmpty(payload.Schedule.PlayerId)
+                    ? payload.Schedule.PlayerId
+                    : payload.Schedule.PlayerName;
+            if (payload.Schedule.WeeklySchedule != null && !TextUtils.isEmpty(playerKey)) {
+                applyWeeklySchedulePayload(playerKey, payload.Schedule.WeeklySchedule);
+            }
+            if ((payload.Schedule.SpecialSchedules != null && !payload.Schedule.SpecialSchedules.isEmpty())
+                    || (payload.Schedule.Playlists != null && !payload.Schedule.Playlists.isEmpty())) {
+                saveScheduleCache(TextUtils.isEmpty(playerKey) ? contract.playerId : playerKey, payload.Schedule);
+            }
+        }
+
+        return true;
+    }
+
     public boolean processQueueImmediate(long queueId, boolean ignoreLease) {
         if (queueProcessor == null || queueId <= 0) {
             return false;
