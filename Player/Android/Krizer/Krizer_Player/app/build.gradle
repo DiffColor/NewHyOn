@@ -89,6 +89,9 @@ android {
     lint {
         disable += 'ExpiredTargetSdkVersion'
     }
+    sourceSets {
+        main.java.srcDirs += rootProject.file("../../_shared/java")
+    }
 }
 
 repositories {

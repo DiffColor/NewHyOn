@@ -30,11 +30,10 @@ import kr.co.turtlelab.andowsignage.data.update.UpdatePayloadModels;
 import kr.co.turtlelab.andowsignage.datamodels.PlayerDataModel;
 import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
 import kr.co.turtlelab.andowsignage.dataproviders.PlayerDataProvider;
-import kr.co.turtlelab.andowsignage.tools.AuthUtils;
 import kr.co.turtlelab.andowsignage.tools.FileUtils;
 import kr.co.turtlelab.andowsignage.tools.ImageUtils;
+import kr.co.turtlelab.andowsignage.tools.LicenseHubAuthUtils;
 import kr.co.turtlelab.andowsignage.tools.LocalPathUtils;
-import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
 import kr.co.turtlelab.andowsignage.tools.SecureJsonTools;
 import kr.co.turtlelab.andowsignage.tools.SystemUtils;
 
@@ -77,17 +76,7 @@ public class USBReceiver extends BroadcastReceiver {
         if(installDir != null)
         {
             usbSourceDir = installDir;
-            File authFile = new File(installDir, "AuthKeys");
-            try {
-                hasKey = AuthUtils.HasAuthKey(authFile.getAbsolutePath(), NetworkUtils.getMACAddress());
-                if (hasKey) {
-                    persistUsbAuthKeys(authFile);
-                    LocalSettingsProvider.updateUsbAuthKey(AuthUtils.EncodeAuthKey(NetworkUtils.getMACAddress().replace(":", "").toUpperCase()));
-                }
-            } catch (Exception e1) {
-                Log.e(TAG, "USB AuthKeys verification failed", e1);
-                hasKey = false;
-            }
+            hasKey = LocalSettingsProvider.hasStoredUsbKeyForDevice();
             if(hasKey) {
                 mCopyWorker = new CopyWorker();
                 CopyAll(installDir);
@@ -108,16 +97,6 @@ public class USBReceiver extends BroadcastReceiver {
         {
             usbSourceDir = mediaDir;
             hasKey = LocalSettingsProvider.hasStoredUsbKeyForDevice();
-            if (!hasKey) {
-                try {
-                    hasKey = AuthUtils.HasAuthKey(LocalPathUtils.getAuthFilePath(), NetworkUtils.getMACAddress());
-                    if (hasKey) {
-                        LocalSettingsProvider.updateUsbAuthKey(AuthUtils.EncodeAuthKey(NetworkUtils.getMACAddress().replace(":", "").toUpperCase()));
-                    }
-                } catch (Exception e1){
-                    hasKey = false;
-                }
-            }
 
             if(hasKey) {
                 mUSBCopyWorker = new USBCopyWorker();
@@ -127,48 +106,6 @@ public class USBReceiver extends BroadcastReceiver {
 
         hasKey = false;
         usbSourceDir = null;
-    }
-
-    private void persistUsbAuthKeys(File authFile) throws IOException {
-        if (authFile == null || !authFile.isFile()) {
-            throw new IOException("USB AuthKeys file missing");
-        }
-
-        File targetFile = new File(LocalPathUtils.getAuthFilePath());
-        File parent = targetFile.getParentFile();
-        if (parent != null && !parent.exists() && !parent.mkdirs()) {
-            throw new IOException("Auth cache directory create failed: " + parent.getAbsolutePath());
-        }
-
-        FileInputStream input = null;
-        FileOutputStream output = null;
-        try {
-            input = new FileInputStream(authFile);
-            output = new FileOutputStream(targetFile, false);
-            byte[] buffer = new byte[4096];
-            int read;
-            while ((read = input.read(buffer)) != -1) {
-                output.write(buffer, 0, read);
-            }
-            output.flush();
-        } finally {
-            if (input != null) {
-                try {
-                    input.close();
-                } catch (Exception ignore) {
-                }
-            }
-            if (output != null) {
-                try {
-                    output.close();
-                } catch (Exception ignore) {
-                }
-            }
-        }
-
-        if (!AuthUtils.HasAuthKey(targetFile.getAbsolutePath(), NetworkUtils.getMACAddress())) {
-            throw new IOException("Persisted AuthKeys verification failed");
-        }
     }
 
     private List<File> buildSearchRoots(Context context, Intent intent) {
@@ -960,17 +897,14 @@ public class USBReceiver extends BroadcastReceiver {
         }
 
         if (!TextUtils.isEmpty(player.PIF_MacAddress)) {
-            String localDeviceFingerprint = extractLicenseHubField(
-                    LocalSettingsProvider.getUsbAuthKey(),
-                    "DeviceFingerprint",
-                    "deviceFingerprint");
+            String localAuth = LocalSettingsProvider.getUsbAuthKey();
+            String localDeviceFingerprint = LicenseHubAuthUtils.isValidForCurrentDevice(
+                    AndoWSignageApp.getApplication(),
+                    localAuth)
+                    ? LicenseHubAuthUtils.extractDeviceFingerprint(localAuth)
+                    : "";
             if (!TextUtils.isEmpty(localDeviceFingerprint)
                     && player.PIF_MacAddress.equalsIgnoreCase(localDeviceFingerprint)) {
-                return true;
-            }
-
-            String localMac = NetworkUtils.getMACAddress();
-            if (normalizeMac(player.PIF_MacAddress).equalsIgnoreCase(normalizeMac(localMac))) {
                 return true;
             }
         }
@@ -1005,40 +939,6 @@ public class USBReceiver extends BroadcastReceiver {
         target.PeriodEndMonth = source.PeriodEndMonth;
         target.PeriodEndDay = source.PeriodEndDay;
         return target;
-    }
-
-    private String normalizeMac(String value) {
-        return value == null ? "" : value.replace(":", "").replace("-", "").trim();
-    }
-
-    private String extractLicenseHubField(String json, String pascalName, String camelName) {
-        if (TextUtils.isEmpty(json)) {
-            return "";
-        }
-
-        String value = extractJsonString(json, pascalName);
-        return TextUtils.isEmpty(value) ? extractJsonString(json, camelName) : value;
-    }
-
-    private String extractJsonString(String json, String name) {
-        String key = "\"" + name + "\"";
-        int keyIndex = json.indexOf(key);
-        if (keyIndex < 0) {
-            return "";
-        }
-        int colonIndex = json.indexOf(":", keyIndex + key.length());
-        if (colonIndex < 0) {
-            return "";
-        }
-        int startQuote = json.indexOf("\"", colonIndex + 1);
-        if (startQuote < 0) {
-            return "";
-        }
-        int endQuote = json.indexOf("\"", startQuote + 1);
-        if (endQuote <= startQuote) {
-            return "";
-        }
-        return json.substring(startQuote + 1, endQuote).trim();
     }
 
     private String safe(String value) {

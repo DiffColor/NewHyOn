@@ -77,7 +77,6 @@ import kr.co.turtlelab.andowsignage.services.PowerService;
 import kr.co.turtlelab.andowsignage.services.UpdateManagerService;
 import kr.co.turtlelab.andowsignage.services.UpdateManagerService.UpdateMgrLocalBinder;
 import kr.co.turtlelab.andowsignage.services.HeartbeatService;
-import kr.co.turtlelab.andowsignage.tools.AuthUtils;
 import kr.co.turtlelab.andowsignage.tools.ExceptionHandler;
 import kr.co.turtlelab.andowsignage.tools.FileUtils;
 import kr.co.turtlelab.andowsignage.tools.LightestTimer;
@@ -2372,19 +2371,7 @@ public class AndoWSignage extends Activity {
 	}
 
 	private boolean hasAuthorizedUsbKey() {
-		if (LocalSettingsProvider.hasStoredUsbKeyForDevice()) {
-			return true;
-		}
-
-		boolean hasKey = false;
-		try {
-			hasKey = AuthUtils.HasAuthKey(LocalPathUtils.getAuthFilePath(), NetworkUtils.getMACAddress());
-			if (hasKey) {
-				LocalSettingsProvider.updateUsbAuthKey(AuthUtils.EncodeAuthKey(NetworkUtils.getMACAddress().replace(":", "").toUpperCase()));
-			}
-		} catch (Exception ignored) {
-		}
-		return hasKey;
+		return LocalSettingsProvider.hasStoredUsbKeyForDevice();
 	}
 
 	void addSingleMediaElement() {

@@ -14,7 +14,7 @@ import io.realm.Realm;
 import kr.co.turtlelab.andowsignage.AndoWSignageApp;
 import kr.co.turtlelab.andowsignage.data.realm.RealmLocalSettings;
 import kr.co.turtlelab.andowsignage.datamodels.LocalSettingsModel;
-import kr.co.turtlelab.andowsignage.tools.AuthUtils;
+import kr.co.turtlelab.andowsignage.tools.LicenseHubAuthUtils;
 import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
 
 public class LocalSettingsProvider {
@@ -610,41 +610,15 @@ public class LocalSettingsProvider {
     }
 
     public static boolean hasStoredUsbKeyForDevice() {
-        String stored = getUsbAuthKey();
-        if (isLicenseHubAuthPayload(stored)) {
-            return true;
-        }
-        return matchesStoredUsbKey(NetworkUtils.getMACAddress());
+        return LicenseHubAuthUtils.isValidForCurrentDevice(AndoWSignageApp.getApplication(), getUsbAuthKey());
     }
 
     public static boolean matchesStoredUsbKey(String mac) {
-        if (TextUtils.isEmpty(mac)) {
-            return false;
-        }
-        String stored = getUsbAuthKey();
-        if (TextUtils.isEmpty(stored)) {
-            return false;
-        }
-        if (isLicenseHubAuthPayload(stored)) {
-            return true;
-        }
-        try {
-            return AuthUtils.DecodeAuthKey(stored)
-                    .equalsIgnoreCase(mac.replace(":", ""));
-        } catch (Exception e) {
-            return false;
-        }
+        return hasStoredUsbKeyForDevice();
     }
 
     private static boolean isLicenseHubAuthPayload(String value) {
-        if (TextUtils.isEmpty(value)) {
-            return false;
-        }
-        String trimmed = value.trim();
-        return trimmed.startsWith("{")
-                && containsJsonName(trimmed, "LicenseToken", "licenseToken")
-                && containsJsonName(trimmed, "DeviceFingerprint", "deviceFingerprint")
-                && containsJsonName(trimmed, "ProductId", "productId");
+        return LicenseHubAuthUtils.isLicenseHubAuthPayload(value);
     }
 
     private static boolean containsJsonName(String value, String pascalName, String camelName) {

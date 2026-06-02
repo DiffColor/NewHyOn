@@ -36,9 +36,9 @@ import kr.co.turtlelab.andowsignage.datamodels.WeeklyScheduleDataModel;
 import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
 import kr.co.turtlelab.andowsignage.dataproviders.PlayerDataProvider;
 import kr.co.turtlelab.andowsignage.dataproviders.WeeklyScheduleProvider;
-import kr.co.turtlelab.andowsignage.tools.AuthUtils;
 import kr.co.turtlelab.andowsignage.tools.FileUtils;
 import kr.co.turtlelab.andowsignage.tools.LightestTimer;
+import kr.co.turtlelab.andowsignage.tools.LicenseHubAuthUtils;
 import kr.co.turtlelab.andowsignage.tools.LocalPathUtils;
 import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
 import kr.co.turtlelab.andowsignage.tools.SystemUtils;
@@ -761,62 +761,83 @@ public class ConfigDialog extends Dialog implements View.OnClickListener {
 			return;
 		}
 
-		String sourceKey = NetworkUtils.getMACAddress().replace(":", "").toUpperCase();
+		String sourceKey = LicenseHubAuthUtils.resolveDisplayFingerprint(ctx, LocalSettingsProvider.getUsbAuthKey());
+		if (TextUtils.isEmpty(sourceKey)) {
+			sourceKey = NetworkUtils.getMACAddress().replace(":", "").toUpperCase();
+		}
 		mSrcKey.setText(sourceKey);
 
 		boolean hasStoredKey = LocalSettingsProvider.hasStoredUsbKeyForDevice();
-		try {
-			if (!hasStoredKey && AuthUtils.HasAuthKey(LocalPathUtils.getAuthFilePath(), sourceKey)) {
-				LocalSettingsProvider.updateUsbAuthKey(AuthUtils.EncodeAuthKey(sourceKey));
-				hasStoredKey = true;
-			}
-		} catch (Exception ignored) { }
 		mAuthBtn.setEnabled(!hasStoredKey);
-		mAuthKey.setEnabled(!hasStoredKey);
+		mAuthKey.setEnabled(false);
 		mAuthBg.setBackgroundColor(AndoWSignage.act.getResources().getColor(
 				hasStoredKey ? android.R.color.holo_green_dark : android.R.color.holo_red_dark));
 	}
 
 	private void setAuth(String srckey) {
-		final String authKey = mAuthKey.getText().toString();
-		final String sourceKey = srckey == null ? "" : srckey.trim();
 		String currentPlayerName = player_id.getText().toString().trim();
 		if (TextUtils.isEmpty(currentPlayerName)) {
 			currentPlayerName = AndoWSignageApp.PLAYER_ID;
 		}
 		final String playerName = currentPlayerName == null ? "" : currentPlayerName.trim();
+		if (mAuthBtn != null) {
+			mAuthBtn.setEnabled(false);
+		}
 
-		new Thread(new Runnable() {
+		LicenseHubAuthUtils.authenticate(ctx, playerName, new LicenseHubAuthUtils.AuthCallback() {
 			@Override
-			public void run() {
-				String checkVal = AuthUtils.GetPasswd2(sourceKey);
-				if (!authKey.equalsIgnoreCase(checkVal) && !authKey.equalsIgnoreCase("turtle0419")) {
-					return;
-				}
-
-				if (!hasRegisteredPlayerDataForAuth(playerName)) {
-					SystemUtils.runOnUiThread(new Runnable() {
-						@Override
-						public void run() {
-							Toast.makeText(ctx, "등록된 플레이어 이름 데이터가 없어 인증키를 저장할 수 없습니다.", Toast.LENGTH_LONG).show();
-						}
-					});
-					return;
-				}
-
+			public void onSuccess(final LicenseHubAuthUtils.AuthResult result) {
+				LocalSettingsProvider.updateUsbAuthKey(result.serializedLicense);
 				FileUtils.deleteFile(LocalPathUtils.getAuthFilePath());
-				String encoded = AuthUtils.EncodeAuthKey(sourceKey);
-				FileUtils.CreateNewFile(LocalPathUtils.getAuthFilePath(), encoded);
-				LocalSettingsProvider.updateUsbAuthKey(encoded);
+				syncLicenseHubAuthToManager(playerName);
 
 				SystemUtils.runOnUiThread(new Runnable() {
 					@Override
 					public void run() {
-						mAuthBtn.setEnabled(false);
-						mAuthKey.setEnabled(false);
-						mAuthBg.setBackgroundColor(AndoWSignage.act.getResources().getColor(android.R.color.holo_green_dark));
+						refreshSourceKeyAndAuthState();
+						Toast.makeText(ctx, "LicenseHub 인증이 완료되었습니다.", Toast.LENGTH_LONG).show();
 					}
 				});
+			}
+
+			@Override
+			public void onFailure(final String message) {
+				SystemUtils.runOnUiThread(new Runnable() {
+					@Override
+					public void run() {
+						refreshSourceKeyAndAuthState();
+						Toast.makeText(ctx, message, Toast.LENGTH_LONG).show();
+					}
+				});
+			}
+		});
+	}
+
+	private void syncLicenseHubAuthToManager(final String playerName) {
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+				String rethinkHost = LocalSettingsProvider.getDataServerIp();
+				if (TextUtils.isEmpty(rethinkHost)) {
+					rethinkHost = AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)
+							? AndoWSignageApp.MANUAL_IP
+							: AndoWSignageApp.MANAGER_IP;
+				}
+				rethinkHost = NetworkUtils.normalizeAddress(rethinkHost);
+				if (TextUtils.isEmpty(rethinkHost)) {
+					return;
+				}
+
+				RethinkDbClient client = RethinkDbClient.getInstance();
+				client.updateHost(rethinkHost);
+				String guid = client.refreshPlayerGuidForPlayerName(playerName);
+				if (!TextUtils.isEmpty(guid)) {
+					client.updatePlayerDeviceInfo(
+							guid,
+							"",
+							NetworkUtils.getMACAddress(),
+							"Android " + android.os.Build.VERSION.RELEASE);
+				}
 			}
 		}).start();
 	}

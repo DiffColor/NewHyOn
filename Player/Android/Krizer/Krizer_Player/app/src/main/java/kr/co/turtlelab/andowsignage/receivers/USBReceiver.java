@@ -13,7 +13,6 @@ import kr.co.turtlelab.andowsignage.AndoWSignage;
 import kr.co.turtlelab.andowsignage.AndoWSignageApp;
 import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
 import kr.co.turtlelab.andowsignage.dataproviders.PlayerDataProvider;
-import kr.co.turtlelab.andowsignage.tools.AuthUtils;
 import kr.co.turtlelab.andowsignage.tools.FileUtils;
 import kr.co.turtlelab.andowsignage.tools.ImageUtils;
 import kr.co.turtlelab.andowsignage.tools.LocalPathUtils;
@@ -43,14 +42,7 @@ public class USBReceiver extends BroadcastReceiver {
 
         if(hasDirname(BaseDir, USBDirname))
         {
-            try {
-                hasKey = AuthUtils.HasAuthKey(USBDirPath + "/" + "AuthKeys", NetworkUtils.getMACAddress());
-                if (hasKey) {
-                    LocalSettingsProvider.updateUsbAuthKey(AuthUtils.EncodeAuthKey(NetworkUtils.getMACAddress().replace(":", "").toUpperCase()));
-                }
-            } catch (Exception e1) {
-                hasKey = false;
-            }
+            hasKey = LocalSettingsProvider.hasStoredUsbKeyForDevice();
             if(hasKey) {
                 mCopyWorker = new CopyWorker();
                 CopyAll(USBDirPath);
@@ -61,16 +53,6 @@ public class USBReceiver extends BroadcastReceiver {
         if(hasMediaContents(BaseDir))
         {
             hasKey = LocalSettingsProvider.hasStoredUsbKeyForDevice();
-            if (!hasKey) {
-                try {
-                    hasKey = AuthUtils.HasAuthKey(LocalPathUtils.getAuthFilePath(), NetworkUtils.getMACAddress());
-                    if (hasKey) {
-                        LocalSettingsProvider.updateUsbAuthKey(AuthUtils.EncodeAuthKey(NetworkUtils.getMACAddress().replace(":", "").toUpperCase()));
-                    }
-                } catch (Exception e1){
-                    hasKey = false;
-                }
-            }
 
             if(hasKey) {
                 mUSBCopyWorker = new USBCopyWorker();

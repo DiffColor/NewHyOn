@@ -40,7 +40,7 @@ import kr.co.turtlelab.andowsignage.data.DataSyncManager;
 import kr.co.turtlelab.andowsignage.data.store.StoredPlayer;
 import kr.co.turtlelab.andowsignage.data.update.UpdateQueueContract;
 import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
-import kr.co.turtlelab.andowsignage.tools.AuthUtils;
+import kr.co.turtlelab.andowsignage.tools.LicenseHubAuthUtils;
 import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
 import kr.co.turtlelab.andowsignage.tools.QuberAgentClient;
 
@@ -1042,13 +1042,9 @@ public class RethinkDbClient {
         }
 
         String licenseHubFingerprint = extractLicenseHubDeviceFingerprint(authKey);
-        if (!TextUtils.isEmpty(licenseHubFingerprint)) {
+        if (!TextUtils.isEmpty(licenseHubFingerprint)
+                && LicenseHubAuthUtils.isValidForCurrentDevice(AndoWSignageApp.getApplication(), authKey)) {
             return new AuthSyncSelection(authKey, licenseHubFingerprint);
-        }
-
-        String legacyIdentity = resolveLegacyAuthIdentity(authKey, mac, serverIdentity);
-        if (!TextUtils.isEmpty(legacyIdentity)) {
-            return new AuthSyncSelection(authKey, legacyIdentity);
         }
 
         return new AuthSyncSelection("", "");
@@ -1060,28 +1056,6 @@ public class RethinkDbClient {
             return fingerprint;
         }
         return TextUtils.isEmpty(mac) ? "" : mac;
-    }
-
-    private String resolveLegacyAuthIdentity(String authKey, String mac, String serverIdentity) {
-        String primaryMac = normalizeMacAddress(mac);
-        if (primaryMac.length() == 12 && isLegacyAuthKeyForMac(authKey, primaryMac)) {
-            return formatMacAddress(primaryMac);
-        }
-
-        String serverMac = normalizeMacAddress(serverIdentity);
-        if (primaryMac.length() != 12 && serverMac.length() == 12 && isLegacyAuthKeyForMac(authKey, serverMac)) {
-            return formatMacAddress(serverMac);
-        }
-
-        return "";
-    }
-
-    private boolean isLegacyAuthKeyForMac(String authKey, String normalizedMac) {
-        if (TextUtils.isEmpty(authKey) || normalizedMac.length() != 12) {
-            return false;
-        }
-        String expected = AuthUtils.EncodeAuthKey(normalizedMac);
-        return authKey.equalsIgnoreCase(expected);
     }
 
     private String normalizeAuthKey(String value) {
