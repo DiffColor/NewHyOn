@@ -650,11 +650,7 @@ public sealed class PlayerConfigurationService
             return ("인증 상태 : 정품 인증 완료", true, false);
         }
 
-        if (LegacyAuthKeyValidator.IsValidForCurrentDevice(playerInfoManager.PlayerInfo.PIF_AuthKey))
-        {
-            return ("인증 상태 : 정품 인증 완료", true, false);
-        }
-
+        ClearStoredAuthIfNotLicenseHub();
         return ("인증 상태 : 미인증", false, true);
     }
 
@@ -671,6 +667,29 @@ public sealed class PlayerConfigurationService
         if (!string.Equals(playerInfoManager.PlayerInfo.PIF_AuthKey ?? string.Empty, serialized, StringComparison.Ordinal))
         {
             playerInfoManager.PlayerInfo.PIF_AuthKey = serialized;
+            changed = true;
+        }
+
+        if (!string.Equals(playerInfoManager.PlayerInfo.PIF_MacAddress ?? string.Empty, sourceKey, StringComparison.OrdinalIgnoreCase))
+        {
+            playerInfoManager.PlayerInfo.PIF_MacAddress = sourceKey;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            playerInfoManager.SaveData();
+        }
+    }
+
+    private void ClearStoredAuthIfNotLicenseHub()
+    {
+        string authKey = playerInfoManager.PlayerInfo.PIF_AuthKey?.Trim() ?? string.Empty;
+        bool changed = false;
+
+        if (!string.IsNullOrWhiteSpace(authKey) && LicenseHubLocalLicenseStore.TryDeserialize(authKey) == null)
+        {
+            playerInfoManager.PlayerInfo.PIF_AuthKey = string.Empty;
             changed = true;
         }
 

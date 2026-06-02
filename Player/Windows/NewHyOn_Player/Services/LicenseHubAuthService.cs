@@ -23,16 +23,35 @@ namespace NewHyOnPlayer.Services
                 return validation;
             }
 
-            if (LegacyAuthKeyValidator.IsValidForCurrentDevice(authKey))
+            ClearStoredAuthIfNotLicenseHub(manager, authKey);
+            return validation;
+        }
+
+        private static void ClearStoredAuthIfNotLicenseHub(PlayerInfoManager manager, string authKey)
+        {
+            if (manager?.g_PlayerInfo == null)
             {
-                return new ValidationResult
-                {
-                    IsValid = true,
-                    Reason = "구버전 인증키가 현재 장비와 일치합니다."
-                };
+                return;
             }
 
-            return validation;
+            string fingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
+            bool changed = false;
+            if (!string.IsNullOrWhiteSpace(authKey) && LicenseHubLocalLicenseStore.TryDeserialize(authKey) == null)
+            {
+                manager.g_PlayerInfo.PIF_AuthKey = string.Empty;
+                changed = true;
+            }
+
+            if (!string.Equals(manager.g_PlayerInfo.PIF_MacAddress ?? string.Empty, fingerprint, System.StringComparison.OrdinalIgnoreCase))
+            {
+                manager.g_PlayerInfo.PIF_MacAddress = fingerprint;
+                changed = true;
+            }
+
+            if (changed)
+            {
+                manager.SaveData();
+            }
         }
     }
 }

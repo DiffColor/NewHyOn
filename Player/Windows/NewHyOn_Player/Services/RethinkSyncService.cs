@@ -482,9 +482,6 @@ namespace NewHyOnPlayer
                 LicenseHubLocalLicenseFile remoteLicense = LicenseHubLocalLicenseStore.TryDeserialize(remoteAuth);
                 bool localNewValid = LicenseHubLocalValidator.ValidateForCurrentDevice(localLicense).IsValid;
                 bool remoteNewValid = LicenseHubLocalValidator.ValidateForCurrentDevice(remoteLicense).IsValid;
-                bool localLegacyValid = !localNewValid && LegacyAuthKeyValidator.IsValidForCurrentDevice(localAuth);
-                bool remoteLegacyValid = !remoteNewValid && LegacyAuthKeyValidator.IsValidForCurrentDevice(remoteAuth);
-
                 if (localNewValid && remoteNewValid)
                 {
                     if (IsSameAuthPayload(localAuth, remoteAuth))
@@ -516,19 +513,7 @@ namespace NewHyOnPlayer
                     return;
                 }
 
-                if (localLegacyValid)
-                {
-                    if (!IsSameAuthPayload(localAuth, remoteAuth))
-                    {
-                        UpdateAuthFieldsInRethink(remoteGuid, localAuth);
-                    }
-                    return;
-                }
-
-                if (remoteLegacyValid)
-                {
-                    EnsureLocalAuthPayload(remoteAuth);
-                }
+                ClearAuthFieldsInRethink(remoteGuid);
             }
             catch (Exception ex)
             {
@@ -556,7 +541,8 @@ namespace NewHyOnPlayer
                 return localAuth;
             }
 
-            return localAuth;
+            ClearLocalAuthPayload();
+            return string.Empty;
         }
 
         private void ApplyRemoteLicense(LicenseHubLocalLicenseFile license, string serialized)
@@ -624,6 +610,61 @@ namespace NewHyOnPlayer
                 .Get(playerGuid)
                 .Update(payload)
                 .RunNoReply(conn);
+        }
+
+        private void ClearAuthFieldsInRethink(string playerGuid)
+        {
+            if (string.IsNullOrWhiteSpace(playerGuid))
+            {
+                return;
+            }
+
+            var conn = GetConnection();
+            if (conn == null)
+            {
+                return;
+            }
+
+            string fingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
+            ClearLocalAuthPayload();
+            var payload = new Dictionary<string, object>
+            {
+                ["PIF_AuthKey"] = string.Empty,
+                ["PIF_MacAddress"] = fingerprint
+            };
+
+            R.Db(DatabaseName)
+                .Table(PlayerTable)
+                .Get(playerGuid)
+                .Update(payload)
+                .RunNoReply(conn);
+        }
+
+        private void ClearLocalAuthPayload()
+        {
+            if (manager?.g_PlayerInfo == null)
+            {
+                return;
+            }
+
+            string fingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
+            bool changed = false;
+            if (!string.IsNullOrWhiteSpace(manager.g_PlayerInfo.PIF_AuthKey))
+            {
+                manager.g_PlayerInfo.PIF_AuthKey = string.Empty;
+                changed = true;
+            }
+
+            if (!string.Equals(manager.g_PlayerInfo.PIF_MacAddress ?? string.Empty, fingerprint, StringComparison.OrdinalIgnoreCase))
+            {
+                manager.g_PlayerInfo.PIF_MacAddress = fingerprint;
+                changed = true;
+            }
+
+            if (changed)
+            {
+                manager.SaveData();
+            }
         }
 
         private static bool IsSameAuthPayload(string left, string right)

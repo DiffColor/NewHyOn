@@ -481,9 +481,7 @@ public class RethinkDbClient {
         String defaultPlaylist = getStoredDefaultPlaylist();
         values.put("PIF_DefaultPlayList", TextUtils.isEmpty(defaultPlaylist) ? "" : defaultPlaylist.trim());
         AuthSyncSelection authSelection = resolveAuthSync(existing, mac);
-        if (!TextUtils.isEmpty(authSelection.authKey)) {
-            values.put("PIF_AuthKey", authSelection.authKey);
-        }
+        values.put("PIF_AuthKey", authSelection.authKey);
         if (!TextUtils.isEmpty(ip)) {
             values.put("PIF_IPAddress", ip);
         }
@@ -1024,6 +1022,9 @@ public class RethinkDbClient {
             return serverSelection;
         }
 
+        if (!TextUtils.isEmpty(localAuthKey)) {
+            LocalSettingsProvider.updateUsbAuthKey("");
+        }
         return new AuthSyncSelection("", resolveDeviceIdentity("", mac));
     }
 
@@ -1046,7 +1047,11 @@ public class RethinkDbClient {
         if (!TextUtils.isEmpty(fingerprint)) {
             return fingerprint;
         }
-        return TextUtils.isEmpty(mac) ? "" : mac;
+        try {
+            return LicenseHubAuthUtils.generateDeviceFingerprint(AndoWSignageApp.getApplication());
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
     private String normalizeAuthKey(String value) {
