@@ -12,6 +12,7 @@ import android.content.ServiceConnection;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Bundle;
@@ -30,10 +31,16 @@ import android.view.View.OnLongClickListener;
 import android.view.View.OnTouchListener;
 import android.view.ViewConfiguration;
 import android.view.WindowManager;
+import android.view.animation.AlphaAnimation;
+import android.view.animation.Animation;
+import android.view.animation.AnimationSet;
+import android.view.animation.ScaleAnimation;
+import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.RelativeLayout;
 import android.widget.RelativeLayout.LayoutParams;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.nostra13.universalimageloader.cache.disc.naming.Md5FileNameGenerator;
 import com.nostra13.universalimageloader.core.ImageLoader;
@@ -43,6 +50,7 @@ import com.nostra13.universalimageloader.core.assist.QueueProcessingType;
 import org.apache.commons.io.FilenameUtils;
 
 import java.io.File;
+import org.json.JSONObject;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -54,6 +62,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import kr.co.turtlelab.andowsignage.AndoWSignageApp.RP_STATUS;
+import kr.co.turtlelab.andowsignage.auth.LegacyAuthCleanup;
+import kr.co.turtlelab.andowsignage.auth.LicenseAuthManager;
 import kr.co.turtlelab.andowsignage.data.DataSyncManager;
 import kr.co.turtlelab.andowsignage.data.rethink.RethinkDbClient;
 import kr.co.turtlelab.andowsignage.data.realm.RealmUpdateQueue;
@@ -113,8 +123,10 @@ public class AndoWSignage extends Activity {
     static final String ACTION_STOP_AND_SLEEP = "andowsignage.intent.action.STOP_AND_SLEEP";
     static final String ACTION_REFRESH_CS = "andowsignage.intent.action.REFRESH_CS";
     
-    private ConfigDialog m_settingDlg;
-	private boolean licenseHubAuthBlocked = false;
+	    private ConfigDialog m_settingDlg;
+		private boolean licenseHubAuthBlocked = false;
+		private boolean licenseValidationInProgress = false;
+		private boolean licenseValidatedForCurrentRun = false;
 	
 	public PlayerDataModel playerData = new PlayerDataModel();
 	List<PageDataModel> pageDataList = new ArrayList<PageDataModel>();
@@ -296,7 +308,8 @@ public class AndoWSignage extends Activity {
 			watchdogPingHandler.postDelayed(this, WATCHDOG_PING_INTERVAL_MS);
 		}
 	};
-	GifMovieView gifView;
+		GifMovieView gifView;
+		View authPendingOverlay;
 		
 	private float mLastMotionX = 0;
 	private float mLastMotionY = 0;
@@ -542,49 +555,241 @@ public class AndoWSignage extends Activity {
 		SystemUtils.systemBarVisibility(act, true);
 	}
 
-	private boolean ensureLicenseHubAuthForPlayback() {
-		LocalSettingsProvider.clearLegacyUsbAuthKey();
-		if (LocalSettingsProvider.hasStoredUsbKeyForDevice()) {
+	private void validateLicenseHubAuthForPlayback() {
+		if (licenseValidatedForCurrentRun) {
 			licenseHubAuthBlocked = false;
-			return true;
+			startPlaybackAfterLicenseValidated();
+			return;
 		}
-
+		if (licenseValidationInProgress) {
+			return;
+		}
+		licenseValidationInProgress = true;
 		licenseHubAuthBlocked = true;
 		AndoWSignageApp.isRunning = false;
 		AndoWSignageApp.markStoppedState();
+		disableWatchDog();
+		stopWatchdogPing();
 		stopTimerAndElements();
-		syncCurrentDeviceInfoForAuthState();
-		return false;
+		showAuthPendingSpinner();
+
+		LicenseAuthManager.validate(this, new LicenseAuthManager.ValidationCallback() {
+			@Override
+			public void onResult(final LicenseAuthManager.ValidationResult result) {
+				SystemUtils.runOnUiThread(new Runnable() {
+					@Override
+					public void run() {
+						if (result.isValid()) {
+							if (syncValidatedAuthData(result)) {
+								licenseValidationInProgress = false;
+								licenseValidatedForCurrentRun = true;
+								licenseHubAuthBlocked = false;
+								syncLicenseHubAuthToRemotePlayer();
+								startPlaybackAfterLicenseValidated();
+								return;
+							}
+							openAuthAppForCallback();
+							return;
+						}
+						cleanupAndOpenAuthApp(result);
+					}
+				});
+			}
+		});
 	}
 
-	private void syncCurrentDeviceInfoForAuthState() {
+	private boolean syncValidatedAuthData(LicenseAuthManager.ValidationResult result) {
+		if (result == null || !result.isValid()) {
+			return false;
+		}
+
+		String payloadJson = result.getPayloadJson();
+		String deviceId = readJsonString(payloadJson, "deviceId");
+		String deviceFingerprint = readJsonString(payloadJson, "deviceFingerprint");
+		if (TextUtils.isEmpty(deviceFingerprint)) {
+			return false;
+		}
+
+		String authMarker = buildLicenseHubAuthMarker(deviceId);
+		if (TextUtils.isEmpty(authMarker)) {
+			return false;
+		}
+
+		String storedAuthKey = PlayerDataProvider.getPlayerAuthKey();
+		String storedFingerprintValue = PlayerDataProvider.getPlayerAuthFingerprint();
+		if (authMarker.equals(storedAuthKey) && deviceFingerprint.equals(storedFingerprintValue)) {
+			return true;
+		}
+
+		return PlayerDataProvider.updatePlayerAuthInfo(authMarker, deviceFingerprint);
+	}
+
+	private String readJsonString(String rawJson, String key) {
+		if (TextUtils.isEmpty(rawJson) || TextUtils.isEmpty(key)) {
+			return "";
+		}
+		try {
+			JSONObject obj = new JSONObject(rawJson);
+			String value = obj.optString(key, "");
+			if (!TextUtils.isEmpty(value)) {
+				return value.trim();
+			}
+			for (java.util.Iterator<String> keys = obj.keys(); keys.hasNext(); ) {
+				String currentKey = keys.next();
+				if (key.equalsIgnoreCase(currentKey)) {
+					value = obj.optString(currentKey, "");
+					return value == null ? "" : value.trim();
+				}
+			}
+			return "";
+		} catch (Exception ignored) {
+			return "";
+		}
+	}
+
+	private String buildLicenseHubAuthMarker(String deviceId) {
+		if (TextUtils.isEmpty(deviceId)) {
+			return "";
+		}
+
+		try {
+			JSONObject marker = new JSONObject();
+			marker.put("AuthProvider", "LicenseHub");
+			marker.put("AuthSchema", "ValidationResult");
+			marker.put("AuthVersion", 2);
+			marker.put("ProductId", LicenseAuthManager.PRODUCT_ID);
+			marker.put("IsValid", true);
+			marker.put("DeviceId", deviceId.trim());
+			return marker.toString();
+		} catch (Exception ignored) {
+			return "";
+		}
+	}
+
+	private void openAuthAppForCallback() {
+		manualStopRequested = true;
+		stopServices();
+		disableWatchDog();
+		stopWatchdogPing();
+		LicenseAuthManager.authenticate(
+				AndoWSignage.this,
+				LicenseAuthManager.resolveDeviceName(AndoWSignage.this),
+				new LicenseAuthManager.AuthCallback() {
+					@Override
+					public void onResult(final LicenseAuthManager.AuthResult authResult) {
+						completeAuthenticationFromCallback(authResult);
+					}
+				});
+	}
+
+	private void cleanupAndOpenAuthApp(final LicenseAuthManager.ValidationResult validation) {
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+				LegacyAuthCleanup.clearLocalAndRemoteOnce(AndoWSignage.this);
+				SystemUtils.runOnUiThread(new Runnable() {
+					@Override
+					public void run() {
+						openAuthAppForCallback();
+					}
+				});
+			}
+		}, "license-cleanup").start();
+	}
+
+	private void completeAuthenticationFromCallback(final LicenseAuthManager.AuthResult authResult) {
+		SystemUtils.runOnUiThread(new Runnable() {
+			@Override
+			public void run() {
+				licenseValidationInProgress = false;
+				if (authResult == null
+						|| !authResult.isOnlineVerified()
+						|| !authResult.hasCallbackAuthData()) {
+					String failureReason = authResult == null ? "" : authResult.getMessage();
+					if (TextUtils.isEmpty(failureReason)) {
+						failureReason = "라이선스 인증에 실패했습니다.";
+					}
+					closeAfterAuthFailure(failureReason);
+					return;
+				}
+
+				String authMarker = buildLicenseHubAuthMarker(authResult.getDeviceId());
+				if (TextUtils.isEmpty(authMarker)
+						|| !PlayerDataProvider.updatePlayerAuthInfo(
+								authMarker,
+								authResult.getDeviceFingerprint())) {
+					closeAfterAuthFailure("인증데이터 저장에 실패했습니다.");
+					return;
+				}
+
+				syncLicenseHubAuthToRemotePlayer();
+				manualStopRequested = false;
+				licenseValidatedForCurrentRun = true;
+				licenseHubAuthBlocked = false;
+				bringPlayerActivityToFront();
+				startPlaybackAfterLicenseValidated();
+			}
+		});
+	}
+
+	private void closeAfterAuthFailure(String message) {
+		licenseHubAuthBlocked = true;
+		manualStopRequested = true;
+		stopAuthPendingSpinner();
+		stopServices();
+		disableWatchDog();
+		stopWatchdogPing();
+		if (!TextUtils.isEmpty(message)) {
+			Toast.makeText(AndoWSignage.this, message, Toast.LENGTH_LONG).show();
+		}
+		finish();
+	}
+
+	private void syncLicenseHubAuthToRemotePlayer() {
 		new Thread(new Runnable() {
 			@Override
 			public void run() {
 				try {
-					String host = resolveRethinkHostForAuthSync();
+					String host = LocalSettingsProvider.getDataServerIp();
+					if (TextUtils.isEmpty(host)) {
+						host = AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)
+								? AndoWSignageApp.MANUAL_IP
+								: AndoWSignageApp.MANAGER_IP;
+					}
+					host = NetworkUtils.normalizeAddress(host);
 					if (TextUtils.isEmpty(host)) {
 						return;
 					}
+
+					String playerName = LicenseAuthManager.resolveDeviceName(AndoWSignage.this);
 					RethinkDbClient client = RethinkDbClient.getInstance();
 					client.updateHost(host);
-					client.refreshPlayerGuidForPlayerName(AndoWSignageApp.PLAYER_ID);
-					client.syncCurrentDeviceInfo();
+					String guid = client.refreshPlayerGuidForPlayerName(playerName);
+					if (!TextUtils.isEmpty(guid)) {
+						client.updatePlayerDeviceInfo(
+								guid,
+								"",
+								NetworkUtils.getMACAddress(),
+								"Android " + android.os.Build.VERSION.RELEASE);
+					}
 				} catch (Exception ex) {
-					Log.w("AndoWSignage", "LicenseHub auth device sync failed", ex);
+					Log.w("AndoWSignage", "LicenseHub auth remote sync failed", ex);
 				}
 			}
-		}).start();
+		}, "license-remote-sync").start();
 	}
 
-	private String resolveRethinkHostForAuthSync() {
-		String host = LocalSettingsProvider.getDataServerIp();
-		if (TextUtils.isEmpty(host)) {
-			host = AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)
-					? AndoWSignageApp.MANUAL_IP
-					: AndoWSignageApp.MANAGER_IP;
+	private void bringPlayerActivityToFront() {
+		Intent intent = new Intent(this, AndoWSignage.class);
+		intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+		intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+		intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+		intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+		try {
+			startActivity(intent);
+		} catch (Exception ex) {
+			Log.w("AndoWSignage", "Failed to bring player activity to front", ex);
 		}
-		return NetworkUtils.normalizeAddress(host);
 	}
 
 //	public void setScreen(boolean turnon) {
@@ -626,13 +831,21 @@ public class AndoWSignage extends Activity {
 
 		getPrefValues();
 
-		registerRcv();
-		if (!ensureLicenseHubAuthForPlayback()) {
-			releaseSettings();
-			requestKeyInputOverlayFocus();
-			return;
-		}
+		validateLicenseHubAuthForPlayback();
+	}
 
+	@Override
+	protected void onNewIntent(Intent intent) {
+		super.onNewIntent(intent);
+		if (licenseValidatedForCurrentRun) {
+			licenseHubAuthBlocked = false;
+			startPlaybackAfterLicenseValidated();
+		}
+	}
+
+	private void startPlaybackAfterLicenseValidated() {
+		stopAuthPendingSpinner();
+		registerRcv();
 		settingsForPlaying();
 		requestKeyInputOverlayFocus();
 
@@ -935,7 +1148,7 @@ public class AndoWSignage extends Activity {
 	}
 	
 	public void updateAndRestart(boolean setOrientation) {
-		if (!ensureLicenseHubAuthForPlayback()) {
+		if (licenseHubAuthBlocked) {
 			return;
 		}
 
@@ -1031,6 +1244,100 @@ public class AndoWSignage extends Activity {
 		layout_root.addView(gifView ,layout_params);
 		
 		gifView.setMovieResource(R.drawable.loading);
+	}
+
+	private void showAuthPendingSpinner() {
+		stopAuthPendingSpinner();
+		RelativeLayout overlay = new RelativeLayout(AndoWSignage.getCtx());
+		overlay.setBackgroundColor(Color.parseColor("#CC000000"));
+
+		LinearLayout panel = new LinearLayout(AndoWSignage.getCtx());
+		panel.setOrientation(LinearLayout.VERTICAL);
+		panel.setGravity(android.view.Gravity.CENTER);
+		panel.setPadding(dp(28), dp(20), dp(28), dp(20));
+
+		GradientDrawable panelBackground = new GradientDrawable();
+		panelBackground.setColor(Color.parseColor("#1AFFFFFF"));
+		panelBackground.setCornerRadius(dp(18));
+		panelBackground.setStroke(dp(1), Color.parseColor("#26FFFFFF"));
+		panel.setBackground(panelBackground);
+
+		LinearLayout dots = new LinearLayout(AndoWSignage.getCtx());
+		dots.setOrientation(LinearLayout.HORIZONTAL);
+		dots.setGravity(android.view.Gravity.CENTER);
+		for (int i = 0; i < 3; i++) {
+			View dot = createLoadingDot(i * 150);
+			LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(dp(10), dp(10));
+			dotParams.setMargins(dp(5), 0, dp(5), 0);
+			dots.addView(dot, dotParams);
+		}
+		panel.addView(dots, new LinearLayout.LayoutParams(
+				LayoutParams.WRAP_CONTENT,
+				LayoutParams.WRAP_CONTENT));
+
+		TextView text = new TextView(AndoWSignage.getCtx());
+		text.setText("Preparing...");
+		text.setTextColor(Color.WHITE);
+		text.setTextSize(18);
+		text.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+		LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(
+				LayoutParams.WRAP_CONTENT,
+				LayoutParams.WRAP_CONTENT);
+		textParams.setMargins(0, dp(14), 0, 0);
+		panel.addView(text, textParams);
+
+		RelativeLayout.LayoutParams panelParams = new RelativeLayout.LayoutParams(
+				LayoutParams.WRAP_CONTENT,
+				LayoutParams.WRAP_CONTENT);
+		panelParams.addRule(RelativeLayout.CENTER_IN_PARENT);
+		overlay.addView(panel, panelParams);
+
+		RelativeLayout.LayoutParams overlayParams = new RelativeLayout.LayoutParams(
+				LayoutParams.MATCH_PARENT,
+				LayoutParams.MATCH_PARENT);
+		layout_root.addView(overlay, overlayParams);
+		authPendingOverlay = overlay;
+		authPendingOverlay.bringToFront();
+	}
+
+	private void stopAuthPendingSpinner() {
+		if (authPendingOverlay != null) {
+			authPendingOverlay.clearAnimation();
+			layout_root.removeView(authPendingOverlay);
+			authPendingOverlay = null;
+		}
+	}
+
+	private View createLoadingDot(long startOffsetMs) {
+		View dot = new View(AndoWSignage.getCtx());
+		GradientDrawable dotBackground = new GradientDrawable();
+		dotBackground.setShape(GradientDrawable.OVAL);
+		dotBackground.setColor(Color.WHITE);
+		dot.setBackground(dotBackground);
+		dot.setAlpha(0.35f);
+
+		AnimationSet animation = new AnimationSet(false);
+		AlphaAnimation alpha = new AlphaAnimation(0.35f, 1f);
+		ScaleAnimation scale = new ScaleAnimation(
+				0.7f, 1f,
+				0.7f, 1f,
+				Animation.RELATIVE_TO_SELF, 0.5f,
+				Animation.RELATIVE_TO_SELF, 0.5f);
+		alpha.setDuration(450);
+		scale.setDuration(450);
+		alpha.setRepeatMode(Animation.REVERSE);
+		scale.setRepeatMode(Animation.REVERSE);
+		alpha.setRepeatCount(Animation.INFINITE);
+		scale.setRepeatCount(Animation.INFINITE);
+		animation.addAnimation(alpha);
+		animation.addAnimation(scale);
+		animation.setStartOffset(startOffsetMs);
+		dot.startAnimation(animation);
+		return dot;
+	}
+
+	private int dp(int value) {
+		return Math.round(value * getResources().getDisplayMetrics().density);
 	}
 
 	TurtleVideoView vv;
@@ -2918,7 +3225,6 @@ public class AndoWSignage extends Activity {
 
 			case 'm':
 				FileUtils.deleteFile(LocalPathUtils.getAuthFilePath());
-				LocalSettingsProvider.updateUsbAuthKey("");
 				return true;
 
 			case 's':

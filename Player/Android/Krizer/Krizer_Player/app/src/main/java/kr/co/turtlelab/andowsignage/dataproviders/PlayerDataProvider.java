@@ -29,6 +29,7 @@ public class PlayerDataProvider {
         try {
             RealmPlayer realmPlayer = realm.where(RealmPlayer.class).findFirst();
             if (realmPlayer != null) {
+                playerData.setPlayerId(realmPlayer.getPlayerId());
                 String name = realmPlayer.getPlayerName();
                 if (TextUtils.isEmpty(name)) {
                     name = local.getPlayerId();
@@ -44,6 +45,7 @@ public class PlayerDataProvider {
                 if (TextUtils.isEmpty(playerId)) {
                     playerId = AndoWSignageApp.PLAYER_ID;
                 }
+                playerData.setPlayerId(playerId);
                 playerData.setPlayerName(playerId);
                 playerData.setPlaylist("");
                 playerData.setIsLandscape(String.valueOf(true));
@@ -77,6 +79,50 @@ public class PlayerDataProvider {
             }
         });
         realm.close();
+    }
+
+    public static boolean updatePlayerAuthInfo(String authKey, String fingerprint) {
+        Realm realm = Realm.getDefaultInstance();
+        try {
+            realm.executeTransaction(r -> {
+                RealmPlayer player = r.where(RealmPlayer.class).findFirst();
+                if (player == null) {
+                    String playerId = AndoWSignageApp.PLAYER_ID;
+                    if (TextUtils.isEmpty(playerId)) {
+                        playerId = "local_player";
+                    }
+                    player = r.createObject(RealmPlayer.class, playerId);
+                    player.setPlayerName(playerId);
+                }
+                player.setPifAuthKey(authKey == null ? "" : authKey);
+                player.setPifFingerprint(fingerprint == null ? "" : fingerprint);
+            });
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        } finally {
+            realm.close();
+        }
+    }
+
+    public static String getPlayerAuthKey() {
+        Realm realm = Realm.getDefaultInstance();
+        try {
+            RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
+            return player == null || player.getPifAuthKey() == null ? "" : player.getPifAuthKey();
+        } finally {
+            realm.close();
+        }
+    }
+
+    public static String getPlayerAuthFingerprint() {
+        Realm realm = Realm.getDefaultInstance();
+        try {
+            RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
+            return player == null || player.getPifFingerprint() == null ? "" : player.getPifFingerprint();
+        } finally {
+            realm.close();
+        }
     }
 
     public static void updateManagerIP() {

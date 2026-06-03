@@ -40,7 +40,6 @@ import kr.co.turtlelab.andowsignage.data.DataSyncManager;
 import kr.co.turtlelab.andowsignage.data.realm.RealmPlayer;
 import kr.co.turtlelab.andowsignage.data.update.UpdateQueueContract;
 import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
-import kr.co.turtlelab.andowsignage.tools.LicenseHubAuthUtils;
 import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
 
 /**
@@ -80,6 +79,7 @@ public class RethinkDbClient {
     private final Object deviceInfoLock = new Object();
     private boolean deviceInfoSynced = false;
     private boolean deviceInfoSyncInProgress = false;
+    private boolean forceClearAuthKeyOnce = false;
     private String lastSyncedPlayerGuid = null;
     private boolean guidVerified = false;
     private volatile long lastGuidVerificationEpochMs = 0L;
@@ -449,17 +449,18 @@ public class RethinkDbClient {
         String defaultPlaylist = getStoredDefaultPlaylist();
         values.put("PIF_DefaultPlayList", TextUtils.isEmpty(defaultPlaylist) ? "" : defaultPlaylist.trim());
         AuthSyncSelection authSelection = resolveAuthSync(existing, mac);
+        String expectedAuthKey = authSelection.shouldWriteAuthKey
+                ? normalizeAuthKey(authSelection.authKey)
+                : normalizeAuthKey(getString(existing, "PIF_AuthKey"));
         if (authSelection.shouldWriteAuthKey) {
-            values.put("PIF_AuthKey", authSelection.authKey);
+            values.put("PIF_AuthKey", expectedAuthKey);
         }
         if (!TextUtils.isEmpty(ip)) {
             values.put("PIF_IPAddress", ip);
         }
-        String deviceIdentity = TextUtils.isEmpty(authSelection.deviceIdentity)
-                ? resolveDeviceIdentity("", mac)
-                : authSelection.deviceIdentity;
-        if (!TextUtils.isEmpty(deviceIdentity)) {
-            values.put("PIF_MacAddress", deviceIdentity);
+        String expectedFingerprint = normalizeAuthKey(authSelection.fingerprint);
+        if (authSelection.shouldWriteAuthKey || !TextUtils.isEmpty(expectedFingerprint)) {
+            values.put("PIF_MacAddress", expectedFingerprint);
         }
         if (!TextUtils.isEmpty(osName)) {
             values.put("PIF_OSName", osName);
@@ -467,16 +468,23 @@ public class RethinkDbClient {
         if (values.isEmpty()) {
             return false;
         }
+        Object updateResult = null;
         try {
-            R.db(DATABASE)
+            updateResult = R.db(DATABASE)
                     .table(TABLE_PLAYER)
                     .get(playerId)
                     .update(values)
-                    .runNoReply(getConnection());
-            return true;
+                    .run(getConnection());
+            boolean verified = verifyPlayerDeviceAuthSynced(playerId, expectedAuthKey, expectedFingerprint);
+            Log.i(TAG, "RethinkDbClient: player auth sync verified=" + verified
+                    + ", authKeyLength=" + expectedAuthKey.length()
+                    + ", fingerprintLength=" + expectedFingerprint.length());
+            return verified;
         } catch (Exception ex) {
             Log.e(TAG, "RethinkDbClient: operation failed", ex);
             return false;
+        } finally {
+            closeIfNeeded(updateResult);
         }
     }
 
@@ -845,6 +853,27 @@ public class RethinkDbClient {
     public void syncCurrentDeviceInfo() {
         updateDeviceInfoIfNeeded();
     }
+
+    public boolean syncCurrentDeviceInfoOnce(String playerName) {
+        if (!TextUtils.isEmpty(playerName)) {
+            preparePlayerNameChange(playerName);
+        }
+        updateDeviceInfoIfNeeded();
+        return isDeviceInfoSynced();
+    }
+
+    public boolean syncCurrentDeviceInfoClearingAuthOnce(String playerName) {
+        synchronized (deviceInfoLock) {
+            forceClearAuthKeyOnce = true;
+            deviceInfoSynced = false;
+        }
+        boolean result = syncCurrentDeviceInfoOnce(playerName);
+        synchronized (deviceInfoLock) {
+            forceClearAuthKeyOnce = false;
+        }
+        return result;
+    }
+
     public boolean isDeviceInfoSynced() {
         synchronized (deviceInfoLock) {
             return deviceInfoSynced;
@@ -968,55 +997,51 @@ public class RethinkDbClient {
     }
 
     private AuthSyncSelection resolveAuthSync(Map existing, String mac) {
-        String localAuthKey = normalizeAuthKey(LocalSettingsProvider.getUsbAuthKey());
-        String serverAuthKey = normalizeAuthKey(getString(existing, "PIF_AuthKey"));
-        String serverIdentity = getString(existing, "PIF_MacAddress");
-
-        AuthSyncSelection localSelection = buildValidAuthSelection(localAuthKey, mac, serverIdentity);
-        if (!TextUtils.isEmpty(localSelection.authKey)) {
-            return localSelection;
-        }
-
-        AuthSyncSelection serverSelection = buildValidAuthSelection(serverAuthKey, mac, serverIdentity);
-        if (!TextUtils.isEmpty(serverSelection.authKey)) {
-            if (!TextUtils.equals(localAuthKey, serverSelection.authKey)) {
-                LocalSettingsProvider.updateUsbAuthKey(serverSelection.authKey);
+        synchronized (deviceInfoLock) {
+            if (forceClearAuthKeyOnce) {
+                return new AuthSyncSelection("", "", true);
             }
-            return serverSelection;
         }
 
+        String localAuthKey = normalizeAuthKey(getStoredPlayerAuthKey());
         if (!TextUtils.isEmpty(localAuthKey)) {
-            LocalSettingsProvider.updateUsbAuthKey("");
-        }
-        boolean shouldClearLegacyServerAuth = !TextUtils.isEmpty(serverAuthKey)
-                && !LicenseHubAuthUtils.isLicenseHubAuthPayload(serverAuthKey);
-        return new AuthSyncSelection("", resolveDeviceIdentity("", mac), shouldClearLegacyServerAuth);
-    }
-
-    private AuthSyncSelection buildValidAuthSelection(String authKey, String mac, String serverIdentity) {
-        if (TextUtils.isEmpty(authKey)) {
-            return new AuthSyncSelection("", "", false);
-        }
-
-        String licenseHubFingerprint = extractLicenseHubDeviceFingerprint(authKey);
-        if (!TextUtils.isEmpty(licenseHubFingerprint)
-                && LicenseHubAuthUtils.isValidForCurrentDevice(AndoWSignageApp.getApplication(), authKey)) {
-            return new AuthSyncSelection(authKey, licenseHubFingerprint, true);
+            String fingerprint = normalizeAuthKey(getStoredPlayerAuthFingerprint());
+            return new AuthSyncSelection(localAuthKey, fingerprint, true);
         }
 
         return new AuthSyncSelection("", "", false);
     }
 
-    private String resolveDeviceIdentity(String authKey, String mac) {
-        String fingerprint = extractLicenseHubDeviceFingerprint(authKey);
-        if (!TextUtils.isEmpty(fingerprint)) {
-            return fingerprint;
-        }
+    private String getStoredPlayerAuthKey() {
+        Realm realm = Realm.getDefaultInstance();
         try {
-            return LicenseHubAuthUtils.generateDeviceFingerprint(AndoWSignageApp.getApplication());
-        } catch (Exception ignored) {
-            return "";
+            RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
+            return player == null ? "" : player.getPifAuthKey();
+        } finally {
+            realm.close();
         }
+    }
+
+    private String getStoredPlayerAuthFingerprint() {
+        Realm realm = Realm.getDefaultInstance();
+        try {
+            RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
+            return player == null ? "" : player.getPifFingerprint();
+        } finally {
+            realm.close();
+        }
+    }
+
+    private boolean verifyPlayerDeviceAuthSynced(String playerId, String expectedAuthKey, String expectedFingerprint) {
+        Map updated = runSingle(R.db(DATABASE).table(TABLE_PLAYER).get(playerId));
+        if (updated == null) {
+            return false;
+        }
+        String remoteAuthKey = normalizeAuthKey(getString(updated, "PIF_AuthKey"));
+        String remoteFingerprint = normalizeAuthKey(getString(updated, "PIF_MacAddress"));
+        return TextUtils.equals(remoteAuthKey, expectedAuthKey)
+                && (TextUtils.isEmpty(expectedFingerprint)
+                        || TextUtils.equals(remoteFingerprint, expectedFingerprint));
     }
 
     private String normalizeAuthKey(String value) {
@@ -1073,16 +1098,16 @@ public class RethinkDbClient {
 
     private static class AuthSyncSelection {
         final String authKey;
-        final String deviceIdentity;
+        final String fingerprint;
         final boolean shouldWriteAuthKey;
 
-        AuthSyncSelection(String authKey, String deviceIdentity) {
-            this(authKey, deviceIdentity, false);
+        AuthSyncSelection(String authKey, String fingerprint) {
+            this(authKey, fingerprint, false);
         }
 
-        AuthSyncSelection(String authKey, String deviceIdentity, boolean shouldWriteAuthKey) {
+        AuthSyncSelection(String authKey, String fingerprint, boolean shouldWriteAuthKey) {
             this.authKey = authKey == null ? "" : authKey;
-            this.deviceIdentity = deviceIdentity == null ? "" : deviceIdentity;
+            this.fingerprint = fingerprint == null ? "" : fingerprint;
             this.shouldWriteAuthKey = shouldWriteAuthKey;
         }
     }
@@ -1125,6 +1150,8 @@ public class RethinkDbClient {
         Realm realm = Realm.getDefaultInstance();
         realm.executeTransaction(r -> {
             RealmPlayer existing = r.where(RealmPlayer.class).findFirst();
+            String existingAuthKey = existing == null ? "" : existing.getPifAuthKey();
+            String existingFingerprint = existing == null ? "" : existing.getPifFingerprint();
             if (existing != null && !TextUtils.isEmpty(existing.getPlayerId())
                     && !existing.getPlayerId().equals(record.getGuid())) {
                 existing.deleteFromRealm();
@@ -1138,6 +1165,8 @@ public class RethinkDbClient {
             if (record.getPlaylist() != null) {
                 target.setPlaylistName(record.getPlaylist());
             }
+            target.setPifAuthKey(existingAuthKey == null ? "" : existingAuthKey);
+            target.setPifFingerprint(existingFingerprint == null ? "" : existingFingerprint);
             target.setLandscape(record.isLandscape());
         });
         realm.close();
@@ -1150,6 +1179,8 @@ public class RethinkDbClient {
         Realm realm = Realm.getDefaultInstance();
         realm.executeTransaction(r -> {
             RealmPlayer existing = r.where(RealmPlayer.class).findFirst();
+            String existingAuthKey = existing == null ? "" : existing.getPifAuthKey();
+            String existingFingerprint = existing == null ? "" : existing.getPifFingerprint();
             if (existing != null && !TextUtils.isEmpty(existing.getPlayerId())
                     && !existing.getPlayerId().equals(guid)) {
                 existing.deleteFromRealm();
@@ -1162,6 +1193,8 @@ public class RethinkDbClient {
             if (!TextUtils.isEmpty(playerName)) {
                 target.setPlayerName(playerName);
             }
+            target.setPifAuthKey(existingAuthKey == null ? "" : existingAuthKey);
+            target.setPifFingerprint(existingFingerprint == null ? "" : existingFingerprint);
         });
         realm.close();
     }
