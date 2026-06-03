@@ -429,14 +429,20 @@ namespace NewHyOnPlayer
 
             foreach (var page in pages)
             {
-                foreach (var element in page?.PIC_Elements ?? new List<ElementInfoClass>())
+                IEnumerable<AndoW.Shared.ElementInfoClass> elements = page == null || page.PIC_Elements == null
+                    ? Enumerable.Empty<AndoW.Shared.ElementInfoClass>()
+                    : page.PIC_Elements;
+                foreach (var element in elements)
                 {
                     if (!string.Equals(element?.EIF_Type, "Media", StringComparison.OrdinalIgnoreCase))
                     {
                         continue;
                     }
 
-                    foreach (var content in element.EIF_ContentsInfoClassList ?? new List<ContentsInfoClass>())
+                    IEnumerable<AndoW.Shared.ContentsInfoClass> contents = element.EIF_ContentsInfoClassList == null
+                        ? Enumerable.Empty<AndoW.Shared.ContentsInfoClass>()
+                        : element.EIF_ContentsInfoClassList;
+                    foreach (var content in contents)
                     {
                         AddContentCopySpec(result, content);
                     }
@@ -446,7 +452,7 @@ namespace NewHyOnPlayer
             return result;
         }
 
-        private static void AddContentCopySpec(Dictionary<string, ContentCopySpec> specs, ContentsInfoClass content)
+        private static void AddContentCopySpec(Dictionary<string, ContentCopySpec> specs, AndoW.Shared.ContentsInfoClass content)
         {
             if (specs == null || content == null || !IsFileBasedContent(content))
             {
@@ -487,7 +493,7 @@ namespace NewHyOnPlayer
             }
         }
 
-        private static bool IsFileBasedContent(ContentsInfoClass content)
+        private static bool IsFileBasedContent(AndoW.Shared.ContentsInfoClass content)
         {
             if (content == null || string.IsNullOrWhiteSpace(content.CIF_ContentType))
             {
@@ -498,7 +504,7 @@ namespace NewHyOnPlayer
                 && !string.Equals(content.CIF_ContentType, "Browser", StringComparison.OrdinalIgnoreCase);
         }
 
-        private static string ResolveContentFileName(ContentsInfoClass content)
+        private static string ResolveContentFileName(AndoW.Shared.ContentsInfoClass content)
         {
             if (content == null)
             {

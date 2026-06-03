@@ -5,6 +5,7 @@ using RethinkDb.Driver.Ast;
 using RethinkDb.Driver.Net;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
@@ -200,7 +201,6 @@ namespace NewHyOnPlayer
                 }
 
                 UpdatePlayerInfoToRethink(remoteGuid);
-                SyncAuthKey(remoteGuid);
 
                 bool shouldSyncSchedulesForConnection = guidChanged || !infoSyncedAfterConnect;
                 bool shouldNotifyPlayerSynced = shouldSyncSchedulesForConnection;
@@ -426,14 +426,14 @@ namespace NewHyOnPlayer
                 }
 
                 ResolveCurrentNetworkInfo(out string localIp, out string mac, out List<string> allMacs);
-                string deviceFingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
                 string osName = string.IsNullOrWhiteSpace(player.PIF_OSName)
                     ? Environment.OSVersion.ToString()
                     : player.PIF_OSName;
+                string authPayload = ResolveOutboundAuthPayload();
 
-                if (!string.IsNullOrWhiteSpace(localIp) || !string.IsNullOrWhiteSpace(deviceFingerprint))
+                if (!string.IsNullOrWhiteSpace(localIp))
                 {
-                    UpdateLocalNetworkInfo(localIp, deviceFingerprint);
+                    UpdateLocalNetworkInfo(localIp);
                 }
 
                 var payload = new Dictionary<string, object>
@@ -443,7 +443,8 @@ namespace NewHyOnPlayer
                     ["PIF_DefaultPlayList"] = player.PIF_DefaultPlayList ?? string.Empty,
                     ["PIF_IPAddress"] = string.IsNullOrWhiteSpace(localIp) ? player.PIF_IPAddress ?? string.Empty : localIp,
                     ["PIF_OSName"] = osName,
-                    ["PIF_MacAddress"] = string.IsNullOrWhiteSpace(deviceFingerprint) ? player.PIF_MacAddress ?? string.Empty : deviceFingerprint,
+                    ["PIF_MacAddress"] = player.PIF_MacAddress ?? string.Empty,
+                    ["PIF_AuthKey"] = authPayload,
                     ["command"] = player.PendingCommand ?? string.Empty
                 };
 
@@ -460,225 +461,41 @@ namespace NewHyOnPlayer
             }
         }
 
-        private void SyncAuthKey(string remoteGuid)
+        private string ResolveOutboundAuthPayload()
         {
-            if (string.IsNullOrWhiteSpace(remoteGuid) || manager?.g_PlayerInfo == null)
+            LicenseHubLocalLicenseFile license = LicenseHubLocalLicenseStore.Read();
+            if (!LicenseHubLocalValidator.ValidateForCurrentDevice(license).IsValid)
             {
-                return;
+                ClearStoredAuthKey();
+                return string.Empty;
+            }
+
+            string path = LicenseHubAuthPolicy.LicenseFilePath;
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                return string.Empty;
             }
 
             try
             {
-                PlayerInfoClass remote = FetchPlayerByGuid(remoteGuid);
-                if (remote == null)
-                {
-                    return;
-                }
-
-                string localAuth = ResolveLocalAuthPayload();
-                string remoteAuth = remote.PIF_AuthKey?.Trim() ?? string.Empty;
-
-                LicenseHubLocalLicenseFile localLicense = LicenseHubLocalLicenseStore.TryDeserialize(localAuth);
-                LicenseHubLocalLicenseFile remoteLicense = LicenseHubLocalLicenseStore.TryDeserialize(remoteAuth);
-                bool localNewValid = LicenseHubLocalValidator.ValidateForCurrentDevice(localLicense).IsValid;
-                bool remoteNewValid = LicenseHubLocalValidator.ValidateForCurrentDevice(remoteLicense).IsValid;
-                if (localNewValid && remoteNewValid)
-                {
-                    if (IsSameAuthPayload(localAuth, remoteAuth))
-                    {
-                        EnsureLocalAuthPayload(localAuth);
-                        return;
-                    }
-
-                    if (remoteLicense.SavedAt > localLicense.SavedAt)
-                    {
-                        ApplyRemoteLicense(remoteLicense, remoteAuth);
-                    }
-                    else
-                    {
-                        UpdateAuthFieldsInRethink(remoteGuid, localAuth);
-                    }
-                    return;
-                }
-
-                if (localNewValid)
-                {
-                    UpdateAuthFieldsInRethink(remoteGuid, localAuth);
-                    return;
-                }
-
-                if (remoteNewValid)
-                {
-                    ApplyRemoteLicense(remoteLicense, remoteAuth);
-                    return;
-                }
-
-                if (!string.IsNullOrWhiteSpace(remoteAuth) && !LicenseHubLocalLicenseStore.IsLicenseHubPayload(remoteAuth))
-                {
-                    ClearAuthFieldsInRethink(remoteGuid);
-                    return;
-                }
-
-                ClearLocalAuthPayload();
+                return File.ReadAllText(path)?.Trim() ?? string.Empty;
             }
-            catch (Exception ex)
+            catch
             {
-                Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
-                ResetConnection();
+                return string.Empty;
             }
         }
 
-        private string ResolveLocalAuthPayload()
+        private void ClearStoredAuthKey()
         {
-            LicenseHubLocalLicenseFile license = LicenseHubLocalLicenseStore.Read();
-            if (LicenseHubLocalValidator.ValidateForCurrentDevice(license).IsValid)
-            {
-                string serialized = LicenseHubLocalLicenseStore.Serialize(license);
-                EnsureLocalAuthPayload(serialized);
-                return serialized;
-            }
-
-            string localAuth = manager?.g_PlayerInfo?.PIF_AuthKey?.Trim() ?? string.Empty;
-            LicenseHubLocalLicenseFile storedLicense = LicenseHubLocalLicenseStore.TryDeserialize(localAuth);
-            if (LicenseHubLocalValidator.ValidateForCurrentDevice(storedLicense).IsValid)
-            {
-                LicenseHubLocalLicenseStore.Write(storedLicense);
-                EnsureLocalAuthPayload(localAuth);
-                return localAuth;
-            }
-
-            ClearLocalAuthPayload();
-            return string.Empty;
-        }
-
-        private void ApplyRemoteLicense(LicenseHubLocalLicenseFile license, string serialized)
-        {
-            if (!LicenseHubLocalValidator.ValidateForCurrentDevice(license).IsValid)
+            var player = manager?.g_PlayerInfo;
+            if (player == null || string.IsNullOrWhiteSpace(player.PIF_AuthKey))
             {
                 return;
             }
 
-            LicenseHubLocalLicenseStore.Write(license);
-            EnsureLocalAuthPayload(string.IsNullOrWhiteSpace(serialized)
-                ? LicenseHubLocalLicenseStore.Serialize(license)
-                : serialized);
-        }
-
-        private void EnsureLocalAuthPayload(string authPayload)
-        {
-            if (string.IsNullOrWhiteSpace(authPayload) || manager?.g_PlayerInfo == null)
-            {
-                return;
-            }
-
-            string fingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
-            bool changed = false;
-            if (!string.Equals(manager.g_PlayerInfo.PIF_AuthKey ?? string.Empty, authPayload, StringComparison.Ordinal))
-            {
-                manager.g_PlayerInfo.PIF_AuthKey = authPayload;
-                changed = true;
-            }
-
-            if (!string.Equals(manager.g_PlayerInfo.PIF_MacAddress ?? string.Empty, fingerprint, StringComparison.OrdinalIgnoreCase))
-            {
-                manager.g_PlayerInfo.PIF_MacAddress = fingerprint;
-                changed = true;
-            }
-
-            if (changed)
-            {
-                manager.SaveData();
-            }
-        }
-
-        private void UpdateAuthFieldsInRethink(string playerGuid, string authPayload)
-        {
-            if (string.IsNullOrWhiteSpace(playerGuid) || string.IsNullOrWhiteSpace(authPayload))
-            {
-                return;
-            }
-
-            var conn = GetConnection();
-            if (conn == null)
-            {
-                return;
-            }
-
-            EnsureLocalAuthPayload(authPayload);
-            var payload = new Dictionary<string, object>
-            {
-                ["PIF_AuthKey"] = authPayload,
-                ["PIF_MacAddress"] = LicenseHubDeviceFingerprint.Generate().Fingerprint
-            };
-
-            R.Db(DatabaseName)
-                .Table(PlayerTable)
-                .Get(playerGuid)
-                .Update(payload)
-                .RunNoReply(conn);
-        }
-
-        private void ClearAuthFieldsInRethink(string playerGuid)
-        {
-            if (string.IsNullOrWhiteSpace(playerGuid))
-            {
-                return;
-            }
-
-            var conn = GetConnection();
-            if (conn == null)
-            {
-                return;
-            }
-
-            string fingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
-            ClearLocalAuthPayload();
-            var payload = new Dictionary<string, object>
-            {
-                ["PIF_AuthKey"] = string.Empty,
-                ["PIF_MacAddress"] = fingerprint
-            };
-
-            R.Db(DatabaseName)
-                .Table(PlayerTable)
-                .Get(playerGuid)
-                .Update(payload)
-                .RunNoReply(conn);
-        }
-
-        private void ClearLocalAuthPayload()
-        {
-            if (manager?.g_PlayerInfo == null)
-            {
-                return;
-            }
-
-            string fingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
-            bool changed = false;
-            if (!string.IsNullOrWhiteSpace(manager.g_PlayerInfo.PIF_AuthKey))
-            {
-                manager.g_PlayerInfo.PIF_AuthKey = string.Empty;
-                changed = true;
-            }
-
-            if (!string.Equals(manager.g_PlayerInfo.PIF_MacAddress ?? string.Empty, fingerprint, StringComparison.OrdinalIgnoreCase))
-            {
-                manager.g_PlayerInfo.PIF_MacAddress = fingerprint;
-                changed = true;
-            }
-
-            if (changed)
-            {
-                manager.SaveData();
-            }
-        }
-
-        private static bool IsSameAuthPayload(string left, string right)
-        {
-            return string.Equals(
-                left?.Trim() ?? string.Empty,
-                right?.Trim() ?? string.Empty,
-                StringComparison.Ordinal);
+            player.PIF_AuthKey = string.Empty;
+            manager.SaveData();
         }
 
         private void ResetConnection()
@@ -704,14 +521,13 @@ namespace NewHyOnPlayer
         private void RefreshLocalNetworkInfo()
         {
             ResolveCurrentNetworkInfo(out string localIp, out string mac, out List<string> allMacs);
-            string deviceFingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
-            if (!string.IsNullOrWhiteSpace(localIp) || !string.IsNullOrWhiteSpace(deviceFingerprint))
+            if (!string.IsNullOrWhiteSpace(localIp))
             {
-                UpdateLocalNetworkInfo(localIp, deviceFingerprint);
+                UpdateLocalNetworkInfo(localIp);
             }
         }
 
-        private void UpdateLocalNetworkInfo(string localIp, string mac)
+        private void UpdateLocalNetworkInfo(string localIp)
         {
             var player = manager?.g_PlayerInfo;
             if (player == null)
@@ -724,13 +540,6 @@ namespace NewHyOnPlayer
                 !string.Equals(player.PIF_IPAddress ?? string.Empty, localIp, StringComparison.OrdinalIgnoreCase))
             {
                 player.PIF_IPAddress = localIp;
-                changed = true;
-            }
-
-            if (!string.IsNullOrWhiteSpace(mac) &&
-                !string.Equals(player.PIF_MacAddress ?? string.Empty, mac, StringComparison.OrdinalIgnoreCase))
-            {
-                player.PIF_MacAddress = mac;
                 changed = true;
             }
 
@@ -1049,7 +858,10 @@ namespace NewHyOnPlayer
                     pageEntry.OrderIndex = payload.Pages.Count;
                 }
 
-                foreach (var element in page.PIC_Elements ?? new List<AndoW.Shared.ElementInfoClass>())
+                List<AndoW.Shared.ElementInfoClass> elements = page.PIC_Elements == null
+                    ? new List<AndoW.Shared.ElementInfoClass>()
+                    : page.PIC_Elements;
+                foreach (var element in elements)
                 {
                     if (element == null)
                     {

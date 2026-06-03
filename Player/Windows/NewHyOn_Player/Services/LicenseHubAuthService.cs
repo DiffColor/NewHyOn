@@ -7,27 +7,57 @@ namespace NewHyOnPlayer.Services
     {
         public static ValidationResult Validate()
         {
+            PlayerInfoManager manager = new PlayerInfoManager();
+            if (ClearLegacyAuthData(manager))
+            {
+                return new ValidationResult
+                {
+                    IsValid = false,
+                    Reason = "구버전 인증 데이터가 삭제되었습니다. LicenseHub 인증이 필요합니다."
+                };
+            }
+
             ValidationResult validation = LicenseHubLocalValidator.Validate();
             if (validation.IsValid)
             {
+                RefreshLicenseHubDeviceFingerprint(manager);
                 return validation;
             }
 
-            PlayerInfoManager manager = new PlayerInfoManager();
-            string authKey = manager.g_PlayerInfo?.PIF_AuthKey ?? string.Empty;
-            LicenseHubLocalLicenseFile storedLicense = LicenseHubLocalLicenseStore.TryDeserialize(authKey);
-            validation = LicenseHubLocalValidator.ValidateForCurrentDevice(storedLicense);
-            if (validation.IsValid)
-            {
-                LicenseHubLocalLicenseStore.Write(storedLicense);
-                return validation;
-            }
-
-            ClearStoredAuthIfNotLicenseHub(manager, authKey);
+            ClearStoredAuthKey(manager);
             return validation;
         }
 
-        private static void ClearStoredAuthIfNotLicenseHub(PlayerInfoManager manager, string authKey)
+        private static bool ClearLegacyAuthData(PlayerInfoManager manager)
+        {
+            if (manager?.g_PlayerInfo == null)
+            {
+                return false;
+            }
+
+            string authKey = manager.g_PlayerInfo.PIF_AuthKey?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(authKey) || LicenseHubLocalLicenseStore.IsLicenseHubPayload(authKey))
+            {
+                return false;
+            }
+
+            manager.g_PlayerInfo.PIF_AuthKey = string.Empty;
+            manager.SaveData();
+            return true;
+        }
+
+        private static void ClearStoredAuthKey(PlayerInfoManager manager)
+        {
+            if (manager?.g_PlayerInfo == null || string.IsNullOrWhiteSpace(manager.g_PlayerInfo.PIF_AuthKey))
+            {
+                return;
+            }
+
+            manager.g_PlayerInfo.PIF_AuthKey = string.Empty;
+            manager.SaveData();
+        }
+
+        private static void RefreshLicenseHubDeviceFingerprint(PlayerInfoManager manager)
         {
             if (manager?.g_PlayerInfo == null)
             {
@@ -35,21 +65,9 @@ namespace NewHyOnPlayer.Services
             }
 
             string fingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
-            bool changed = false;
-            if (!string.IsNullOrWhiteSpace(authKey) && LicenseHubLocalLicenseStore.TryDeserialize(authKey) == null)
-            {
-                manager.g_PlayerInfo.PIF_AuthKey = string.Empty;
-                changed = true;
-            }
-
             if (!string.Equals(manager.g_PlayerInfo.PIF_MacAddress ?? string.Empty, fingerprint, System.StringComparison.OrdinalIgnoreCase))
             {
                 manager.g_PlayerInfo.PIF_MacAddress = fingerprint;
-                changed = true;
-            }
-
-            if (changed)
-            {
                 manager.SaveData();
             }
         }

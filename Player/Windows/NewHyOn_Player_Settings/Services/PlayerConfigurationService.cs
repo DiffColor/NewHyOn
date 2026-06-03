@@ -6,6 +6,7 @@ using NewHyOn.Player.Settings.Models;
 using NewHyOn.Shared.Auth;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Threading;
@@ -640,17 +641,7 @@ public sealed class PlayerConfigurationService
             return ("인증 상태 : 정품 인증 완료", true, false);
         }
 
-        LicenseHubLocalLicenseFile storedLicense = LicenseHubLocalLicenseStore.TryDeserialize(playerInfoManager.PlayerInfo.PIF_AuthKey);
-        validation = LicenseHubLocalValidator.ValidateForCurrentDevice(storedLicense);
-        if (validation.IsValid)
-        {
-            LicenseHubLocalLicenseStore.Write(storedLicense);
-            playerInfoManager.PlayerInfo.PIF_MacAddress = sourceKey;
-            playerInfoManager.SaveData();
-            return ("인증 상태 : 정품 인증 완료", true, false);
-        }
-
-        ClearStoredAuthIfNotLicenseHub();
+        ClearStoredAuthKey();
         return ("인증 상태 : 미인증", false, true);
     }
 
@@ -662,11 +653,16 @@ public sealed class PlayerConfigurationService
             return;
         }
 
-        string serialized = LicenseHubLocalLicenseStore.Serialize(license);
-        bool changed = false;
-        if (!string.Equals(playerInfoManager.PlayerInfo.PIF_AuthKey ?? string.Empty, serialized, StringComparison.Ordinal))
+        string authPayload = ReadLicenseHubAuthPayload();
+        if (string.IsNullOrWhiteSpace(authPayload))
         {
-            playerInfoManager.PlayerInfo.PIF_AuthKey = serialized;
+            return;
+        }
+
+        bool changed = false;
+        if (!string.Equals(playerInfoManager.PlayerInfo.PIF_AuthKey ?? string.Empty, authPayload, StringComparison.Ordinal))
+        {
+            playerInfoManager.PlayerInfo.PIF_AuthKey = authPayload;
             changed = true;
         }
 
@@ -682,27 +678,33 @@ public sealed class PlayerConfigurationService
         }
     }
 
-    private void ClearStoredAuthIfNotLicenseHub()
+    private static string ReadLicenseHubAuthPayload()
     {
-        string authKey = playerInfoManager.PlayerInfo.PIF_AuthKey?.Trim() ?? string.Empty;
-        bool changed = false;
-
-        if (!string.IsNullOrWhiteSpace(authKey) && LicenseHubLocalLicenseStore.TryDeserialize(authKey) == null)
+        string path = LicenseHubAuthPolicy.LicenseFilePath;
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
         {
-            playerInfoManager.PlayerInfo.PIF_AuthKey = string.Empty;
-            changed = true;
+            return string.Empty;
         }
 
-        if (!string.Equals(playerInfoManager.PlayerInfo.PIF_MacAddress ?? string.Empty, sourceKey, StringComparison.OrdinalIgnoreCase))
+        try
         {
-            playerInfoManager.PlayerInfo.PIF_MacAddress = sourceKey;
-            changed = true;
+            return File.ReadAllText(path)?.Trim() ?? string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private void ClearStoredAuthKey()
+    {
+        if (string.IsNullOrWhiteSpace(playerInfoManager.PlayerInfo.PIF_AuthKey))
+        {
+            return;
         }
 
-        if (changed)
-        {
-            playerInfoManager.SaveData();
-        }
+        playerInfoManager.PlayerInfo.PIF_AuthKey = string.Empty;
+        playerInfoManager.SaveData();
     }
 
     private static ScheduleRowModel ToRowModel(WeeklyPlayScheduleInfo row)
