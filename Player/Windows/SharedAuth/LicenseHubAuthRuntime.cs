@@ -117,12 +117,95 @@ namespace NewHyOn.Shared.Auth
             }
         }
 
-        public static bool IsLicenseHubPayload(string raw)
+    }
+
+    public sealed class LicenseHubValidationMarker
+    {
+        public string AuthProvider { get; set; } = "LicenseHub";
+        public string AuthSchema { get; set; } = "ValidationResult";
+        public int AuthVersion { get; set; } = 2;
+        public int ProductId { get; set; }
+        public bool IsValid { get; set; }
+        public string DeviceId { get; set; } = string.Empty;
+    }
+
+    public static class LicenseHubAuthMarker
+    {
+        private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
         {
-            LicenseHubLocalLicenseFile license = TryDeserialize(raw);
-            return license != null
-                && license.ProductId == LicenseHubAuthPolicy.ProductId
-                && !string.IsNullOrWhiteSpace(license.LicenseToken);
+            PropertyNameCaseInsensitive = true
+        };
+
+        public static string Build(string deviceId)
+        {
+            return Build(LicenseHubAuthPolicy.ProductId, deviceId);
+        }
+
+        public static string Build(int productId, string deviceId)
+        {
+            string normalizedDeviceId = (deviceId ?? string.Empty).Trim();
+            if (productId <= 0 || string.IsNullOrWhiteSpace(normalizedDeviceId))
+            {
+                return string.Empty;
+            }
+
+            return JsonSerializer.Serialize(
+                new LicenseHubValidationMarker
+                {
+                    ProductId = productId,
+                    IsValid = true,
+                    DeviceId = normalizedDeviceId
+                },
+                JsonOptions);
+        }
+
+        public static string Build(LicenseHubLocalLicenseFile license)
+        {
+            if (license == null || license.ProductId != LicenseHubAuthPolicy.ProductId)
+            {
+                return string.Empty;
+            }
+
+            return Build(license.ProductId, license.DeviceId);
+        }
+
+        public static bool IsValidationMarker(string raw)
+        {
+            LicenseHubValidationMarker marker;
+            return TryParse(raw, out marker);
+        }
+
+        public static bool TryParse(string raw, out LicenseHubValidationMarker marker)
+        {
+            marker = new LicenseHubValidationMarker();
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return false;
+            }
+
+            var parsedMarker = new LicenseHubValidationMarker();
+            try
+            {
+                parsedMarker = JsonSerializer.Deserialize<LicenseHubValidationMarker>(raw, JsonOptions);
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (parsedMarker == null)
+            {
+                return false;
+            }
+
+            marker = parsedMarker;
+            return marker != null
+                && string.Equals(marker.AuthProvider, "LicenseHub", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(marker.AuthSchema, "ValidationResult", StringComparison.OrdinalIgnoreCase)
+                && marker.AuthVersion >= 2
+                && marker.ProductId > 0
+                && marker.IsValid
+                && !string.IsNullOrWhiteSpace(marker.DeviceId);
         }
     }
 
@@ -388,7 +471,7 @@ namespace NewHyOn.Shared.Auth
     {
         public static bool IsValidForCurrentDevice(string encodedKey)
         {
-            if (string.IsNullOrWhiteSpace(encodedKey) || LicenseHubLocalLicenseStore.IsLicenseHubPayload(encodedKey))
+            if (string.IsNullOrWhiteSpace(encodedKey) || LicenseHubAuthMarker.IsValidationMarker(encodedKey))
             {
                 return false;
             }

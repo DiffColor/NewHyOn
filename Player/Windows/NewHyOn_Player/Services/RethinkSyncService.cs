@@ -5,7 +5,6 @@ using RethinkDb.Driver.Ast;
 using RethinkDb.Driver.Net;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
@@ -464,26 +463,28 @@ namespace NewHyOnPlayer
         private string ResolveOutboundAuthPayload()
         {
             LicenseHubLocalLicenseFile license = LicenseHubLocalLicenseStore.Read();
-            if (!LicenseHubLocalValidator.ValidateForCurrentDevice(license).IsValid)
+            var validation = LicenseHubLocalValidator.ValidateForCurrentDevice(license);
+            if (!validation.IsValid)
             {
                 ClearStoredAuthKey();
                 return string.Empty;
             }
 
-            string path = LicenseHubAuthPolicy.LicenseFilePath;
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            string authMarker = LicenseHubAuthMarker.Build(license);
+            if (string.IsNullOrWhiteSpace(authMarker))
             {
+                ClearStoredAuthKey();
                 return string.Empty;
             }
 
-            try
+            var player = manager?.g_PlayerInfo;
+            if (player != null && !string.Equals(player.PIF_AuthKey ?? string.Empty, authMarker, StringComparison.Ordinal))
             {
-                return File.ReadAllText(path)?.Trim() ?? string.Empty;
+                player.PIF_AuthKey = authMarker;
+                manager.SaveData();
             }
-            catch
-            {
-                return string.Empty;
-            }
+
+            return authMarker;
         }
 
         private void ClearStoredAuthKey()

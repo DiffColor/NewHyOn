@@ -17,10 +17,11 @@ namespace NewHyOnPlayer.Services
                 };
             }
 
-            ValidationResult validation = LicenseHubLocalValidator.Validate();
+            LicenseHubLocalLicenseFile license = LicenseHubLocalLicenseStore.Read();
+            ValidationResult validation = LicenseHubLocalValidator.ValidateForCurrentDevice(license);
             if (validation.IsValid)
             {
-                RefreshLicenseHubDeviceFingerprint(manager);
+                PersistLicenseHubAuth(manager, license, validation);
                 return validation;
             }
 
@@ -36,7 +37,7 @@ namespace NewHyOnPlayer.Services
             }
 
             string authKey = manager.g_PlayerInfo.PIF_AuthKey?.Trim() ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(authKey) || LicenseHubLocalLicenseStore.IsLicenseHubPayload(authKey))
+            if (string.IsNullOrWhiteSpace(authKey) || LicenseHubAuthMarker.IsValidationMarker(authKey))
             {
                 return false;
             }
@@ -57,17 +58,39 @@ namespace NewHyOnPlayer.Services
             manager.SaveData();
         }
 
-        private static void RefreshLicenseHubDeviceFingerprint(PlayerInfoManager manager)
+        private static void PersistLicenseHubAuth(
+            PlayerInfoManager manager,
+            LicenseHubLocalLicenseFile license,
+            ValidationResult validation)
         {
-            if (manager?.g_PlayerInfo == null)
+            if (manager?.g_PlayerInfo == null || validation == null || !validation.IsValid)
             {
                 return;
+            }
+
+            bool changed = false;
+            string authMarker = LicenseHubAuthMarker.Build(license);
+            if (string.IsNullOrWhiteSpace(authMarker))
+            {
+                ClearStoredAuthKey(manager);
+                return;
+            }
+
+            if (!string.Equals(manager.g_PlayerInfo.PIF_AuthKey ?? string.Empty, authMarker, System.StringComparison.Ordinal))
+            {
+                manager.g_PlayerInfo.PIF_AuthKey = authMarker;
+                changed = true;
             }
 
             string fingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
             if (!string.Equals(manager.g_PlayerInfo.PIF_MacAddress ?? string.Empty, fingerprint, System.StringComparison.OrdinalIgnoreCase))
             {
                 manager.g_PlayerInfo.PIF_MacAddress = fingerprint;
+                changed = true;
+            }
+
+            if (changed)
+            {
                 manager.SaveData();
             }
         }

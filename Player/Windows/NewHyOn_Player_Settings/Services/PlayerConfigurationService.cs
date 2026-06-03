@@ -6,7 +6,6 @@ using NewHyOn.Player.Settings.Models;
 using NewHyOn.Shared.Auth;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Threading;
@@ -270,7 +269,6 @@ public sealed class PlayerConfigurationService
         (string statusText, bool isLicensed, bool authInputEnabled) = EvaluateAuthState();
         if (isLicensed)
         {
-            PersistLicenseHubAuthToPlayerInfo();
             return new AuthResult
             {
                 Success = true,
@@ -634,10 +632,11 @@ public sealed class PlayerConfigurationService
 
     private (string statusText, bool isLicensed, bool authInputEnabled) EvaluateAuthState()
     {
-        ValidationResult validation = LicenseHubLocalValidator.Validate();
+        LicenseHubLocalLicenseFile license = LicenseHubLocalLicenseStore.Read();
+        ValidationResult validation = LicenseHubLocalValidator.ValidateForCurrentDevice(license);
         if (validation.IsValid)
         {
-            PersistLicenseHubAuthToPlayerInfo();
+            PersistLicenseHubAuthToPlayerInfo(license, validation);
             return ("인증 상태 : 정품 인증 완료", true, false);
         }
 
@@ -645,17 +644,17 @@ public sealed class PlayerConfigurationService
         return ("인증 상태 : 미인증", false, true);
     }
 
-    private void PersistLicenseHubAuthToPlayerInfo()
+    private void PersistLicenseHubAuthToPlayerInfo(LicenseHubLocalLicenseFile license, ValidationResult validation)
     {
-        LicenseHubLocalLicenseFile license = LicenseHubLocalLicenseStore.Read();
-        if (!LicenseHubLocalValidator.ValidateForCurrentDevice(license).IsValid)
+        if (validation == null || !validation.IsValid)
         {
             return;
         }
 
-        string authPayload = ReadLicenseHubAuthPayload();
+        string authPayload = LicenseHubAuthMarker.Build(license);
         if (string.IsNullOrWhiteSpace(authPayload))
         {
+            ClearStoredAuthKey();
             return;
         }
 
@@ -675,24 +674,6 @@ public sealed class PlayerConfigurationService
         if (changed)
         {
             playerInfoManager.SaveData();
-        }
-    }
-
-    private static string ReadLicenseHubAuthPayload()
-    {
-        string path = LicenseHubAuthPolicy.LicenseFilePath;
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-        {
-            return string.Empty;
-        }
-
-        try
-        {
-            return File.ReadAllText(path)?.Trim() ?? string.Empty;
-        }
-        catch
-        {
-            return string.Empty;
         }
     }
 

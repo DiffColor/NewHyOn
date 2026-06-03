@@ -569,6 +569,11 @@ namespace AndoW_Manager
 
         public void SetAuthKeyForPlayer(string playerName, string authKey)
         {
+            if (TryParseAuthPayload(authKey) != null)
+            {
+                return;
+            }
+
             PlayerInfoClass player = GetTrackedPlayer(playerName);
             if (player == null)
             {
@@ -582,6 +587,11 @@ namespace AndoW_Manager
 
         public void SetLegacyAuthKeyForPlayer(string playerName, string deviceFingerprint, string authKey)
         {
+            if (TryParseAuthPayload(authKey) != null)
+            {
+                return;
+            }
+
             PlayerInfoClass player = GetTrackedPlayer(playerName);
             if (player == null)
             {
@@ -686,25 +696,15 @@ namespace AndoW_Manager
                 return false;
             }
 
+            if (TryParseAuthPayload(encodedKey) != null)
+            {
+                return false;
+            }
+
             foreach (PlayerInfoClass player in g_PlayerInfoClassList)
             {
                 if (player == null)
                 {
-                    continue;
-                }
-                JObject payload = TryParseAuthPayload(encodedKey);
-                if (payload != null)
-                {
-                    string deviceFingerprint = ReadString(payload, "DeviceFingerprint");
-                    if (IsLicenseHubAuthPayload(payload) &&
-                        IsSameDeviceFingerprint(player.PIF_MacAddress, deviceFingerprint))
-                    {
-                        player.PIF_AuthKey = encodedKey;
-                        player.PIF_MacAddress = deviceFingerprint;
-                        SavePlayer(player);
-                        return true;
-                    }
-
                     continue;
                 }
 
@@ -754,18 +754,7 @@ namespace AndoW_Manager
                 return false;
             }
 
-            if (IsLicenseHubValidationMarker(payload))
-            {
-                return true;
-            }
-
-            string licenseToken = ReadString(payload, "LicenseToken");
-            if (string.IsNullOrWhiteSpace(licenseToken))
-            {
-                return false;
-            }
-
-            return true;
+            return IsLicenseHubValidationMarker(payload);
         }
 
         private static bool IsLicenseHubValidationMarker(JObject payload)
@@ -774,13 +763,11 @@ namespace AndoW_Manager
             string schema = ReadString(payload, "AuthSchema");
             string deviceId = ReadString(payload, "DeviceId");
             int version = ReadInt(payload, "AuthVersion");
-            int productId = ReadInt(payload, "ProductId");
             bool isValid = ReadBool(payload, "IsValid");
 
             return string.Equals(provider, "LicenseHub", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(schema, "ValidationResult", StringComparison.OrdinalIgnoreCase)
                 && version >= 2
-                && productId == 7
                 && isValid
                 && string.IsNullOrWhiteSpace(deviceId) == false;
         }
@@ -857,17 +844,13 @@ namespace AndoW_Manager
             return property?.Value;
         }
 
-        private static bool IsSameDeviceFingerprint(string left, string right)
-        {
-            return !string.IsNullOrWhiteSpace(left)
-                && !string.IsNullOrWhiteSpace(right)
-                && string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase);
-        }
-
         public List<string> GetAllAuthKeys()
         {
             return g_PlayerInfoClassList
-                .Where(p => p != null && string.IsNullOrWhiteSpace(p.PIF_AuthKey) == false)
+                .Where(p => p != null
+                    && string.IsNullOrWhiteSpace(p.PIF_AuthKey) == false
+                    && TryParseAuthPayload(p.PIF_AuthKey) == null
+                    && HasValidLegacyAuthKey(p, p.PIF_AuthKey))
                 .Select(p => p.PIF_AuthKey)
                 .Distinct(StringComparer.CurrentCultureIgnoreCase)
                 .ToList();
