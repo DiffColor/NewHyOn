@@ -33,7 +33,6 @@ import kr.co.turtlelab.andowsignage.datamodels.PlayerDataModel;
 import kr.co.turtlelab.andowsignage.dataproviders.PlayerDataProvider;
 import kr.co.turtlelab.andowsignage.tools.FileUtils;
 import kr.co.turtlelab.andowsignage.tools.ImageUtils;
-import kr.co.turtlelab.andowsignage.tools.LicenseHubAuthUtils;
 import kr.co.turtlelab.andowsignage.tools.LocalPathUtils;
 import kr.co.turtlelab.andowsignage.tools.SecureJsonTools;
 import kr.co.turtlelab.andowsignage.tools.SystemUtils;
@@ -441,12 +440,7 @@ public class USBReceiver extends BroadcastReceiver {
 
     private Set<String> buildCurrentDeviceIdentityCandidates(Context context) {
         Set<String> result = new LinkedHashSet<>();
-        try {
-            addDeviceIdentityCandidate(result, LicenseHubAuthUtils.generateDeviceFingerprint(context));
-        } catch (Exception ex) {
-            Log.e(TAG, "Device fingerprint generation failed", ex);
-        }
-
+        addDeviceIdentityCandidate(result, PlayerDataProvider.getPlayerAuthFingerprint());
         return result;
     }
 
@@ -998,15 +992,11 @@ public class USBReceiver extends BroadcastReceiver {
             return true;
         }
 
-        if (!TextUtils.isEmpty(player.PIF_MacAddress)) {
-            try {
-                String localDeviceFingerprint = LicenseHubAuthUtils.generateDeviceFingerprint(AndoWSignageApp.getApplication());
-                if (!TextUtils.isEmpty(localDeviceFingerprint)
-                        && normalizeDeviceIdentity(player.PIF_MacAddress).equalsIgnoreCase(normalizeDeviceIdentity(localDeviceFingerprint))) {
-                    return true;
-                }
-            } catch (Exception ex) {
-                Log.e(TAG, "Device fingerprint generation failed", ex);
+        if (!TextUtils.isEmpty(player.PIF_Fingerprint)) {
+            String localFingerprint = PlayerDataProvider.getPlayerAuthFingerprint();
+            if (!TextUtils.isEmpty(localFingerprint)
+                    && normalizeDeviceIdentity(player.PIF_Fingerprint).equalsIgnoreCase(normalizeDeviceIdentity(localFingerprint))) {
+                return true;
             }
         }
 
@@ -1122,7 +1112,8 @@ public class USBReceiver extends BroadcastReceiver {
         @com.google.gson.annotations.SerializedName("id")
         String PIF_GUID = "";
         String PIF_PlayerName = "";
-        String PIF_MacAddress = "";
+        @com.google.gson.annotations.SerializedName("PIF_MacAddress")
+        String PIF_Fingerprint = "";
     }
 
     private static class SpecialScheduleInfoExport {

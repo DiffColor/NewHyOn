@@ -40,7 +40,6 @@ import kr.co.turtlelab.andowsignage.data.DataSyncManager;
 import kr.co.turtlelab.andowsignage.data.realm.RealmPlayer;
 import kr.co.turtlelab.andowsignage.data.update.UpdateQueueContract;
 import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
-import kr.co.turtlelab.andowsignage.tools.LicenseHubAuthUtils;
 import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
 import kr.co.turtlelab.andowsignage.tools.QuberAgentClient;
 
@@ -82,6 +81,7 @@ public class RethinkDbClient {
     private final Object deviceInfoLock = new Object();
     private boolean deviceInfoSynced = false;
     private boolean deviceInfoSyncInProgress = false;
+    private boolean forceClearAuthKeyOnce = false;
     private String lastSyncedPlayerGuid = null;
     private boolean guidVerified = false;
     private volatile long lastGuidVerificationEpochMs = 0L;
@@ -170,6 +170,63 @@ public class RethinkDbClient {
             }
             return current;
         }
+    }
+
+    private boolean connectOnce() {
+        String targetHost;
+        int targetPort;
+        String targetUser;
+        String targetPassword;
+        synchronized (connectionLock) {
+            if (connection != null && connection.isOpen()) {
+                return true;
+            }
+            targetHost = host;
+            targetPort = port;
+            targetUser = username;
+            targetPassword = password;
+        }
+
+        Connection connected = null;
+        try {
+            connected = R.connection()
+                    .hostname(targetHost)
+                    .port(targetPort)
+                    .user(targetUser, targetPassword)
+                    .timeout(3000L)
+                    .connect();
+        } catch (Exception ex) {
+            Log.w(TAG, "RethinkDbClient: one-shot connection failed.", ex);
+            return false;
+        }
+
+        synchronized (connectionLock) {
+            if (connection != null && connection.isOpen()) {
+                closeConnectionQuietly(connected);
+                return true;
+            }
+
+            String latestHost = host == null ? "" : host.trim();
+            String connectedHost = targetHost == null ? "" : targetHost.trim();
+            if (!latestHost.equalsIgnoreCase(connectedHost)
+                    || port != targetPort
+                    || !safeEquals(username, targetUser)
+                    || !safeEquals(password, targetPassword)) {
+                closeConnectionQuietly(connected);
+                return false;
+            }
+
+            connection = connected;
+            synchronized (deviceInfoLock) {
+                deviceInfoSynced = false;
+                deviceInfoSyncInProgress = false;
+                lastSyncedPlayerGuid = null;
+            }
+            guidVerified = false;
+            lastGuidVerificationEpochMs = 0L;
+        }
+
+        return true;
     }
 
     private void runPostConnectInitializationAsync() {
@@ -482,17 +539,18 @@ public class RethinkDbClient {
         String defaultPlaylist = getStoredDefaultPlaylist();
         values.put("PIF_DefaultPlayList", TextUtils.isEmpty(defaultPlaylist) ? "" : defaultPlaylist.trim());
         AuthSyncSelection authSelection = resolveAuthSync(existing, mac);
+        String expectedAuthKey = authSelection.shouldWriteAuthKey
+                ? normalizeAuthKey(authSelection.authKey)
+                : normalizeAuthKey(getString(existing, "PIF_AuthKey"));
         if (authSelection.shouldWriteAuthKey) {
-            values.put("PIF_AuthKey", authSelection.authKey);
+            values.put("PIF_AuthKey", expectedAuthKey);
         }
         if (!TextUtils.isEmpty(ip)) {
             values.put("PIF_IPAddress", ip);
         }
-        String deviceIdentity = TextUtils.isEmpty(authSelection.deviceIdentity)
-                ? resolveDeviceIdentity("", mac)
-                : authSelection.deviceIdentity;
-        if (!TextUtils.isEmpty(deviceIdentity)) {
-            values.put("PIF_MacAddress", deviceIdentity);
+        String expectedFingerprint = normalizeAuthKey(authSelection.fingerprint);
+        if (authSelection.shouldWriteAuthKey || !TextUtils.isEmpty(expectedFingerprint)) {
+            values.put("PIF_MacAddress", expectedFingerprint);
         }
         if (!TextUtils.isEmpty(osName)) {
             values.put("PIF_OSName", osName);
@@ -500,16 +558,23 @@ public class RethinkDbClient {
         if (values.isEmpty()) {
             return false;
         }
+        Object updateResult = null;
         try {
-            R.db(DATABASE)
+            updateResult = R.db(DATABASE)
                     .table(TABLE_PLAYER)
                     .get(playerId)
                     .update(values)
-                    .runNoReply(getConnection());
-            return true;
+                    .run(getConnection());
+            boolean verified = verifyPlayerDeviceAuthSynced(playerId, expectedAuthKey, expectedFingerprint);
+            Log.i(TAG, "RethinkDbClient: player auth sync verified=" + verified
+                    + ", authKeyLength=" + expectedAuthKey.length()
+                    + ", fingerprintLength=" + expectedFingerprint.length());
+            return verified;
         } catch (Exception ex) {
             Log.e(TAG, "RethinkDbClient: operation failed", ex);
             return false;
+        } finally {
+            closeIfNeeded(updateResult);
         }
     }
 
@@ -859,28 +924,30 @@ public class RethinkDbClient {
         return owner.trim() + ":" + queueId;
     }
 
-    private void updateDeviceInfoIfNeeded() {
+    private boolean updateDeviceInfoIfNeeded() {
         synchronized (deviceInfoLock) {
-            if (deviceInfoSynced || deviceInfoSyncInProgress) {
-                return;
+            if (deviceInfoSyncInProgress) {
+                return false;
             }
             deviceInfoSyncInProgress = true;
+            deviceInfoSynced = false;
         }
         try {
             String playerId = ensurePlayerGuid();
             if (TextUtils.isEmpty(playerId) || !guidVerified) {
-                return;
+                return false;
             }
             String ip = resolveLocalIpAddress();
             String mac = resolveDeviceUniqueId();
             String os = "Android " + Build.VERSION.RELEASE;
             if (!updatePlayerDeviceInfo(playerId, ip, mac, os)) {
-                return;
+                return false;
             }
             synchronized (deviceInfoLock) {
                 deviceInfoSynced = true;
                 lastSyncedPlayerGuid = playerId;
             }
+            return true;
         } finally {
             synchronized (deviceInfoLock) {
                 deviceInfoSyncInProgress = false;
@@ -888,8 +955,29 @@ public class RethinkDbClient {
         }
     }
 
-    public void syncCurrentDeviceInfo() {
-        updateDeviceInfoIfNeeded();
+    public boolean syncCurrentDeviceInfo() {
+        return updateDeviceInfoIfNeeded();
+    }
+
+    public boolean syncCurrentDeviceInfoOnce(String playerName) {
+        if (!TextUtils.isEmpty(playerName)) {
+            preparePlayerNameChange(playerName);
+        }
+        if (!connectOnce()) {
+            return false;
+        }
+        return updateDeviceInfoIfNeeded();
+    }
+
+    public boolean syncCurrentDeviceInfoClearingAuthOnce(String playerName) {
+        synchronized (deviceInfoLock) {
+            forceClearAuthKeyOnce = true;
+        }
+        boolean result = syncCurrentDeviceInfoOnce(playerName);
+        synchronized (deviceInfoLock) {
+            forceClearAuthKeyOnce = false;
+        }
+        return result;
     }
 
     private String resolveDeviceUniqueId() {
@@ -1029,99 +1117,55 @@ public class RethinkDbClient {
     }
 
     private AuthSyncSelection resolveAuthSync(Map existing, String mac) {
-        String localAuthKey = normalizeAuthKey(LocalSettingsProvider.getUsbAuthKey());
-        String serverAuthKey = normalizeAuthKey(getString(existing, "PIF_AuthKey"));
-        String serverIdentity = getString(existing, "PIF_MacAddress");
-
-        AuthSyncSelection localSelection = buildValidAuthSelection(localAuthKey, mac, serverIdentity);
-        if (!TextUtils.isEmpty(localSelection.authKey)) {
-            return localSelection;
-        }
-
-        AuthSyncSelection serverSelection = buildValidAuthSelection(serverAuthKey, mac, serverIdentity);
-        if (!TextUtils.isEmpty(serverSelection.authKey)) {
-            if (!TextUtils.equals(localAuthKey, serverSelection.authKey)) {
-                LocalSettingsProvider.updateUsbAuthKey(serverSelection.authKey);
+        synchronized (deviceInfoLock) {
+            if (forceClearAuthKeyOnce) {
+                return new AuthSyncSelection("", "", true);
             }
-            return serverSelection;
         }
 
+        String localAuthKey = normalizeAuthKey(getStoredPlayerAuthKey());
         if (!TextUtils.isEmpty(localAuthKey)) {
-            LocalSettingsProvider.updateUsbAuthKey("");
-        }
-        boolean shouldClearLegacyServerAuth = !TextUtils.isEmpty(serverAuthKey)
-                && !LicenseHubAuthUtils.isLicenseHubAuthPayload(serverAuthKey);
-        return new AuthSyncSelection("", resolveDeviceIdentity("", mac), shouldClearLegacyServerAuth);
-    }
-
-    private AuthSyncSelection buildValidAuthSelection(String authKey, String mac, String serverIdentity) {
-        if (TextUtils.isEmpty(authKey)) {
-            return new AuthSyncSelection("", "", false);
-        }
-
-        String licenseHubFingerprint = extractLicenseHubDeviceFingerprint(authKey);
-        if (!TextUtils.isEmpty(licenseHubFingerprint)
-                && LicenseHubAuthUtils.isValidForCurrentDevice(AndoWSignageApp.getApplication(), authKey)) {
-            return new AuthSyncSelection(authKey, licenseHubFingerprint, true);
+            String fingerprint = normalizeAuthKey(getStoredPlayerAuthFingerprint());
+            return new AuthSyncSelection(localAuthKey, fingerprint, true);
         }
 
         return new AuthSyncSelection("", "", false);
     }
 
-    private String resolveDeviceIdentity(String authKey, String mac) {
-        String fingerprint = extractLicenseHubDeviceFingerprint(authKey);
-        if (!TextUtils.isEmpty(fingerprint)) {
-            return fingerprint;
-        }
+    private String getStoredPlayerAuthKey() {
+        Realm realm = Realm.getDefaultInstance();
         try {
-            return LicenseHubAuthUtils.generateDeviceFingerprint(AndoWSignageApp.getApplication());
-        } catch (Exception ignored) {
-            return "";
+            RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
+            return player == null ? "" : player.getPifAuthKey();
+        } finally {
+            realm.close();
         }
+    }
+
+    private String getStoredPlayerAuthFingerprint() {
+        Realm realm = Realm.getDefaultInstance();
+        try {
+            RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
+            return player == null ? "" : player.getPifFingerprint();
+        } finally {
+            realm.close();
+        }
+    }
+
+    private boolean verifyPlayerDeviceAuthSynced(String playerId, String expectedAuthKey, String expectedFingerprint) {
+        Map updated = runSingle(R.db(DATABASE).table(TABLE_PLAYER).get(playerId));
+        if (updated == null) {
+            return false;
+        }
+        String remoteAuthKey = normalizeAuthKey(getString(updated, "PIF_AuthKey"));
+        String remoteFingerprint = normalizeAuthKey(getString(updated, "PIF_MacAddress"));
+        return TextUtils.equals(remoteAuthKey, expectedAuthKey)
+                && (TextUtils.isEmpty(expectedFingerprint)
+                        || TextUtils.equals(remoteFingerprint, expectedFingerprint));
     }
 
     private String normalizeAuthKey(String value) {
         return value == null ? "" : value.trim();
-    }
-
-    private String extractLicenseHubDeviceFingerprint(String authKey) {
-        if (TextUtils.isEmpty(authKey)) {
-            return "";
-        }
-        try {
-            JsonObject json = gson.fromJson(authKey.trim(), JsonObject.class);
-            if (json == null || (!json.has("LicenseToken") && !json.has("licenseToken"))) {
-                return "";
-            }
-            JsonElement value = json.has("DeviceFingerprint")
-                    ? json.get("DeviceFingerprint")
-                    : json.get("deviceFingerprint");
-            return value == null || value.isJsonNull() ? "" : value.getAsString();
-        } catch (Exception ignored) {
-            return "";
-        }
-    }
-
-    private String formatMacAddress(String value) {
-        String normalized = normalizeMacAddress(value);
-        if (normalized.length() != 12) {
-            return "";
-        }
-        StringBuilder builder = new StringBuilder(17);
-        for (int i = 0; i < normalized.length(); i += 2) {
-            if (builder.length() > 0) {
-                builder.append(':');
-            }
-            builder.append(normalized, i, i + 2);
-        }
-        return builder.toString();
-    }
-
-    private String normalizeMacAddress(String value) {
-        if (TextUtils.isEmpty(value)) {
-            return "";
-        }
-        return value.replaceAll("[^0-9A-Fa-f]", "").toUpperCase(Locale.US);
     }
 
     private String getString(Map map, String key) {
@@ -1134,16 +1178,16 @@ public class RethinkDbClient {
 
     private static class AuthSyncSelection {
         final String authKey;
-        final String deviceIdentity;
+        final String fingerprint;
         final boolean shouldWriteAuthKey;
 
-        AuthSyncSelection(String authKey, String deviceIdentity) {
-            this(authKey, deviceIdentity, false);
+        AuthSyncSelection(String authKey, String fingerprint) {
+            this(authKey, fingerprint, false);
         }
 
-        AuthSyncSelection(String authKey, String deviceIdentity, boolean shouldWriteAuthKey) {
+        AuthSyncSelection(String authKey, String fingerprint, boolean shouldWriteAuthKey) {
             this.authKey = authKey == null ? "" : authKey;
-            this.deviceIdentity = deviceIdentity == null ? "" : deviceIdentity;
+            this.fingerprint = fingerprint == null ? "" : fingerprint;
             this.shouldWriteAuthKey = shouldWriteAuthKey;
         }
     }
@@ -1186,6 +1230,8 @@ public class RethinkDbClient {
         Realm realm = Realm.getDefaultInstance();
         realm.executeTransaction(r -> {
             RealmPlayer existing = r.where(RealmPlayer.class).findFirst();
+            String existingAuthKey = existing == null ? "" : existing.getPifAuthKey();
+            String existingFingerprint = existing == null ? "" : existing.getPifFingerprint();
             if (existing != null && !TextUtils.isEmpty(existing.getPlayerId())
                     && !existing.getPlayerId().equals(record.getGuid())) {
                 existing.deleteFromRealm();
@@ -1199,6 +1245,8 @@ public class RethinkDbClient {
             if (record.getPlaylist() != null) {
                 target.setPlaylistName(record.getPlaylist());
             }
+            target.setPifAuthKey(existingAuthKey == null ? "" : existingAuthKey);
+            target.setPifFingerprint(existingFingerprint == null ? "" : existingFingerprint);
             target.setLandscape(record.isLandscape());
         });
         realm.close();
@@ -1211,6 +1259,8 @@ public class RethinkDbClient {
         Realm realm = Realm.getDefaultInstance();
         realm.executeTransaction(r -> {
             RealmPlayer existing = r.where(RealmPlayer.class).findFirst();
+            String existingAuthKey = existing == null ? "" : existing.getPifAuthKey();
+            String existingFingerprint = existing == null ? "" : existing.getPifFingerprint();
             if (existing != null && !TextUtils.isEmpty(existing.getPlayerId())
                     && !existing.getPlayerId().equals(guid)) {
                 existing.deleteFromRealm();
@@ -1223,6 +1273,8 @@ public class RethinkDbClient {
             if (!TextUtils.isEmpty(playerName)) {
                 target.setPlayerName(playerName);
             }
+            target.setPifAuthKey(existingAuthKey == null ? "" : existingAuthKey);
+            target.setPifFingerprint(existingFingerprint == null ? "" : existingFingerprint);
         });
         realm.close();
     }

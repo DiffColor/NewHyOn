@@ -754,6 +754,11 @@ namespace AndoW_Manager
                 return false;
             }
 
+            if (IsLicenseHubValidationMarker(payload))
+            {
+                return true;
+            }
+
             string licenseToken = ReadString(payload, "LicenseToken");
             if (string.IsNullOrWhiteSpace(licenseToken))
             {
@@ -761,6 +766,23 @@ namespace AndoW_Manager
             }
 
             return true;
+        }
+
+        private static bool IsLicenseHubValidationMarker(JObject payload)
+        {
+            string provider = ReadString(payload, "AuthProvider");
+            string schema = ReadString(payload, "AuthSchema");
+            string deviceId = ReadString(payload, "DeviceId");
+            int version = ReadInt(payload, "AuthVersion");
+            int productId = ReadInt(payload, "ProductId");
+            bool isValid = ReadBool(payload, "IsValid");
+
+            return string.Equals(provider, "LicenseHub", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(schema, "ValidationResult", StringComparison.OrdinalIgnoreCase)
+                && version >= 2
+                && productId == 7
+                && isValid
+                && string.IsNullOrWhiteSpace(deviceId) == false;
         }
 
         private static JObject TryParseAuthPayload(string authPayload)
@@ -783,6 +805,38 @@ namespace AndoW_Manager
         private static string ReadString(JObject payload, string name)
         {
             return ReadToken(payload, name)?.ToString().Trim() ?? string.Empty;
+        }
+
+        private static int ReadInt(JObject payload, string name)
+        {
+            JToken token = ReadToken(payload, name);
+            if (token == null)
+            {
+                return 0;
+            }
+
+            if (token.Type == JTokenType.Integer)
+            {
+                return token.Value<int>();
+            }
+
+            return int.TryParse(token.ToString().Trim(), out int value) ? value : 0;
+        }
+
+        private static bool ReadBool(JObject payload, string name)
+        {
+            JToken token = ReadToken(payload, name);
+            if (token == null)
+            {
+                return false;
+            }
+
+            if (token.Type == JTokenType.Boolean)
+            {
+                return token.Value<bool>();
+            }
+
+            return bool.TryParse(token.ToString().Trim(), out bool value) && value;
         }
 
         private static JToken ReadToken(JObject payload, string name)

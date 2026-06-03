@@ -5,7 +5,6 @@ public class LocalSettingsModel {
 	boolean manualIPState = false;
 	boolean keepRatioState = false;
 	boolean switchOnContentEnd = false;
-	String usbAuthKey = "";
     String playerId = "";
     String managerIp = "";
     String manualIp = "";
@@ -28,10 +27,6 @@ public class LocalSettingsModel {
 	
 	public void setKeepRatioState(boolean state) {
 		keepRatioState = state;
-	}
-
-	public void setUsbAuthKey(String key) {
-		usbAuthKey = key;
 	}
 
 	public void setSwitchOnContentEnd(boolean state) {
@@ -91,10 +86,6 @@ public class LocalSettingsModel {
 	
 	public boolean getKeepRatioState() {
 		return keepRatioState;
-	}
-
-	public String getUsbAuthKey() {
-		return usbAuthKey;
 	}
 
 	public boolean getSwitchOnContentEnd() {

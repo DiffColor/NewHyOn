@@ -37,10 +37,7 @@ import kr.co.turtlelab.andowsignage.datamodels.WeeklyScheduleDataModel;
 import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
 import kr.co.turtlelab.andowsignage.dataproviders.PlayerDataProvider;
 import kr.co.turtlelab.andowsignage.dataproviders.WeeklyScheduleProvider;
-import kr.co.turtlelab.andowsignage.tools.FileUtils;
 import kr.co.turtlelab.andowsignage.tools.LightestTimer;
-import kr.co.turtlelab.andowsignage.tools.LicenseHubAuthUtils;
-import kr.co.turtlelab.andowsignage.tools.LocalPathUtils;
 import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
 import kr.co.turtlelab.andowsignage.tools.SystemUtils;
 import kr.co.turtlelab.andowsignage.tools.Utils;
@@ -79,8 +76,6 @@ public class ConfigDialog extends Dialog implements View.OnClickListener {
 
 	TextView mAuthBg;
 	EditText mSrcKey;
-	EditText mAuthKey;
-	Button mAuthBtn;
 	
 	LightestTimer rpcAbortTimer;
 	Context ctx;
@@ -446,10 +441,9 @@ public class ConfigDialog extends Dialog implements View.OnClickListener {
 
 		mAuthBg = (TextView)findViewById(R.id.auth_label1);
 		mSrcKey = (EditText)findViewById(R.id.sourceKey);
-		mAuthKey = (EditText)findViewById(R.id.authKey);
-		bindEditableField(mAuthKey);
-		mAuthBtn = (Button) findViewById(R.id.authBtn);
-		mAuthBtn.setOnClickListener(this);
+		mSrcKey.setFocusable(false);
+		mSrcKey.setFocusableInTouchMode(false);
+		mSrcKey.setCursorVisible(false);
 
 		refreshSourceKeyAndAuthState();
 	}
@@ -709,9 +703,6 @@ public class ConfigDialog extends Dialog implements View.OnClickListener {
 					exportRealm();
 					break;
 	
-				case R.id.authBtn:
-					setAuth(mSrcKey.getText().toString());
-					break;
 			}
 		}
 
@@ -758,110 +749,16 @@ public class ConfigDialog extends Dialog implements View.OnClickListener {
 		}
 	
 	private void refreshSourceKeyAndAuthState() {
-		if (mSrcKey == null || mAuthBtn == null || mAuthKey == null || mAuthBg == null) {
+		if (mSrcKey == null || mAuthBg == null) {
 			return;
 		}
 
-		String sourceKey = LicenseHubAuthUtils.resolveDisplayFingerprint(ctx, LocalSettingsProvider.getUsbAuthKey());
-		if (TextUtils.isEmpty(sourceKey)) {
-			sourceKey = NetworkUtils.getMACAddress().replace(":", "").toUpperCase();
-		}
-		mSrcKey.setText(sourceKey);
+		String fingerprint = PlayerDataProvider.getPlayerAuthFingerprint();
+		mSrcKey.setText(fingerprint);
 
-		boolean hasStoredKey = LocalSettingsProvider.hasStoredUsbKeyForDevice();
-		mAuthBtn.setEnabled(!hasStoredKey);
-		mAuthKey.setEnabled(false);
 		mAuthBg.setBackgroundColor(AndoWSignage.act.getResources().getColor(
-				hasStoredKey ? android.R.color.holo_green_dark : android.R.color.holo_red_dark));
-	}
-
-	private void setAuth(String srckey) {
-		String currentPlayerName = player_id.getText().toString().trim();
-		if (TextUtils.isEmpty(currentPlayerName)) {
-			currentPlayerName = AndoWSignageApp.PLAYER_ID;
-		}
-		final String playerName = currentPlayerName == null ? "" : currentPlayerName.trim();
-		if (mAuthBtn != null) {
-			mAuthBtn.setEnabled(false);
-		}
-
-		LicenseHubAuthUtils.authenticate(ctx, playerName, new LicenseHubAuthUtils.AuthCallback() {
-			@Override
-			public void onSuccess(final LicenseHubAuthUtils.AuthResult result) {
-				LocalSettingsProvider.updateUsbAuthKey(result.serializedLicense);
-				FileUtils.deleteFile(LocalPathUtils.getAuthFilePath());
-				syncLicenseHubAuthToManager(playerName);
-
-				SystemUtils.runOnUiThread(new Runnable() {
-					@Override
-					public void run() {
-						refreshSourceKeyAndAuthState();
-						Toast.makeText(ctx, "LicenseHub 인증이 완료되었습니다.", Toast.LENGTH_LONG).show();
-					}
-				});
-			}
-
-			@Override
-			public void onFailure(final String message) {
-				SystemUtils.runOnUiThread(new Runnable() {
-					@Override
-					public void run() {
-						refreshSourceKeyAndAuthState();
-						Toast.makeText(ctx, message, Toast.LENGTH_LONG).show();
-					}
-				});
-			}
-		});
-	}
-
-	private void syncLicenseHubAuthToManager(final String playerName) {
-		new Thread(new Runnable() {
-			@Override
-			public void run() {
-				String rethinkHost = LocalSettingsProvider.getDataServerIp();
-				if (TextUtils.isEmpty(rethinkHost)) {
-					rethinkHost = AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)
-							? AndoWSignageApp.MANUAL_IP
-							: AndoWSignageApp.MANAGER_IP;
-				}
-				rethinkHost = NetworkUtils.normalizeAddress(rethinkHost);
-				if (TextUtils.isEmpty(rethinkHost)) {
-					return;
-				}
-
-				RethinkDbClient client = RethinkDbClient.getInstance();
-				client.updateHost(rethinkHost);
-				String guid = client.refreshPlayerGuidForPlayerName(playerName);
-				if (!TextUtils.isEmpty(guid)) {
-					client.updatePlayerDeviceInfo(
-							guid,
-							"",
-							NetworkUtils.getMACAddress(),
-							"Android " + android.os.Build.VERSION.RELEASE);
-				}
-			}
-		}).start();
-	}
-
-	private boolean hasRegisteredPlayerDataForAuth(String playerName) {
-		String normalizedPlayerName = playerName == null ? "" : playerName.trim();
-		if (TextUtils.isEmpty(normalizedPlayerName)) {
-			return false;
-		}
-
-		String rethinkHost = LocalSettingsProvider.getDataServerIp();
-		if (TextUtils.isEmpty(rethinkHost)) {
-			rethinkHost = AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)
-					? AndoWSignageApp.MANUAL_IP
-					: AndoWSignageApp.MANAGER_IP;
-		}
-		rethinkHost = NetworkUtils.normalizeAddress(rethinkHost);
-		if (TextUtils.isEmpty(rethinkHost)) {
-			return false;
-		}
-
-		RethinkDbClient client = RethinkDbClient.getInstance();
-		client.updateHost(rethinkHost);
-		return client.hasRegisteredPlayerName(normalizedPlayerName);
+				TextUtils.isEmpty(PlayerDataProvider.getPlayerAuthKey())
+						? android.R.color.holo_red_dark
+						: android.R.color.holo_green_dark));
 	}
 }

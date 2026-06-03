@@ -186,10 +186,6 @@ public class LocalPathUtils {
 		return new File(path).exists();
 	}
 
-	public static String getAuthFilePath() {
-		return getAbsolutePath(".cache");
-	}
-
 	public static String getUSBContentsDirPath() {
 		return getAbsolutePath("USBP");
 	}
