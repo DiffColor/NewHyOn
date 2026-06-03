@@ -16,6 +16,8 @@ public class StoredPlayer {
     private String playerId;
     private String playerName;
     private String playlistName;
+    private String pifAuthKey = "";
+    private String pifFingerprint = "";
     private boolean landscape;
 
     public long getObjectBoxId() {
@@ -48,6 +50,22 @@ public class StoredPlayer {
 
     public void setPlaylistName(String playlistName) {
         this.playlistName = playlistName;
+    }
+
+    public String getPifAuthKey() {
+        return pifAuthKey;
+    }
+
+    public void setPifAuthKey(String pifAuthKey) {
+        this.pifAuthKey = pifAuthKey;
+    }
+
+    public String getPifFingerprint() {
+        return pifFingerprint;
+    }
+
+    public void setPifFingerprint(String pifFingerprint) {
+        this.pifFingerprint = pifFingerprint;
     }
 
     public boolean isLandscape() {

@@ -81,6 +81,50 @@ public class PlayerDataProvider {
         storeDb.close();
     }
 
+    public static boolean updatePlayerAuthInfo(String authKey, String fingerprint) {
+        ObjectBoxDb storeDb = ObjectBoxDb.getDefaultInstance();
+        try {
+            storeDb.executeTransaction(r -> {
+                StoredPlayer player = r.where(StoredPlayer.class).findFirst();
+                if (player == null) {
+                    String playerId = AndoWSignageApp.PLAYER_ID;
+                    if (TextUtils.isEmpty(playerId)) {
+                        playerId = "local_player";
+                    }
+                    player = r.createObject(StoredPlayer.class, playerId);
+                    player.setPlayerName(playerId);
+                }
+                player.setPifAuthKey(authKey == null ? "" : authKey);
+                player.setPifFingerprint(fingerprint == null ? "" : fingerprint);
+            });
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        } finally {
+            storeDb.close();
+        }
+    }
+
+    public static String getPlayerAuthKey() {
+        ObjectBoxDb storeDb = ObjectBoxDb.getDefaultInstance();
+        try {
+            StoredPlayer player = storeDb.where(StoredPlayer.class).findFirst();
+            return player == null || player.getPifAuthKey() == null ? "" : player.getPifAuthKey();
+        } finally {
+            storeDb.close();
+        }
+    }
+
+    public static String getPlayerAuthFingerprint() {
+        ObjectBoxDb storeDb = ObjectBoxDb.getDefaultInstance();
+        try {
+            StoredPlayer player = storeDb.where(StoredPlayer.class).findFirst();
+            return player == null || player.getPifFingerprint() == null ? "" : player.getPifFingerprint();
+        } finally {
+            storeDb.close();
+        }
+    }
+
     public static void updateManagerIP() {
         LocalSettingsProvider.updateManagerIp(AndoWSignageApp.MANAGER_IP);
     }

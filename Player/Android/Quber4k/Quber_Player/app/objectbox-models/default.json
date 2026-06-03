@@ -309,7 +309,7 @@
     },
     {
       "id": "5:7241311772159329731",
-      "lastPropertyId": "5:347713390174355896",
+      "lastPropertyId": "7:2533691359000547588",
       "name": "StoredPlayer",
       "properties": [
         {
@@ -339,6 +339,16 @@
           "id": "5:347713390174355896",
           "name": "landscape",
           "type": 1
+        },
+        {
+          "id": "6:3667318680552702370",
+          "name": "pifAuthKey",
+          "type": 9
+        },
+        {
+          "id": "7:2533691359000547588",
+          "name": "pifFingerprint",
+          "type": 9
         }
       ],
       "relations": []

@@ -14,8 +14,6 @@ import kr.co.turtlelab.andowsignage.data.objectbox.ObjectBoxDb;
 import kr.co.turtlelab.andowsignage.AndoWSignageApp;
 import kr.co.turtlelab.andowsignage.data.store.StoredLocalSettings;
 import kr.co.turtlelab.andowsignage.datamodels.LocalSettingsModel;
-import kr.co.turtlelab.andowsignage.tools.LicenseHubAuthUtils;
-import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
 
 public class LocalSettingsProvider {
 
@@ -63,7 +61,6 @@ public class LocalSettingsProvider {
                 model.setManualIPState(settings.isManualIpEnabled());
                 model.setKeepRatioState(settings.isKeepRatioEnabled());
                 model.setSwitchOnContentEnd(settings.isSwitchOnContentEndEnabled());
-                model.setUsbAuthKey(settings.getUsbAuthKey());
                 model.setPlayerId(settings.getPlayerId());
                 model.setManagerIp(settings.getManagerIp());
                 model.setManualIp(settings.getManualIp());
@@ -115,7 +112,6 @@ public class LocalSettingsProvider {
             settings.setManualIpEnabled(enableManualIp);
             settings.setKeepRatioEnabled(keepRatio);
             settings.setSwitchOnContentEnd(switchOnContentEnd);
-            settings.setUsbAuthKey("");
             settings.setPlayerId(playerId == null ? "" : playerId);
             settings.setManagerIp(managerIp == null ? "" : managerIp);
             settings.setManualIp(manualIp == null ? "" : manualIp);
@@ -161,25 +157,6 @@ public class LocalSettingsProvider {
         });
         storeDb.close();
         persistCurrentSettings();
-    }
-
-    public static void updateUsbAuthKey(String encodedKey) {
-        ObjectBoxDb storeDb = ObjectBoxDb.getDefaultInstance();
-        storeDb.executeTransaction(r -> {
-            StoredLocalSettings settings = getOrCreateStoredSettings(r);
-            settings.setUsbAuthKey(encodedKey == null ? "" : encodedKey);
-        });
-        storeDb.close();
-        persistCurrentSettings();
-    }
-
-    public static boolean clearLegacyUsbAuthKey() {
-        String authKey = getUsbAuthKey();
-        if (TextUtils.isEmpty(authKey) || LicenseHubAuthUtils.isLicenseHubAuthPayload(authKey)) {
-            return false;
-        }
-        updateUsbAuthKey("");
-        return true;
     }
 
     public static void updatePlayerId(String playerId) {
@@ -256,11 +233,14 @@ public class LocalSettingsProvider {
         }
     }
 
-    public static String getUsbAuthKey() {
+    public static String getPlayerId() {
         ObjectBoxDb storeDb = ObjectBoxDb.getDefaultInstance();
         try {
             StoredLocalSettings settings = rWhere(storeDb);
-            return settings != null ? settings.getUsbAuthKey() : "";
+            if (settings != null && !TextUtils.isEmpty(settings.getPlayerId())) {
+                return settings.getPlayerId();
+            }
+            return AndoWSignageApp.PLAYER_ID == null ? "" : AndoWSignageApp.PLAYER_ID;
         } finally {
             storeDb.close();
         }
@@ -471,8 +451,6 @@ public class LocalSettingsProvider {
         properties.setProperty(KEY_FTP_PASV_MIN_PORT, Integer.toString(settings.getFtpPasvMinPort()));
         properties.setProperty(KEY_FTP_PASV_MAX_PORT, Integer.toString(settings.getFtpPasvMaxPort()));
         properties.setProperty(KEY_FTP_ROOT_PATH, settings.getFtpRootPath() == null ? "" : settings.getFtpRootPath());
-        properties.setProperty("usb_auth_key", settings.getUsbAuthKey() == null ? "" : settings.getUsbAuthKey());
-
         File backupFile = getBackupFile();
         try (FileOutputStream output = new FileOutputStream(backupFile)) {
             properties.store(output, "AndoW local settings backup");
@@ -491,7 +469,6 @@ public class LocalSettingsProvider {
         settings.setPlayerId(getString(properties, KEY_PLAYER_ID, settings.getPlayerId()));
         settings.setManagerIp(getString(properties, KEY_MANAGER_IP, settings.getManagerIp()));
         settings.setManualIp(getString(properties, KEY_MANUAL_IP, settings.getManualIp()));
-        settings.setUsbAuthKey(getString(properties, "usb_auth_key", settings.getUsbAuthKey()));
         int signalrPort = parseInt(properties, KEY_SIGNALR_PORT, settings.getSignalrPort());
         if (signalrPort > 0 && signalrPort <= 65535) {
             settings.setSignalrPort(signalrPort);
@@ -584,22 +561,6 @@ public class LocalSettingsProvider {
             settings.setId(LOCAL_SETTINGS_ID);
         }
         return settings;
-    }
-
-    public static boolean hasStoredUsbKeyForDevice() {
-        return LicenseHubAuthUtils.isValidForCurrentDevice(AndoWSignageApp.getApplication(), getUsbAuthKey());
-    }
-
-    public static boolean matchesStoredUsbKey(String mac) {
-        return hasStoredUsbKeyForDevice();
-    }
-
-    private static boolean isLicenseHubAuthPayload(String value) {
-        return LicenseHubAuthUtils.isLicenseHubAuthPayload(value);
-    }
-
-    private static boolean containsJsonName(String value, String pascalName, String camelName) {
-        return value.contains("\"" + pascalName + "\"") || value.contains("\"" + camelName + "\"");
     }
 
 }
