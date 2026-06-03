@@ -2695,7 +2695,8 @@ namespace AndoW_Manager
                 PIC_Thumb = thumbData
             };
 
-            definition.PIC_Elements = ElementInfoControlClass.CloneElementList(elementSnapshot ?? new List<ElementInfoClass>());
+            List<ElementInfoClass> elements = elementSnapshot == null ? new List<ElementInfoClass>() : elementSnapshot;
+            definition.PIC_Elements = ElementInfoControlClass.CloneElementList(elements);
             return definition;
         }
 
