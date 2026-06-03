@@ -98,9 +98,12 @@ namespace NewHyOnPlayer
 
         private void ScheduleNext()
         {
-            timer.Stop();
-            timer.Period = intervalMs;
-            timer.Start();
+            if (timer.IsRunning)
+            {
+                timer.Stop();
+                timer.Period = intervalMs;
+                timer.Start();
+            }
         }
 
         private void HandleCommandEntry(PlayerInfoClass playerInfo, CommandQueueEntry entry, bool isUrgent)
