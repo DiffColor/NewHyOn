@@ -170,7 +170,7 @@ jobs:
           )
           foreach ($dst in $destinations) {
             New-Item -ItemType Directory -Force -Path $dst | Out-Null
-            Get-ChildItem -Path $src -File | Copy-Item -Destination $dst -Force
+            Copy-Item -Path "$src/*" -Destination $dst -Recurse -Force
           }
 
       - name: Build Player Windows (Release x64)
@@ -203,6 +203,7 @@ jobs:
           Copy-Item -Path "Player/Windows/NewHyOn_Player/bin/x64/Release/*" -Destination $packageRoot -Recurse -Force
           Copy-Item -Path "Player/Windows/NewHyOn_Player_Settings/bin/publish/*" -Destination $packageRoot -Recurse -Force
           Copy-Item -Path "StartApps/bin/publish/player/*" -Destination $packageRoot -Recurse -Force
+          & ".github/scripts/verify-licensehub-deviceauth-assets.ps1" -PackageRoot $packageRoot
           Compress-Archive -Path "$packageRoot/*" -DestinationPath $zip -Force
 
       - name: Upload Player Windows artifact

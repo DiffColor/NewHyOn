@@ -1,5 +1,6 @@
 param(
-    [string]$Root = "."
+    [string]$Root = ".",
+    [string]$PackageRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,6 +21,25 @@ foreach ($relativePath in $requiredFiles) {
     $item = Get-Item $path
     if ($item.Length -le 0) {
         throw "Required LicenseHub DeviceAuth asset is empty: $relativePath"
+    }
+}
+
+if (![string]::IsNullOrWhiteSpace($PackageRoot)) {
+    $requiredPackageFiles = @(
+        "LicenseHub.DeviceAuth.Core.dll",
+        "BouncyCastle.Crypto.dll"
+    )
+
+    foreach ($relativePath in $requiredPackageFiles) {
+        $path = Join-Path $PackageRoot $relativePath
+        if (!(Test-Path $path)) {
+            throw "Required LicenseHub DeviceAuth package asset is missing: $relativePath"
+        }
+
+        $item = Get-Item $path
+        if ($item.Length -le 0) {
+            throw "Required LicenseHub DeviceAuth package asset is empty: $relativePath"
+        }
     }
 }
 

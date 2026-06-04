@@ -24,7 +24,16 @@ if [[ -z "$apksigner" || ! -x "$apksigner" ]]; then
   exit 1
 fi
 
+aapt="$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 -type f -name aapt | sort -V | tail -n 1)"
+if [[ -z "$aapt" || ! -x "$aapt" ]]; then
+  echo "aapt not found under: $sdk_root/build-tools" >&2
+  exit 1
+fi
+
 mkdir -p "$output_dir"
+
+device_auth_apk="Player/Android/_shared/binaries/LicenseHub.DeviceAuth/auth.apk"
+device_auth_package="com.licensehub.deviceauth.app"
 
 abs_path() {
   local rel="$1"
@@ -106,6 +115,26 @@ build_gradle_release_from_find() {
   cp "$apk_path" "$output_dir/$output_name"
 }
 
+copy_device_auth_apk() {
+  local output_name="$1"
+
+  if [[ ! -f "$device_auth_apk" ]]; then
+    echo "LicenseHub DeviceAuth APK not found: $device_auth_apk" >&2
+    exit 1
+  fi
+
+  "$apksigner" verify --verbose "$device_auth_apk"
+
+  local badging
+  badging="$("$aapt" dump badging "$device_auth_apk")"
+  if ! grep -q "package: name='$device_auth_package'" <<< "$badging"; then
+    echo "LicenseHub DeviceAuth APK package mismatch. Expected: $device_auth_package" >&2
+    exit 1
+  fi
+
+  cp "$device_auth_apk" "$output_dir/$output_name"
+}
+
 build_quber_release() {
   local quber_root="$1"
   local output_name="$2"
@@ -157,6 +186,8 @@ build_player_release_pair() {
     "zbqj2636" \
     "quber" \
     "zbqj2636"
+
+  copy_device_auth_apk "${pair_prefix}-auth.apk"
 }
 
 build_gl_release() {
@@ -173,6 +204,8 @@ build_gl_release() {
     "zbqj2636" \
     "quber" \
     "zbqj2636"
+
+  copy_device_auth_apk "${output_name%.apk}-auth.apk"
 }
 
 case "$target" in
@@ -191,6 +224,7 @@ case "$target" in
     build_quber4k_release \
       "Player/Android/Quber4k/Quber_Player" \
       "${artifact_prefix}-quber4k.apk"
+    copy_device_auth_apk "${artifact_prefix}-auth.apk"
     ;;
   notifier)
     build_quber_release \
