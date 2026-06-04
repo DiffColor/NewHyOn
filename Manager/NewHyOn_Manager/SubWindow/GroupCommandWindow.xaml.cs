@@ -12,6 +12,7 @@ namespace AndoW_Manager
     public partial class GroupCommandWindow : Window
     {
         private const string CommandChangePlaylist = "플레이리스트 변경";
+        private const string CommandChangeDefaultPlaylist = "기본 플레이리스트 변경";
         private const string CommandSyncPlaylist = "싱크 플레이리스트 변경";
         private const string CommandSyncAdjust = "싱크 조정";
         private const string CommandReboot = "플레이어 재부팅";
@@ -82,6 +83,7 @@ namespace AndoW_Manager
             CommandComboBox.Items.Clear();
 
             CommandComboBox.Items.Add(CommandChangePlaylist);
+            CommandComboBox.Items.Add(CommandChangeDefaultPlaylist);
             CommandComboBox.Items.Add(CommandSyncPlaylist);
             CommandComboBox.Items.Add(CommandSyncAdjust);
             CommandComboBox.Items.Add(CommandReboot);
@@ -105,10 +107,11 @@ namespace AndoW_Manager
 
             string selectedCommand = CommandComboBox.SelectedItem == null ? string.Empty : CommandComboBox.SelectedItem.ToString();
             bool isChangePlaylist = selectedCommand == CommandChangePlaylist;
+            bool isChangeDefaultPlaylist = selectedCommand == CommandChangeDefaultPlaylist;
             bool isSyncPlaylist = selectedCommand == CommandSyncPlaylist;
             _usePerPlayerPlaylist = isSyncPlaylist;
 
-            if (isChangePlaylist || isSyncPlaylist)
+            if (isChangePlaylist || isChangeDefaultPlaylist || isSyncPlaylist)
             {
                 PlaylistComboBox.Items.Clear();
                 foreach (PageListInfoClass pageList in DataShop.Instance.g_PageListInfoManager.g_PageListInfoClassList)
@@ -131,7 +134,7 @@ namespace AndoW_Manager
                     PlaylistComboBox.SelectedIndex = -1;
                 }
 
-                PlaylistComboBox.IsEnabled = isChangePlaylist;
+                PlaylistComboBox.IsEnabled = isChangePlaylist || isChangeDefaultPlaylist;
                 OptionsPanel.Children.Add(PlaylistComboBox);
                 OptionsPanel.Visibility = Visibility.Visible;
             }
@@ -308,6 +311,13 @@ namespace AndoW_Manager
                     ChangePlaylist(PlaylistComboBox.SelectedItem.ToString());
                 }
             }
+            else if (selected == CommandChangeDefaultPlaylist)
+            {
+                if (PlaylistComboBox.SelectedItem != null)
+                {
+                    ChangeDefaultPlaylist(PlaylistComboBox.SelectedItem.ToString());
+                }
+            }
             else if (selected == CommandSyncPlaylist)
             {
                 ChangePlaylistPerPlayer();
@@ -377,6 +387,50 @@ namespace AndoW_Manager
             MessageTools.ShowMessageBox(
                 string.Format("{0}대 플레이어의 플레이리스트를 '{1}'로 변경했습니다.", successCount, playlistName),
                 "확인");
+        }
+
+        private void ChangeDefaultPlaylist(string playlistName)
+        {
+            int successCount = 0;
+
+            DataShop.Instance.g_PageInfoManager.LoadPagesForList(playlistName);
+            if (DataShop.Instance.g_PageInfoManager.g_PageInfoClassList.Count == 0)
+            {
+                MessageTools.ShowMessageBox("선택한 플레이리스트에 등록된 페이지가 없습니다.", "확인");
+                return;
+            }
+
+            foreach (PlayerInfoClass player in _selectedPlayers)
+            {
+                try
+                {
+                    PlayerInfoClass commandPlayer = BuildPlayerForPlaylistCommand(player, playlistName);
+                    string payloadBase64 = DataShop.Instance.g_UpdatePayloadBuilder.BuildPayloadBase64(commandPlayer);
+                    if (MainWindow.Instance.EnqueueCommandForPlayer(player, RP_ORDER.updatelist.ToString(), payloadBase64, pushSignalR: true))
+                    {
+                        player.PIF_DefaultPlayList = playlistName;
+                        DataShop.Instance.g_PlayerInfoManager.EditPlayerDefaultPlayList(player);
+                        successCount++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
+                }
+            }
+
+            MessageTools.ShowMessageBox(
+                string.Format("{0}대 플레이어의 기본 플레이리스트를 '{1}'로 변경하고 업데이트 명령을 보냈습니다.", successCount, playlistName),
+                "확인");
+        }
+
+        private PlayerInfoClass BuildPlayerForPlaylistCommand(PlayerInfoClass player, string playlistName)
+        {
+            PlayerInfoClass commandPlayer = new PlayerInfoClass();
+            commandPlayer.CopyData(player);
+            commandPlayer.PIF_CurrentPlayList = playlistName;
+            commandPlayer.PIF_DefaultPlayList = playlistName;
+            return commandPlayer;
         }
 
         private void ChangePlaylistPerPlayer()

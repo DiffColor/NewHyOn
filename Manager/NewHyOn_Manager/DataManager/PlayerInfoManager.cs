@@ -275,6 +275,32 @@ namespace AndoW_Manager
             }
         }
 
+        public void EditPlayerDefaultPlayList(PlayerInfoClass paramCls)
+        {
+            foreach (PlayerInfoClass item in g_PlayerInfoClassList)
+            {
+                if (IsSamePlayerName(item.PIF_PlayerName, paramCls.PIF_PlayerName))
+                {
+                    item.PIF_DefaultPlayList = paramCls.PIF_DefaultPlayList;
+                    SavePlayer(item);
+                    break;
+                }
+            }
+        }
+
+        public void EditPlayerDefaultPlayList(string pname, string listname)
+        {
+            foreach (PlayerInfoClass item in g_PlayerInfoClassList)
+            {
+                if (IsSamePlayerName(item.PIF_PlayerName, pname))
+                {
+                    item.PIF_DefaultPlayList = listname;
+                    SavePlayer(item);
+                    break;
+                }
+            }
+        }
+
         public void ClearPlaylistReferences(string playlistName)
         {
             if (string.IsNullOrWhiteSpace(playlistName))
