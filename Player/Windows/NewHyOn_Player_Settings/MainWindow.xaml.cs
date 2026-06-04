@@ -622,16 +622,11 @@ public partial class MainWindow : Window
         ScheduleRowModel source = ScheduleRows[0];
         for (int index = 1; index < ScheduleRows.Count; index++)
         {
+            ScheduleRows[index].IsOnAir = source.IsOnAir;
             ScheduleRows[index].StartHour = source.StartHour;
             ScheduleRows[index].StartMinute = source.StartMinute;
             ScheduleRows[index].EndHour = source.EndHour;
             ScheduleRows[index].EndMinute = source.EndMinute;
-        }
-
-        ScheduleRows.Clear();
-        foreach (ScheduleRowModel row in BuildSnapshot().WeeklySchedules)
-        {
-            ScheduleRows.Add(row);
         }
     }
 

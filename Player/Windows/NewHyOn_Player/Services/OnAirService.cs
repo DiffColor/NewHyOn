@@ -6,7 +6,6 @@ using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Windows.Forms;
 using TurtleTools;
 using SharedWeeklyPlayScheduleInfo = AndoW.Shared.WeeklyPlayScheduleInfo;
 
@@ -352,7 +351,8 @@ namespace NewHyOnPlayer.Services
             owner?.PrepareForSuspend();
             owner?.Dispatcher?.Invoke(() => { WindowTools.AllowSleep(); });
             Thread.Sleep(SuspendStabilizationDelayMs);
-            return Application.SetSuspendState(PowerState.Suspend, false, false);
+            ProcessTools.ExecuteCommand("rundll32.exe powrprof.dll,SetSuspendState 1,1,0");
+            return true;
         }
 
         private bool TryResolveWakeTimeForHibernation(DateTime now, DateTime scheduledWakeAt, out DateTime wakeAt)
