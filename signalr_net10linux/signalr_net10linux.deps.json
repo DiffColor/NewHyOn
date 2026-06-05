@@ -1,0 +1,93 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "signalr_net10linux/1.0.0": {
+        "dependencies": {
+          "Microsoft.AspNetCore.SignalR.Protocols.MessagePack": "10.0.5"
+        },
+        "runtime": {
+          "signalr_net10linux.dll": {}
+        }
+      },
+      "MessagePack/2.5.187": {
+        "dependencies": {
+          "MessagePack.Annotations": "2.5.187",
+          "Microsoft.NET.StringTools": "17.6.3"
+        },
+        "runtime": {
+          "lib/net6.0/MessagePack.dll": {
+            "assemblyVersion": "2.5.0.0",
+            "fileVersion": "2.5.187.63700"
+          }
+        }
+      },
+      "MessagePack.Annotations/2.5.187": {
+        "runtime": {
+          "lib/netstandard2.0/MessagePack.Annotations.dll": {
+            "assemblyVersion": "2.5.0.0",
+            "fileVersion": "2.5.187.63700"
+          }
+        }
+      },
+      "Microsoft.AspNetCore.SignalR.Protocols.MessagePack/10.0.5": {
+        "dependencies": {
+          "MessagePack": "2.5.187"
+        },
+        "runtime": {
+          "lib/net10.0/Microsoft.AspNetCore.SignalR.Protocols.MessagePack.dll": {
+            "assemblyVersion": "10.0.5.0",
+            "fileVersion": "10.0.526.15411"
+          }
+        }
+      },
+      "Microsoft.NET.StringTools/17.6.3": {
+        "runtime": {
+          "lib/net7.0/Microsoft.NET.StringTools.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "17.6.3.22601"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "signalr_net10linux/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "MessagePack/2.5.187": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-uW4j8m4Nc+2Mk5n6arOChavJ9bLjkis0qWASOj2h2OwmfINuzYv+mjCHUymrYhmyyKTu3N+ObtTXAY4uQ7jIhg==",
+      "path": "messagepack/2.5.187",
+      "hashPath": "messagepack.2.5.187.nupkg.sha512"
+    },
+    "MessagePack.Annotations/2.5.187": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-/IvvMMS8opvlHjEJ/fR2Cal4Co726Kj77Z8KiohFhuHfLHHmb9uUxW5+tSCL4ToKFfkQlrS3HD638mRq83ySqA==",
+      "path": "messagepack.annotations/2.5.187",
+      "hashPath": "messagepack.annotations.2.5.187.nupkg.sha512"
+    },
+    "Microsoft.AspNetCore.SignalR.Protocols.MessagePack/10.0.5": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-6tg4j/+XZeZOsRLWdtDM3NdtrJs2C1kLZDDQ3Jq9MHt7DevXtS/V1SkHyLkZSodIdhJCritya/QF7z3E6NCSyg==",
+      "path": "microsoft.aspnetcore.signalr.protocols.messagepack/10.0.5",
+      "hashPath": "microsoft.aspnetcore.signalr.protocols.messagepack.10.0.5.nupkg.sha512"
+    },
+    "Microsoft.NET.StringTools/17.6.3": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-N0ZIanl1QCgvUumEL1laasU0a7sOE5ZwLZVTn0pAePnfhq8P7SvTjF8Axq+CnavuQkmdQpGNXQ1efZtu5kDFbA==",
+      "path": "microsoft.net.stringtools/17.6.3",
+      "hashPath": "microsoft.net.stringtools.17.6.3.nupkg.sha512"
+    }
+  }
+}
