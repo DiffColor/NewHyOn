@@ -20,6 +20,10 @@ public class LocalSettingsProvider {
     private static final String TAG = "LocalSettingsProvider";
     private static final String LOCAL_SETTINGS_ID = "local_settings";
     private static final String BACKUP_FILE_NAME = "local_settings.properties";
+    private static final int DEFAULT_SIGNALR_PORT = 5000;
+    private static final String DEFAULT_SIGNALR_HUB_PATH = "/Data";
+    private static final int DEFAULT_FTP_PORT = 10021;
+    private static final String DEFAULT_FTP_ROOT_PATH = "/NewHyOnEnt";
     private static final String KEY_DATA_SERVER_IP = "data_server_ip";
     private static final String KEY_MESSAGE_SERVER_IP = "message_server_ip";
     private static final String KEY_FTP_PORT = "ftp_port";
@@ -34,6 +38,7 @@ public class LocalSettingsProvider {
     public static final String KEY_MANUAL_IP = "manual_ip";
     public static final String KEY_SIGNALR_PORT = "signalr_port";
     public static final String KEY_SIGNALR_HUB_PATH = "signalr_hub_path";
+    public static final String KEY_USB_AUTH_KEY = "usb_auth_key";
 
     private LocalSettingsProvider() {
     }
@@ -61,6 +66,7 @@ public class LocalSettingsProvider {
                 model.setManualIPState(settings.isManualIpEnabled());
                 model.setKeepRatioState(settings.isKeepRatioEnabled());
                 model.setSwitchOnContentEnd(settings.isSwitchOnContentEndEnabled());
+                model.setUsbAuthKey(settings.getUsbAuthKey());
                 model.setPlayerId(settings.getPlayerId());
                 model.setManagerIp(settings.getManagerIp());
                 model.setManualIp(settings.getManualIp());
@@ -112,17 +118,18 @@ public class LocalSettingsProvider {
             settings.setManualIpEnabled(enableManualIp);
             settings.setKeepRatioEnabled(keepRatio);
             settings.setSwitchOnContentEnd(switchOnContentEnd);
+            settings.setUsbAuthKey("");
             settings.setPlayerId(playerId == null ? "" : playerId);
             settings.setManagerIp(managerIp == null ? "" : managerIp);
             settings.setManualIp(manualIp == null ? "" : manualIp);
-            settings.setSignalrPort(5000);
-            settings.setSignalrHubPath("/Data");
+            settings.setSignalrPort(DEFAULT_SIGNALR_PORT);
+            settings.setSignalrHubPath(DEFAULT_SIGNALR_HUB_PATH);
             settings.setDataServerIp("");
             settings.setMessageServerIp("");
-            settings.setFtpPort(AndoWSignageApp.FTP_PORT);
+            settings.setFtpPort(DEFAULT_FTP_PORT);
             settings.setFtpPasvMinPort(0);
             settings.setFtpPasvMaxPort(0);
-            settings.setFtpRootPath("/NewHyOnEnt");
+            settings.setFtpRootPath(DEFAULT_FTP_ROOT_PATH);
             applyBackupToSettings(settings, backupProperties);
         });
         storeDb.close();
@@ -308,6 +315,24 @@ public class LocalSettingsProvider {
         persistCurrentSettings();
     }
 
+    public static void resetNetworkSettingsForReconnect() {
+        ObjectBoxDb storeDb = ObjectBoxDb.getDefaultInstance();
+        storeDb.executeTransaction(r -> {
+            StoredLocalSettings settings = getOrCreateStoredSettings(r);
+            settings.setDataServerIp("");
+            settings.setMessageServerIp("");
+            settings.setSignalrPort(DEFAULT_SIGNALR_PORT);
+            settings.setSignalrHubPath(DEFAULT_SIGNALR_HUB_PATH);
+            settings.setFtpPort(DEFAULT_FTP_PORT);
+            settings.setFtpPasvMinPort(0);
+            settings.setFtpPasvMaxPort(0);
+            settings.setFtpRootPath(DEFAULT_FTP_ROOT_PATH);
+        });
+        storeDb.close();
+        AndoWSignageApp.FTP_PORT = DEFAULT_FTP_PORT;
+        persistCurrentSettings();
+    }
+
     public static String getDataServerIp() {
         ObjectBoxDb storeDb = ObjectBoxDb.getDefaultInstance();
         try {
@@ -359,7 +384,7 @@ public class LocalSettingsProvider {
         try {
             StoredLocalSettings settings = rWhere(storeDb);
             if (settings == null || TextUtils.isEmpty(settings.getFtpRootPath())) {
-                return "/NewHyOnEnt";
+                return DEFAULT_FTP_ROOT_PATH;
             }
             return normalizeFtpRootPath(settings.getFtpRootPath());
         } finally {
@@ -440,6 +465,7 @@ public class LocalSettingsProvider {
         properties.setProperty(KEY_ENABLE_MANUAL_IP, Boolean.toString(settings.isManualIpEnabled()));
         properties.setProperty(KEY_KEEP_RATIO, Boolean.toString(settings.isKeepRatioEnabled()));
         properties.setProperty(KEY_SWITCH_ON_CONTENT_END, Boolean.toString(settings.isSwitchOnContentEndEnabled()));
+        properties.setProperty(KEY_USB_AUTH_KEY, settings.getUsbAuthKey() == null ? "" : settings.getUsbAuthKey());
         properties.setProperty(KEY_PLAYER_ID, settings.getPlayerId() == null ? "" : settings.getPlayerId());
         properties.setProperty(KEY_MANAGER_IP, settings.getManagerIp() == null ? "" : settings.getManagerIp());
         properties.setProperty(KEY_MANUAL_IP, settings.getManualIp() == null ? "" : settings.getManualIp());
@@ -466,6 +492,7 @@ public class LocalSettingsProvider {
         settings.setManualIpEnabled(parseBoolean(properties, KEY_ENABLE_MANUAL_IP, settings.isManualIpEnabled()));
         settings.setKeepRatioEnabled(parseBoolean(properties, KEY_KEEP_RATIO, settings.isKeepRatioEnabled()));
         settings.setSwitchOnContentEnd(parseBoolean(properties, KEY_SWITCH_ON_CONTENT_END, settings.isSwitchOnContentEndEnabled()));
+        settings.setUsbAuthKey(getString(properties, KEY_USB_AUTH_KEY, settings.getUsbAuthKey()));
         settings.setPlayerId(getString(properties, KEY_PLAYER_ID, settings.getPlayerId()));
         settings.setManagerIp(getString(properties, KEY_MANAGER_IP, settings.getManagerIp()));
         settings.setManualIp(getString(properties, KEY_MANUAL_IP, settings.getManualIp()));
@@ -524,7 +551,7 @@ public class LocalSettingsProvider {
 
     private static String normalizeFtpRootPath(String rootPath) {
         if (TextUtils.isEmpty(rootPath)) {
-            return "/NewHyOnEnt";
+            return DEFAULT_FTP_ROOT_PATH;
         }
         String normalized = rootPath.replace("\\", "/").trim();
         if (!normalized.startsWith("/")) {

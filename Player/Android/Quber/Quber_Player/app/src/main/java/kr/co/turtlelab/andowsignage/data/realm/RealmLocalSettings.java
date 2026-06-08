@@ -9,6 +9,7 @@ public class RealmLocalSettings extends RealmObject {
     private String id;
     private boolean manualIpEnabled;
     private boolean keepRatioEnabled;
+    private String usbAuthKey = "";
     private boolean switchOnContentEnd;
     private String playerId = "";
     private String managerIp = "";
@@ -44,6 +45,14 @@ public class RealmLocalSettings extends RealmObject {
 
     public void setKeepRatioEnabled(boolean keepRatioEnabled) {
         this.keepRatioEnabled = keepRatioEnabled;
+    }
+
+    public String getUsbAuthKey() {
+        return usbAuthKey;
+    }
+
+    public void setUsbAuthKey(String usbAuthKey) {
+        this.usbAuthKey = usbAuthKey;
     }
 
     public boolean isSwitchOnContentEndEnabled() {

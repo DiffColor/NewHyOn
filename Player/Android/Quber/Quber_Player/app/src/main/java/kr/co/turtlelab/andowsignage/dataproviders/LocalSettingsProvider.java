@@ -20,6 +20,10 @@ public class LocalSettingsProvider {
     private static final String TAG = "LocalSettingsProvider";
     private static final String LOCAL_SETTINGS_ID = "local_settings";
     private static final String BACKUP_FILE_NAME = "local_settings.properties";
+    private static final int DEFAULT_SIGNALR_PORT = 5000;
+    private static final String DEFAULT_SIGNALR_HUB_PATH = "/Data";
+    private static final int DEFAULT_FTP_PORT = 10021;
+    private static final String DEFAULT_FTP_ROOT_PATH = "/NewHyOnEnt";
     private static final String KEY_DATA_SERVER_IP = "data_server_ip";
     private static final String KEY_MESSAGE_SERVER_IP = "message_server_ip";
     private static final String KEY_FTP_PORT = "ftp_port";
@@ -65,6 +69,7 @@ public class LocalSettingsProvider {
                 model.setManualIPState(settings.isManualIpEnabled());
                 model.setKeepRatioState(settings.isKeepRatioEnabled());
                 model.setSwitchOnContentEnd(settings.isSwitchOnContentEndEnabled());
+                model.setUsbAuthKey(settings.getUsbAuthKey());
                 model.setPlayerId(settings.getPlayerId());
                 model.setManagerIp(settings.getManagerIp());
                 model.setManualIp(settings.getManualIp());
@@ -121,17 +126,18 @@ public class LocalSettingsProvider {
             settings.setManualIpEnabled(enableManualIp);
             settings.setKeepRatioEnabled(keepRatio);
             settings.setSwitchOnContentEnd(switchOnContentEnd);
+            settings.setUsbAuthKey("");
             settings.setPlayerId(playerId == null ? "" : playerId);
             settings.setManagerIp(managerIp == null ? "" : managerIp);
             settings.setManualIp(manualIp == null ? "" : manualIp);
-            settings.setSignalrPort(5000);
-            settings.setSignalrHubPath("/Data");
+            settings.setSignalrPort(DEFAULT_SIGNALR_PORT);
+            settings.setSignalrHubPath(DEFAULT_SIGNALR_HUB_PATH);
             settings.setDataServerIp("");
             settings.setMessageServerIp("");
-            settings.setFtpPort(AndoWSignageApp.FTP_PORT);
+            settings.setFtpPort(DEFAULT_FTP_PORT);
             settings.setFtpPasvMinPort(0);
             settings.setFtpPasvMaxPort(0);
-            settings.setFtpRootPath("/NewHyOnEnt");
+            settings.setFtpRootPath(DEFAULT_FTP_ROOT_PATH);
             applyBackupToSettings(settings, backupProperties);
         });
         realm.close();
@@ -356,6 +362,27 @@ public class LocalSettingsProvider {
         persistCurrentSettings();
     }
 
+    public static void resetNetworkSettingsForReconnect() {
+        Realm realm = Realm.getDefaultInstance();
+        realm.executeTransaction(r -> {
+            RealmLocalSettings settings = rWhere(r);
+            if (settings == null) {
+                settings = r.createObject(RealmLocalSettings.class, LOCAL_SETTINGS_ID);
+            }
+            settings.setDataServerIp("");
+            settings.setMessageServerIp("");
+            settings.setSignalrPort(DEFAULT_SIGNALR_PORT);
+            settings.setSignalrHubPath(DEFAULT_SIGNALR_HUB_PATH);
+            settings.setFtpPort(DEFAULT_FTP_PORT);
+            settings.setFtpPasvMinPort(0);
+            settings.setFtpPasvMaxPort(0);
+            settings.setFtpRootPath(DEFAULT_FTP_ROOT_PATH);
+        });
+        realm.close();
+        AndoWSignageApp.FTP_PORT = DEFAULT_FTP_PORT;
+        persistCurrentSettings();
+    }
+
     public static String getDataServerIp() {
         Realm realm = Realm.getDefaultInstance();
         try {
@@ -407,7 +434,7 @@ public class LocalSettingsProvider {
         try {
             RealmLocalSettings settings = rWhere(realm);
             if (settings == null || TextUtils.isEmpty(settings.getFtpRootPath())) {
-                return "/NewHyOnEnt";
+                return DEFAULT_FTP_ROOT_PATH;
             }
             return normalizeFtpRootPath(settings.getFtpRootPath());
         } finally {
@@ -499,6 +526,7 @@ public class LocalSettingsProvider {
         properties.setProperty(KEY_FTP_PASV_MIN_PORT, Integer.toString(settings.getFtpPasvMinPort()));
         properties.setProperty(KEY_FTP_PASV_MAX_PORT, Integer.toString(settings.getFtpPasvMaxPort()));
         properties.setProperty(KEY_FTP_ROOT_PATH, settings.getFtpRootPath() == null ? "" : settings.getFtpRootPath());
+        properties.setProperty("usb_auth_key", settings.getUsbAuthKey() == null ? "" : settings.getUsbAuthKey());
 
         File backupFile = getBackupFile();
         try (FileOutputStream output = new FileOutputStream(backupFile)) {
@@ -518,6 +546,7 @@ public class LocalSettingsProvider {
         settings.setPlayerId(getString(properties, KEY_PLAYER_ID, settings.getPlayerId()));
         settings.setManagerIp(getString(properties, KEY_MANAGER_IP, settings.getManagerIp()));
         settings.setManualIp(getString(properties, KEY_MANUAL_IP, settings.getManualIp()));
+        settings.setUsbAuthKey(getString(properties, "usb_auth_key", settings.getUsbAuthKey()));
         int signalrPort = parseInt(properties, KEY_SIGNALR_PORT, settings.getSignalrPort());
         if (signalrPort > 0 && signalrPort <= 65535) {
             settings.setSignalrPort(signalrPort);
@@ -573,7 +602,7 @@ public class LocalSettingsProvider {
 
     private static String normalizeFtpRootPath(String rootPath) {
         if (TextUtils.isEmpty(rootPath)) {
-            return "/NewHyOnEnt";
+            return DEFAULT_FTP_ROOT_PATH;
         }
         String normalized = rootPath.replace("\\", "/").trim();
         if (!normalized.startsWith("/")) {
@@ -582,7 +611,7 @@ public class LocalSettingsProvider {
         while (normalized.length() > 1 && normalized.endsWith("/")) {
             normalized = normalized.substring(0, normalized.length() - 1);
         }
-        return TextUtils.isEmpty(normalized) ? "/" : normalized;
+        return TextUtils.isEmpty(normalized) ? DEFAULT_FTP_ROOT_PATH : normalized;
     }
 
     private static RealmLocalSettings rWhere(Realm realm) {

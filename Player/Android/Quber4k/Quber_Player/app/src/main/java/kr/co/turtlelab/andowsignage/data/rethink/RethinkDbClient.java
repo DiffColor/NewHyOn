@@ -229,6 +229,34 @@ public class RethinkDbClient {
         }
     }
 
+    public void resetConnectionForReconnect(String newHost) {
+        String normalizedNewHost = NetworkUtils.extractHost(newHost);
+        if (normalizedNewHost == null || normalizedNewHost.isEmpty()) {
+            return;
+        }
+        synchronized (connectionLock) {
+            host = normalizedNewHost;
+            if (connection != null) {
+                try {
+                    connection.close();
+                } catch (Exception ex) {
+                    Log.e(TAG, "RethinkDbClient: operation failed", ex);
+                }
+                connection = null;
+            }
+            synchronized (deviceInfoLock) {
+                deviceInfoSynced = false;
+                deviceInfoSyncInProgress = false;
+                lastSyncedPlayerGuid = null;
+            }
+            guidVerified = false;
+            lastGuidVerificationEpochMs = 0L;
+            heartbeatTableReady = false;
+            updateQueueTableReady = false;
+            commandHistoryTableReady = false;
+        }
+    }
+
     public RethinkModels.PlayerInfoRecord fetchPlayer(String playerName) {
         return fetchPlayerInternal(playerName, true);
     }

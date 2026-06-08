@@ -588,14 +588,11 @@ public class ConfigDialog extends Dialog implements View.OnClickListener {
 	//			AlarmUtils.setWeeklyAlarm(ctx);
 				
 				writeLocalSettings();
-				String rethinkHost = LocalSettingsProvider.getDataServerIp();
-				if (TextUtils.isEmpty(rethinkHost)) {
-					rethinkHost = AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)
-							? AndoWSignageApp.MANUAL_IP
-							: AndoWSignageApp.MANAGER_IP;
-				}
-				RethinkDbClient.getInstance().updateHost(rethinkHost);
-				RethinkDbClient.getInstance().refreshPlayerGuidForPlayerName(idStr);
+				LocalSettingsProvider.resetNetworkSettingsForReconnect();
+				String bootstrapHost = AndoWSignageApp.IS_MANUAL && !TextUtils.isEmpty(AndoWSignageApp.MANUAL_IP)
+						? AndoWSignageApp.MANUAL_IP
+						: AndoWSignageApp.MANAGER_IP;
+				RethinkDbClient.getInstance().resetConnectionForReconnect(bootstrapHost);
 				AndoWSignage.act.playerData = PlayerDataProvider.getPlayerData();
 				
 				SystemUtils.runOnUiThread(new Runnable() {
