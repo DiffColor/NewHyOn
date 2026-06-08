@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
+using System.Threading.Tasks;
 using TurtleTools;
 
 
@@ -42,6 +43,12 @@ namespace AndoW_Manager
         public void ReloadFromDatabase()
         {
             g_PlayerInfoClassList = SortPlayers(LoadAllDocuments());
+        }
+
+        public async Task ReloadFromDatabaseAsync()
+        {
+            List<PlayerInfoClass> loadedPlayers = await Task.Run(() => SortPlayers(LoadAllDocuments()));
+            g_PlayerInfoClassList = loadedPlayers;
         }
 
         public DataTable GetPlayerTempTableForAndroid(string playername)

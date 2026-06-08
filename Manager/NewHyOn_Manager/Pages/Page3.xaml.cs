@@ -2,10 +2,12 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using TurtleTools;
@@ -45,6 +47,8 @@ namespace AndoW_Manager
             new Dictionary<string, PlayerInfoElement>(StringComparer.OrdinalIgnoreCase);
         private HashSet<PlayerInfoElement> _visiblePlayerElements = new HashSet<PlayerInfoElement>();
         private bool _visibleRefreshScheduled;
+        private bool _isPlayerInfoRefreshing;
+        private readonly TimeSpan _minimumPlayerInfoRefreshIndicatorDuration = TimeSpan.FromMilliseconds(700);
 
         public bool g_isUpdating = false;
 
@@ -572,6 +576,94 @@ namespace AndoW_Manager
                 forceRefresh: true);
 
             ScheduleVisibleRefresh();
+
+            Is_ComboBoxInit = false;
+            UpdateSelectionVisuals();
+            UpdateGroupButtonState();
+        }
+
+        public async Task RefreshPlayerInfoListFromDatabaseAsync()
+        {
+            if (_isPlayerInfoRefreshing)
+            {
+                return;
+            }
+
+            _isPlayerInfoRefreshing = true;
+            SetPlayerInfoRefreshButtonState(true);
+            DateTime refreshStartedAt = DateTime.Now;
+            await Dispatcher.Yield(DispatcherPriority.Render);
+
+            try
+            {
+                await DataShop.Instance.g_PlayerInfoManager.ReloadFromDatabaseAsync();
+                RefreshExistingPlayerInfoCardsFromManager();
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
+                MessageTools.ShowMessageBox("플레이어 정보 갱신에 실패했습니다.", "확인");
+            }
+            finally
+            {
+                TimeSpan elapsed = DateTime.Now - refreshStartedAt;
+                if (elapsed < _minimumPlayerInfoRefreshIndicatorDuration)
+                {
+                    await Task.Delay(_minimumPlayerInfoRefreshIndicatorDuration - elapsed);
+                }
+
+                _isPlayerInfoRefreshing = false;
+                SetPlayerInfoRefreshButtonState(false);
+            }
+        }
+
+        private void SetPlayerInfoRefreshButtonState(bool isRefreshing)
+        {
+            RefreshPlayerInfoBtn.ToolTip = isRefreshing ? "플레이어정보 갱신 중..." : "플레이어정보 갱신";
+
+            if (isRefreshing)
+            {
+                RefreshPlayerInfoIconRotate.Angle = 0;
+                DoubleAnimation rotateAnimation = new DoubleAnimation
+                {
+                    From = 0,
+                    To = 360,
+                    Duration = TimeSpan.FromSeconds(0.8),
+                    RepeatBehavior = RepeatBehavior.Forever
+                };
+                RefreshPlayerInfoIconRotate.BeginAnimation(RotateTransform.AngleProperty, rotateAnimation, HandoffBehavior.SnapshotAndReplace);
+            }
+            else
+            {
+                RefreshPlayerInfoIconRotate.BeginAnimation(RotateTransform.AngleProperty, null);
+                RefreshPlayerInfoIconRotate.Angle = 0;
+            }
+        }
+
+        private async void RefreshPlayerInfoBtn_Click(object sender, RoutedEventArgs e)
+        {
+            await RefreshPlayerInfoListFromDatabaseAsync();
+        }
+
+        private void RefreshExistingPlayerInfoCardsFromManager()
+        {
+            Is_ComboBoxInit = true;
+
+            foreach (PlayerInfoElement element in g_PlayerInfoElementList.ToList())
+            {
+                if (element == null || element.Dispatcher.HasShutdownStarted)
+                {
+                    continue;
+                }
+
+                element.RefreshPlayerInfoMetadataFromManager();
+            }
+
+            RefreshPlayerElementLookup();
+
+            DataShop.Instance.g_PlayerInfoManager.RequestAuthValidationForAll(
+                g_PlayerInfoElementList.Select(x => x.g_PlayerInfoClass),
+                forceRefresh: true);
 
             Is_ComboBoxInit = false;
             UpdateSelectionVisuals();

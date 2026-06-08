@@ -725,6 +725,13 @@ namespace AndoW_Manager
             RefreshAuthenticationOverlay();
         }
 
+        public void RefreshPlayerInfoMetadataFromManager()
+        {
+            SyncPlayerInfoFromManager();
+            TextBlockOrderingNumber_Copy.Text = g_PlayerInfoClass.PIF_PlayerName;
+            RefreshAuthenticationOverlay();
+        }
+
         public void RefreshAuthenticationOverlay()
         {
             if (!Dispatcher.CheckAccess())
