@@ -9,15 +9,29 @@ public static class SystemInfoService
 {
     public static IReadOnlyCollection<string> GetLocalIpv4Addresses()
     {
-        return NetworkInterface.GetAllNetworkInterfaces()
-            .Where(networkInterface =>
-                networkInterface.OperationalStatus == OperationalStatus.Up &&
-                networkInterface.NetworkInterfaceType != NetworkInterfaceType.Loopback)
-            .SelectMany(networkInterface => networkInterface.GetIPProperties().UnicastAddresses)
-            .Where(unicastAddress => unicastAddress.Address.AddressFamily == AddressFamily.InterNetwork)
-            .Select(unicastAddress => unicastAddress.Address.ToString())
-            .Distinct(System.StringComparer.OrdinalIgnoreCase)
-            .OrderBy(address => address, System.StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        try
+        {
+            NetworkInterface[] interfaces = NetworkInterface.GetAllNetworkInterfaces();
+            if (interfaces == null || interfaces.Length == 0)
+            {
+                return System.Array.Empty<string>();
+            }
+
+            return interfaces
+                .Where(networkInterface =>
+                    networkInterface != null &&
+                    networkInterface.OperationalStatus == OperationalStatus.Up &&
+                    networkInterface.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+                .SelectMany(networkInterface => networkInterface.GetIPProperties().UnicastAddresses)
+                .Where(unicastAddress => unicastAddress.Address.AddressFamily == AddressFamily.InterNetwork)
+                .Select(unicastAddress => unicastAddress.Address.ToString())
+                .Distinct(System.StringComparer.OrdinalIgnoreCase)
+                .OrderBy(address => address, System.StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+        catch
+        {
+            return System.Array.Empty<string>();
+        }
     }
 }

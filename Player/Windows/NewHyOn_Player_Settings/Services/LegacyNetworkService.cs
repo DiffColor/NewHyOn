@@ -19,30 +19,43 @@ public static class LegacyNetworkService
 
     public static IPAddress GetAutoIp()
     {
-        string hostName = Dns.GetHostName();
-        IPHostEntry hostEntry = Dns.GetHostEntry(hostName);
-        foreach (NetworkInterface adapter in NetworkInterface.GetAllNetworkInterfaces())
+        try
         {
-            if (adapter.NetworkInterfaceType is not (NetworkInterfaceType.Ethernet or NetworkInterfaceType.Wireless80211))
+            string hostName = Dns.GetHostName();
+            IPHostEntry hostEntry = Dns.GetHostEntry(hostName);
+            NetworkInterface[] adapters = NetworkInterface.GetAllNetworkInterfaces();
+            if (adapters == null || adapters.Length == 0)
             {
-                continue;
+                return IPAddress.Loopback;
             }
 
-            foreach (UnicastIPAddressInformation address in adapter.GetIPProperties().UnicastAddresses)
+            foreach (NetworkInterface adapter in adapters)
             {
-                if (address.Address.AddressFamily != AddressFamily.InterNetwork)
+                if (adapter == null ||
+                    adapter.NetworkInterfaceType is not (NetworkInterfaceType.Ethernet or NetworkInterfaceType.Wireless80211))
                 {
                     continue;
                 }
 
-                foreach (IPAddress hostAddress in hostEntry.AddressList)
+                foreach (UnicastIPAddressInformation address in adapter.GetIPProperties().UnicastAddresses)
                 {
-                    if (address.Address.Equals(hostAddress))
+                    if (address.Address.AddressFamily != AddressFamily.InterNetwork)
                     {
-                        return hostAddress;
+                        continue;
+                    }
+
+                    foreach (IPAddress hostAddress in hostEntry.AddressList)
+                    {
+                        if (address.Address.Equals(hostAddress))
+                        {
+                            return hostAddress;
+                        }
                     }
                 }
             }
+        }
+        catch
+        {
         }
 
         return IPAddress.Loopback;
@@ -63,13 +76,30 @@ public static class LegacyNetworkService
 
     public static string GetFirstMacAddress()
     {
-        foreach (NetworkInterface adapter in NetworkInterface.GetAllNetworkInterfaces())
+        try
         {
-            string macAddress = adapter.GetPhysicalAddress().ToString().Replace(":", string.Empty);
-            if (!string.IsNullOrWhiteSpace(macAddress))
+            NetworkInterface[] adapters = NetworkInterface.GetAllNetworkInterfaces();
+            if (adapters == null || adapters.Length == 0)
             {
-                return macAddress;
+                return string.Empty;
             }
+
+            foreach (NetworkInterface adapter in adapters)
+            {
+                if (adapter == null)
+                {
+                    continue;
+                }
+
+                string macAddress = adapter.GetPhysicalAddress()?.ToString().Replace(":", string.Empty) ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(macAddress))
+                {
+                    return macAddress;
+                }
+            }
+        }
+        catch
+        {
         }
 
         return string.Empty;
@@ -77,30 +107,50 @@ public static class LegacyNetworkService
 
     public static List<string> GetAllMacAddresses()
     {
-        return NetworkInterface.GetAllNetworkInterfaces()
-            .Select(x => x.GetPhysicalAddress().ToString().Replace(":", string.Empty))
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        try
+        {
+            NetworkInterface[] adapters = NetworkInterface.GetAllNetworkInterfaces();
+            if (adapters == null || adapters.Length == 0)
+            {
+                return new List<string>();
+            }
+
+            return adapters
+                .Where(x => x != null)
+                .Select(x => x.GetPhysicalAddress()?.ToString().Replace(":", string.Empty) ?? string.Empty)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch
+        {
+            return new List<string>();
+        }
     }
 
     public static string GetUuid12()
     {
-        using ManagementClass computerSystemProduct = new("Win32_ComputerSystemProduct");
-        using ManagementObjectCollection instances = computerSystemProduct.GetInstances();
-        foreach (ManagementObject instance in instances)
+        try
         {
-            string? rawUuid = instance.Properties["UUID"]?.Value?.ToString();
-            if (string.IsNullOrWhiteSpace(rawUuid))
+            using ManagementClass computerSystemProduct = new("Win32_ComputerSystemProduct");
+            using ManagementObjectCollection instances = computerSystemProduct.GetInstances();
+            foreach (ManagementObject instance in instances)
             {
-                continue;
-            }
+                string? rawUuid = instance.Properties["UUID"]?.Value?.ToString();
+                if (string.IsNullOrWhiteSpace(rawUuid))
+                {
+                    continue;
+                }
 
-            string[] parts = rawUuid.Split('-', StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length > 0)
-            {
-                return parts[^1];
+                string[] parts = rawUuid.Split('-', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length > 0)
+                {
+                    return parts[^1];
+                }
             }
+        }
+        catch
+        {
         }
 
         return string.Empty;

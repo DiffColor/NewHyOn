@@ -25,6 +25,15 @@ namespace NewHyOnPlayer.Services
                 return validation;
             }
 
+            if (IsStoredAuthMarkerForCurrentDevice(manager))
+            {
+                return new ValidationResult
+                {
+                    IsValid = true,
+                    Reason = "저장된 오프라인 인증 정보가 유효합니다."
+                };
+            }
+
             ClearStoredAuthKey(manager);
             return validation;
         }
@@ -45,6 +54,23 @@ namespace NewHyOnPlayer.Services
             manager.g_PlayerInfo.PIF_AuthKey = string.Empty;
             manager.SaveData();
             return true;
+        }
+
+        private static bool IsStoredAuthMarkerForCurrentDevice(PlayerInfoManager manager)
+        {
+            if (manager?.g_PlayerInfo == null)
+            {
+                return false;
+            }
+
+            if (!LicenseHubAuthMarker.TryParse(manager.g_PlayerInfo.PIF_AuthKey ?? string.Empty, out LicenseHubValidationMarker marker))
+            {
+                return false;
+            }
+
+            string fingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
+            return marker.ProductId == LicenseHubAuthPolicy.ProductId &&
+                string.Equals(manager.g_PlayerInfo.PIF_MacAddress ?? string.Empty, fingerprint, System.StringComparison.OrdinalIgnoreCase);
         }
 
         private static void ClearStoredAuthKey(PlayerInfoManager manager)

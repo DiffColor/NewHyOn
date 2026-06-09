@@ -279,10 +279,27 @@ public sealed class PlayerConfigurationService
             };
         }
 
-        string message;
-        if (authResult.Status == AuthCompletionStatus.Cancelled)
+        bool isPendingOfflineProof = authResult.Status == AuthCompletionStatus.OfflinePendingProof;
+        if (isPendingOfflineProof && PersistOfflineProofAuthToPlayerInfo(authResult))
         {
-            message = "인증이 취소되었습니다.";
+            return new AuthResult
+            {
+                Success = true,
+                StatusText = "인증 상태 : 정품 인증 완료",
+                IsLicensed = true,
+                DisablePasswordInput = true,
+                Message = "오프라인 인증이 완료되었습니다."
+            };
+        }
+
+        string message;
+        if (isPendingOfflineProof)
+        {
+            message = "오프라인 2단계 QR이 생성되었지만 인증 정보를 저장하지 못했습니다.";
+        }
+        else if (authResult.Status == AuthCompletionStatus.Cancelled)
+        {
+            message = "인증 창이 닫혔습니다.";
         }
         else if (!string.IsNullOrWhiteSpace(authResult.Message))
         {
@@ -302,6 +319,8 @@ public sealed class PlayerConfigurationService
             StatusText = statusText,
             IsLicensed = false,
             DisablePasswordInput = !authInputEnabled,
+            WasCancelled = authResult.Status == AuthCompletionStatus.Cancelled,
+            IsPendingOfflineProof = isPendingOfflineProof,
             Message = message
         };
     }
@@ -640,8 +659,59 @@ public sealed class PlayerConfigurationService
             return ("인증 상태 : 정품 인증 완료", true, false);
         }
 
+        if (IsStoredAuthMarkerForCurrentDevice())
+        {
+            return ("인증 상태 : 정품 인증 완료", true, false);
+        }
+
         ClearStoredAuthKey();
         return ("인증 상태 : 미인증", false, true);
+    }
+
+    private bool PersistOfflineProofAuthToPlayerInfo(AuthCompletionResult authResult)
+    {
+        string deviceId = Normalize(authResult.DeviceId);
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            deviceId = Normalize(authResult.DeviceFingerprint);
+        }
+
+        string authPayload = LicenseHubAuthMarker.Build(LicenseHubAuthPolicy.ProductId, deviceId);
+        if (string.IsNullOrWhiteSpace(authPayload))
+        {
+            return false;
+        }
+
+        bool changed = false;
+        if (!string.Equals(playerInfoManager.PlayerInfo.PIF_AuthKey ?? string.Empty, authPayload, StringComparison.Ordinal))
+        {
+            playerInfoManager.PlayerInfo.PIF_AuthKey = authPayload;
+            changed = true;
+        }
+
+        if (!string.Equals(playerInfoManager.PlayerInfo.PIF_MacAddress ?? string.Empty, sourceKey, StringComparison.OrdinalIgnoreCase))
+        {
+            playerInfoManager.PlayerInfo.PIF_MacAddress = sourceKey;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            playerInfoManager.SaveData();
+        }
+
+        return true;
+    }
+
+    private bool IsStoredAuthMarkerForCurrentDevice()
+    {
+        if (!LicenseHubAuthMarker.TryParse(playerInfoManager.PlayerInfo.PIF_AuthKey ?? string.Empty, out LicenseHubValidationMarker marker))
+        {
+            return false;
+        }
+
+        return marker.ProductId == LicenseHubAuthPolicy.ProductId &&
+            string.Equals(playerInfoManager.PlayerInfo.PIF_MacAddress ?? string.Empty, sourceKey, StringComparison.OrdinalIgnoreCase);
     }
 
     private void PersistLicenseHubAuthToPlayerInfo(LicenseHubLocalLicenseFile license, ValidationResult validation)

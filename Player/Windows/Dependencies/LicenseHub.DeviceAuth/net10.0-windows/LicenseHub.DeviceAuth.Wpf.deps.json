@@ -1,0 +1,131 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "LicenseHub.DeviceAuth.Wpf/1.0.0": {
+        "dependencies": {
+          "LicenseHub.DeviceAuth.Core": "1.0.0",
+          "QRCoder": "1.7.0",
+          "System.Management": "9.0.0",
+          "jsoncanonicalizer": "1.0.0"
+        },
+        "runtime": {
+          "LicenseHub.DeviceAuth.Wpf.dll": {}
+        }
+      },
+      "es6numberserializer/1.0.0": {
+        "runtime": {
+          "lib/netstandard2.0/es6numberserializer.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "jsoncanonicalizer/1.0.0": {
+        "dependencies": {
+          "es6numberserializer": "1.0.0"
+        },
+        "runtime": {
+          "lib/netstandard2.0/jsoncanonicalizer.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "Portable.BouncyCastle/1.9.0": {
+        "runtime": {
+          "lib/netstandard2.0/BouncyCastle.Crypto.dll": {
+            "assemblyVersion": "1.9.0.0",
+            "fileVersion": "1.9.0.1"
+          }
+        }
+      },
+      "QRCoder/1.7.0": {
+        "runtime": {
+          "lib/net6.0/QRCoder.dll": {
+            "assemblyVersion": "1.7.0.0",
+            "fileVersion": "1.7.0.0"
+          }
+        }
+      },
+      "System.Management/9.0.0": {
+        "runtime": {
+          "lib/net9.0/System.Management.dll": {
+            "assemblyVersion": "9.0.0.0",
+            "fileVersion": "9.0.24.52809"
+          }
+        },
+        "runtimeTargets": {
+          "runtimes/win/lib/net9.0/System.Management.dll": {
+            "rid": "win",
+            "assetType": "runtime",
+            "assemblyVersion": "9.0.0.0",
+            "fileVersion": "9.0.24.52809"
+          }
+        }
+      },
+      "LicenseHub.DeviceAuth.Core/1.0.0": {
+        "dependencies": {
+          "Portable.BouncyCastle": "1.9.0"
+        },
+        "runtime": {
+          "LicenseHub.DeviceAuth.Core.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "LicenseHub.DeviceAuth.Wpf/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "es6numberserializer/1.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-+PtPayBof2su9cmSsw/PIGY5d4DfT1to6+EZXYqztxkcgWoiM6pWQGW6YEjT91W16AcpwvsR0RBRKuPwUZ3Nog==",
+      "path": "es6numberserializer/1.0.0",
+      "hashPath": "es6numberserializer.1.0.0.nupkg.sha512"
+    },
+    "jsoncanonicalizer/1.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-NVJ+/qBOLe0BHyFIDx6v9zFC4TLgfnBpX0OIvqkBWoPjssNar3dBlTtaHy8XXQ0YEkgvYxpdL/U7zCARpJl2uQ==",
+      "path": "jsoncanonicalizer/1.0.0",
+      "hashPath": "jsoncanonicalizer.1.0.0.nupkg.sha512"
+    },
+    "Portable.BouncyCastle/1.9.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-eZZBCABzVOek+id9Xy04HhmgykF0wZg9wpByzrWN7q8qEI0Qen9b7tfd7w8VA3dOeesumMG7C5ZPy0jk7PSRHw==",
+      "path": "portable.bouncycastle/1.9.0",
+      "hashPath": "portable.bouncycastle.1.9.0.nupkg.sha512"
+    },
+    "QRCoder/1.7.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-6R3hQkayihGIDjp3F1nLRDBWG+nqahGyOY2+fH4Rll16Vad67oaUUfHkOiMWKiJFnGh+PIGDfUos+0R9m54O1g==",
+      "path": "qrcoder/1.7.0",
+      "hashPath": "qrcoder.1.7.0.nupkg.sha512"
+    },
+    "System.Management/9.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-bVh4xAMI5grY5GZoklKcMBLirhC8Lqzp63Ft3zXJacwGAlLyFdF4k0qz4pnKIlO6HyL2Z4zqmHm9UkzEo6FFsA==",
+      "path": "system.management/9.0.0",
+      "hashPath": "system.management.9.0.0.nupkg.sha512"
+    },
+    "LicenseHub.DeviceAuth.Core/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

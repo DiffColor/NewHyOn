@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Management;
+using System.Net;
+using System.Net.NetworkInformation;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -218,9 +220,15 @@ namespace NewHyOn.Shared.Auth
 
         public static ValidationResult ValidateForCurrentDevice(LicenseHubLocalLicenseFile license)
         {
+            string currentFingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
+            if (!IsLicenseHubApiReachable())
+            {
+                return ValidateLocalForDeviceFingerprint(license, currentFingerprint);
+            }
+
             return ValidateUsingCore(
                 license,
-                LicenseHubDeviceFingerprint.Generate().Fingerprint,
+                currentFingerprint,
                 LicenseHubAuthPolicy.LicenseFilePath,
                 discardLocalLicenseWhenServerInvalid: true,
                 allowServerBootstrap: true);
@@ -228,17 +236,7 @@ namespace NewHyOn.Shared.Auth
 
         public static ValidationResult ValidateForDeviceFingerprint(LicenseHubLocalLicenseFile license, string expectedFingerprint)
         {
-            if (license == null)
-            {
-                return Invalid("저장된 라이선스 파일이 없습니다.");
-            }
-
-            return ValidateUsingCore(
-                license,
-                expectedFingerprint,
-                string.Empty,
-                discardLocalLicenseWhenServerInvalid: false,
-                allowServerBootstrap: false);
+            return ValidateLocalForDeviceFingerprint(license, expectedFingerprint);
         }
 
         public static ValidationResult ValidateLocalForDeviceFingerprintOnly(LicenseHubLocalLicenseFile license, string expectedFingerprint)
@@ -281,14 +279,9 @@ namespace NewHyOn.Shared.Auth
                         ServerValidationTimeoutMilliseconds = 3000
                     }).GetAwaiter().GetResult();
             }
-            catch
+            catch (Exception ex)
             {
-                if (license == null)
-                {
-                    return Invalid("저장된 라이선스 파일이 없습니다.");
-                }
-
-                return ValidateLocalForDeviceFingerprint(license, currentFingerprint);
+                return Invalid("서버 검증 중 오류가 발생했습니다: " + ex.Message);
             }
         }
 
@@ -348,6 +341,71 @@ namespace NewHyOn.Shared.Auth
                 IsValid = false,
                 Reason = reason
             };
+        }
+
+        private static bool IsLicenseHubApiReachable()
+        {
+            try
+            {
+                if (!HasUsableNetworkInterface())
+                {
+                    return false;
+                }
+
+                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(LicenseHubAuthPolicy.ApiBaseUrl);
+                request.Method = "GET";
+                request.Timeout = 1500;
+                request.ReadWriteTimeout = 1500;
+                request.AllowAutoRedirect = false;
+                request.UserAgent = "NewHyOn-LicenseHub-Validator";
+
+                using (request.GetResponse())
+                {
+                    return true;
+                }
+            }
+            catch (WebException ex)
+            {
+                return ex.Response is HttpWebResponse;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool HasUsableNetworkInterface()
+        {
+            try
+            {
+                NetworkInterface[] adapters = NetworkInterface.GetAllNetworkInterfaces();
+                if (adapters == null || adapters.Length == 0)
+                {
+                    return false;
+                }
+
+                foreach (NetworkInterface adapter in adapters)
+                {
+                    if (adapter == null)
+                    {
+                        continue;
+                    }
+
+                    if (adapter.OperationalStatus != OperationalStatus.Up ||
+                        adapter.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
+                        adapter.NetworkInterfaceType == NetworkInterfaceType.Tunnel)
+                    {
+                        continue;
+                    }
+
+                    return true;
+                }
+            }
+            catch
+            {
+            }
+
+            return false;
         }
     }
 
@@ -596,8 +654,19 @@ namespace NewHyOn.Shared.Auth
             List<string> values = new List<string>();
             try
             {
-                foreach (System.Net.NetworkInformation.NetworkInterface adapter in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
+                NetworkInterface[] adapters = NetworkInterface.GetAllNetworkInterfaces();
+                if (adapters == null || adapters.Length == 0)
                 {
+                    return values;
+                }
+
+                foreach (NetworkInterface adapter in adapters)
+                {
+                    if (adapter == null)
+                    {
+                        continue;
+                    }
+
                     string address = adapter.GetPhysicalAddress()?.ToString() ?? string.Empty;
                     if (!string.IsNullOrWhiteSpace(address))
                     {

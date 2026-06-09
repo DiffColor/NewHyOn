@@ -524,11 +524,16 @@ public partial class MainWindow : Window
         {
             AuthResult result = await configurationService.AuthenticateAsync();
             ApplyAuthState(result.StatusText, result.IsLicensed, !result.DisablePasswordInput);
+            string title = result.Success
+                ? "인증 완료"
+                : result.WasCancelled
+                    ? "인증 미완료"
+                    : "인증 실패";
             CustomDialog.Show(
                 this,
-                result.Success ? "인증 완료" : "인증 실패",
+                title,
                 result.Message,
-                result.Success ? result.StatusText : SimplifyDialogIssue(result.StatusText, "인증 실패"));
+                result.Success ? result.StatusText : SimplifyDialogIssue(result.StatusText, title));
         }
         finally
         {
