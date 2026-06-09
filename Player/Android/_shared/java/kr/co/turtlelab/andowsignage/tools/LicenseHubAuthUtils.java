@@ -42,6 +42,7 @@ public class LicenseHubAuthUtils {
     public static final String RESPONSE_KIND_AUTHENTICATE = "AUTHENTICATE";
     public static final String STATUS_ONLINE_VERIFIED = "ONLINE_VERIFIED";
     public static final String STATUS_OFFLINE_PENDING_PROOF = "OFFLINE_PENDING_PROOF";
+    public static final String STATUS_OFFLINE_VERIFIED = "OFFLINE_VERIFIED";
     public static final String STATUS_CANCELLED = "CANCELLED";
 
     private static final long AUTH_TIMEOUT_MS = 10 * 60 * 1000L;
@@ -121,7 +122,9 @@ public class LicenseHubAuthUtils {
 
                 String responseJson = intent.getStringExtra(EXTRA_RESPONSE_JSON);
                 AuthResult result = parseAuthResult(appContext, responseJson);
-                if (!TextUtils.isEmpty(result.serializedLicense)) {
+                if (isVerifiedStatus(result.status)
+                        && !TextUtils.isEmpty(result.deviceId)
+                        && !TextUtils.isEmpty(result.deviceFingerprint)) {
                     callback.onSuccess(result);
                     return;
                 }
@@ -287,7 +290,15 @@ public class LicenseHubAuthUtils {
         if (STATUS_OFFLINE_PENDING_PROOF.equals(result.status)) {
             return "오프라인 인증은 모바일웹 완료 후 온라인 인증 결과가 필요합니다.";
         }
+        if (STATUS_OFFLINE_VERIFIED.equals(result.status)) {
+            return "오프라인 인증이 완료되었지만 인증 정보를 확인하지 못했습니다.";
+        }
         return "인증이 완료되지 않았습니다.";
+    }
+
+    private static boolean isVerifiedStatus(String status) {
+        return STATUS_ONLINE_VERIFIED.equals(status)
+                || STATUS_OFFLINE_VERIFIED.equals(status);
     }
 
     private static String buildAuthenticateRequest(String requestId, String deviceName) {

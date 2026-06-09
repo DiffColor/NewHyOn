@@ -118,6 +118,11 @@ public final class LicenseAuthManager {
             return "ONLINE_VERIFIED".equalsIgnoreCase(status);
         }
 
+        public boolean isVerified() {
+            return isOnlineVerified()
+                    || "OFFLINE_VERIFIED".equalsIgnoreCase(status);
+        }
+
         public boolean hasCallbackAuthData() {
             return !TextUtils.isEmpty(rawJson)
                     && !TextUtils.isEmpty(deviceId)

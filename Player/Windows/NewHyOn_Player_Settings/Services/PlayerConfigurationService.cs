@@ -280,7 +280,8 @@ public sealed class PlayerConfigurationService
         }
 
         bool isPendingOfflineProof = authResult.Status == AuthCompletionStatus.OfflinePendingProof;
-        if (isPendingOfflineProof && PersistOfflineProofAuthToPlayerInfo(authResult))
+        bool isOfflineVerified = authResult.Status == AuthCompletionStatus.OfflineVerified;
+        if (isOfflineVerified && PersistOfflineProofAuthToPlayerInfo(authResult))
         {
             return new AuthResult
             {
@@ -295,7 +296,11 @@ public sealed class PlayerConfigurationService
         string message;
         if (isPendingOfflineProof)
         {
-            message = "오프라인 2단계 QR이 생성되었지만 인증 정보를 저장하지 못했습니다.";
+            message = "오프라인 2단계 QR이 생성되었습니다. 완료를 눌러 인증을 마무리해 주세요.";
+        }
+        else if (isOfflineVerified)
+        {
+            message = "오프라인 인증이 완료되었지만 인증 정보를 저장하지 못했습니다.";
         }
         else if (authResult.Status == AuthCompletionStatus.Cancelled)
         {

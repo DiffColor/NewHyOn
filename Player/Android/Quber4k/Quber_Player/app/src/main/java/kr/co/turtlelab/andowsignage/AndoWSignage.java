@@ -753,7 +753,7 @@ public class AndoWSignage extends Activity {
 			public void run() {
 				licenseValidationInProgress = false;
 				if (authResult == null
-						|| !authResult.isOnlineVerified()
+						|| !authResult.isVerified()
 						|| !authResult.hasCallbackAuthData()) {
 					String failureReason = authResult == null ? "" : authResult.getMessage();
 					if (TextUtils.isEmpty(failureReason)) {
