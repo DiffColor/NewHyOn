@@ -130,6 +130,8 @@ public class AndoWSignage extends Activity {
 		private boolean licenseHubAuthBlocked = false;
 		private boolean licenseValidationInProgress = false;
 		private boolean licenseValidatedForCurrentRun = false;
+		private static final int LICENSE_VALIDATION_MAX_ATTEMPTS = 12;
+		private static final long LICENSE_VALIDATION_RETRY_DELAY_MILLIS = 5000L;
 	
 	public PlayerDataModel playerData = new PlayerDataModel();
 	List<PageDataModel> pageDataList = new ArrayList<PageDataModel>();
@@ -611,6 +613,10 @@ public class AndoWSignage extends Activity {
 		stopTimerAndElements();
 		showAuthPendingSpinner();
 
+		runLicenseHubValidationAttempt(1);
+	}
+
+	private void runLicenseHubValidationAttempt(final int attempt) {
 		LicenseAuthManager.validate(this, new LicenseAuthManager.ValidationCallback() {
 			@Override
 			public void onResult(final LicenseAuthManager.ValidationResult result) {
@@ -629,11 +635,38 @@ public class AndoWSignage extends Activity {
 							openAuthAppForCallback();
 							return;
 						}
+						if (shouldRetryLicenseHubValidation(result, attempt)) {
+							new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
+								@Override
+								public void run() {
+									runLicenseHubValidationAttempt(attempt + 1);
+								}
+							}, LICENSE_VALIDATION_RETRY_DELAY_MILLIS);
+							return;
+						}
 						cleanupAndOpenAuthApp(result);
 					}
 				});
 			}
 		});
+	}
+
+	private boolean shouldRetryLicenseHubValidation(LicenseAuthManager.ValidationResult result, int attempt) {
+		if (attempt >= LICENSE_VALIDATION_MAX_ATTEMPTS || result == null || result.isValid()) {
+			return false;
+		}
+		if (result.isLocalLicenseDiscarded() || !TextUtils.isEmpty(result.getServerStatus())) {
+			return false;
+		}
+
+		String reason = result.getReason();
+		if (TextUtils.isEmpty(reason)) {
+			return false;
+		}
+		reason = reason.trim();
+		return "콜백 리시버 등록 실패".equals(reason)
+				|| "인증 앱 응답 시간 초과".equals(reason)
+				|| reason.startsWith("인증 앱 요청 실패:");
 	}
 
 	private boolean syncValidatedAuthData(LicenseAuthManager.ValidationResult result) {
