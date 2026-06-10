@@ -125,7 +125,6 @@ public final class LicenseAuthManager {
 
         public boolean hasCallbackAuthData() {
             return !TextUtils.isEmpty(rawJson)
-                    && !TextUtils.isEmpty(deviceId)
                     && !TextUtils.isEmpty(deviceFingerprint)
                     && !TextUtils.isEmpty(status);
         }

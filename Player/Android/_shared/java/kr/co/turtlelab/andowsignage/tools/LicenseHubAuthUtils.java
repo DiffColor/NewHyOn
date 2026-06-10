@@ -31,7 +31,7 @@ import java.util.TimeZone;
 import java.util.UUID;
 
 public class LicenseHubAuthUtils {
-    public static final int PRODUCT_ID = 6;
+    public static final int PRODUCT_ID = 7;
     public static final String API_BASE_URL = "https://licensehub.ilycode.app";
     public static final String AUTH_APP_PACKAGE = "com.licensehub.deviceauth.app";
     public static final String ACTION_AUTHENTICATE = "com.licensehub.deviceauth.AUTHENTICATE";

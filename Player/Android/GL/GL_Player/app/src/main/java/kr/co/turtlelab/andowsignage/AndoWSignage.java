@@ -647,7 +647,7 @@ public class AndoWSignage extends Activity {
 			return false;
 		}
 
-		String authMarker = buildLicenseHubAuthMarker(deviceId);
+		String authMarker = buildLicenseHubAuthMarker(resolveLicenseHubDeviceId(deviceId, deviceFingerprint));
 		if (TextUtils.isEmpty(authMarker)) {
 			return false;
 		}
@@ -682,6 +682,13 @@ public class AndoWSignage extends Activity {
 		} catch (Exception ignored) {
 			return "";
 		}
+	}
+
+	private String resolveLicenseHubDeviceId(String deviceId, String deviceFingerprint) {
+		if (!TextUtils.isEmpty(deviceId)) {
+			return deviceId.trim();
+		}
+		return deviceFingerprint == null ? "" : deviceFingerprint.trim();
 	}
 
 	private String buildLicenseHubAuthMarker(String deviceId) {
@@ -750,7 +757,9 @@ public class AndoWSignage extends Activity {
 					return;
 				}
 
-				String authMarker = buildLicenseHubAuthMarker(authResult.getDeviceId());
+				String authMarker = buildLicenseHubAuthMarker(resolveLicenseHubDeviceId(
+						authResult.getDeviceId(),
+						authResult.getDeviceFingerprint()));
 				if (TextUtils.isEmpty(authMarker)
 						|| !PlayerDataProvider.updatePlayerAuthInfo(
 								authMarker,

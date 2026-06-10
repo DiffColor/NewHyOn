@@ -31,7 +31,7 @@ public class LocalSettingsModel {
 	}
 
 	public void setUsbAuthKey(String key) {
-		usbAuthKey = key;
+		usbAuthKey = key == null ? "" : key;
 	}
 
 	public void setSwitchOnContentEnd(boolean state) {

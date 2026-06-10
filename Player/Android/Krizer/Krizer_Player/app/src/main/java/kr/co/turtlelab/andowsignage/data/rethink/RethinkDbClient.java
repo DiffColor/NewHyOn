@@ -197,6 +197,63 @@ public class RethinkDbClient {
         }, "RethinkDbInit").start();
     }
 
+    private boolean connectOnce() {
+        String targetHost;
+        int targetPort;
+        String targetUser;
+        String targetPassword;
+        synchronized (connectionLock) {
+            if (connection != null && connection.isOpen()) {
+                return true;
+            }
+            targetHost = host;
+            targetPort = port;
+            targetUser = username;
+            targetPassword = password;
+        }
+
+        Connection connected = null;
+        try {
+            connected = R.connection()
+                    .hostname(targetHost)
+                    .port(targetPort)
+                    .user(targetUser, targetPassword)
+                    .timeout(3000L)
+                    .connect();
+        } catch (Exception ex) {
+            Log.w(TAG, "RethinkDbClient: one-shot connection failed.", ex);
+            return false;
+        }
+
+        synchronized (connectionLock) {
+            if (connection != null && connection.isOpen()) {
+                closeConnectionQuietly(connected);
+                return true;
+            }
+
+            String latestHost = host == null ? "" : host.trim();
+            String connectedHost = targetHost == null ? "" : targetHost.trim();
+            if (!latestHost.equalsIgnoreCase(connectedHost)
+                    || port != targetPort
+                    || !safeEquals(username, targetUser)
+                    || !safeEquals(password, targetPassword)) {
+                closeConnectionQuietly(connected);
+                return false;
+            }
+
+            connection = connected;
+            synchronized (deviceInfoLock) {
+                deviceInfoSynced = false;
+                deviceInfoSyncInProgress = false;
+                lastSyncedPlayerGuid = null;
+            }
+            guidVerified = false;
+            lastGuidVerificationEpochMs = 0L;
+        }
+
+        return true;
+    }
+
     public void updateHost(String newHost) {
         String normalizedNewHost = NetworkUtils.extractHost(newHost);
         if (normalizedNewHost == null || normalizedNewHost.isEmpty()) {
@@ -885,6 +942,9 @@ public class RethinkDbClient {
     public boolean syncCurrentDeviceInfoOnce(String playerName) {
         if (!TextUtils.isEmpty(playerName)) {
             preparePlayerNameChange(playerName);
+        }
+        if (!connectOnce()) {
+            return false;
         }
         updateDeviceInfoIfNeeded();
         return isDeviceInfoSynced();

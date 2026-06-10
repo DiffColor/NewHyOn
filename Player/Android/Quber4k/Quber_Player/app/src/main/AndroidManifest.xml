@@ -54,8 +54,8 @@
         <activity
             android:name=".AndoWSignage"
             android:label="@string/app_name"
-            android:noHistory="true"
             android:finishOnTaskLaunch="true"
+            android:launchMode="singleTask"
             android:excludeFromRecents="true"
             android:configChanges="orientation|screenSize"
             android:windowSoftInputMode="stateAlwaysHidden" >
