@@ -236,15 +236,17 @@
 				android:textColor="@android:color/black"
 				android:textSize="14sp"
 				android:padding="2dp"
-				android:background="@android:color/holo_red_dark" />
+				android:background="@android:color/holo_green_dark" />
 
 			<LinearLayout
 				android:id="@+id/auth_layout1"
-				android:layout_width="wrap_content"
+				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
 				android:gravity="center_vertical"
 				android:layout_marginLeft="12dp"
-				android:layout_marginTop="28dp">
+				android:layout_marginRight="12dp"
+				android:layout_marginTop="28dp"
+				android:orientation="horizontal">
 
 				<TextView
 					android:layout_width="wrap_content"
@@ -255,42 +257,20 @@
 
 				<EditText
 					android:id="@+id/sourceKey"
-					android:layout_width="wrap_content"
+					android:layout_width="0dp"
 					android:layout_height="wrap_content"
-					android:singleLine="true"
-					android:gravity="center"
+					android:layout_weight="1"
+					android:cursorVisible="false"
+					android:focusable="false"
+					android:focusableInTouchMode="false"
+					android:gravity="start|center_vertical"
+					android:inputType="textMultiLine"
+					android:maxLines="4"
+					android:minLines="2"
+					android:scrollHorizontally="false"
+					android:singleLine="false"
 					android:text=""
-					android:ems="9"/>
-			</LinearLayout>
-			<LinearLayout
-				android:id="@+id/auth_layout2"
-				android:layout_width="wrap_content"
-				android:layout_height="wrap_content"
-				android:gravity="center_vertical"
-				android:layout_below="@id/auth_layout1"
-				android:layout_marginLeft="12dp"
-				android:layout_marginTop="6dp">
-				<TextView
-					android:layout_width="wrap_content"
-					android:layout_height="wrap_content"
-					android:layout_gravity="center_vertical"
-					android:layout_marginLeft="14dp"
-					android:layout_marginRight="2dp"
-					android:text="@string/ps_item7" />
-				<EditText
-					android:id="@+id/authKey"
-					android:layout_width="wrap_content"
-					android:layout_height="wrap_content"
-					android:singleLine="true"
-					android:inputType="textPassword"
-					android:gravity="center"
-					android:text=""
-					android:ems="6"/>
-				<Button
-					android:id="@+id/authBtn"
-					android:layout_width="67dp"
-					android:layout_height="48dp"
-					android:text="@string/confirm"/>
+					android:textIsSelectable="true"/>
 			</LinearLayout>
 		</RelativeLayout>
 		    

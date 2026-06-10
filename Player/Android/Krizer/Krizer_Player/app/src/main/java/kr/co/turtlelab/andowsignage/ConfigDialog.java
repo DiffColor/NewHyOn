@@ -76,8 +76,6 @@ public class ConfigDialog extends Dialog implements View.OnClickListener {
 
 	TextView mAuthBg;
 	EditText mSrcKey;
-	EditText mAuthKey;
-	Button mAuthBtn;
 	
 	LightestTimer rpcAbortTimer;
 	Context ctx;
@@ -443,10 +441,9 @@ public class ConfigDialog extends Dialog implements View.OnClickListener {
 
 		mAuthBg = (TextView)findViewById(R.id.auth_label1);
 		mSrcKey = (EditText)findViewById(R.id.sourceKey);
-		mAuthKey = (EditText)findViewById(R.id.authKey);
-		bindEditableField(mAuthKey);
-		mAuthBtn = (Button) findViewById(R.id.authBtn);
-		mAuthBtn.setOnClickListener(this);
+		mSrcKey.setFocusable(false);
+		mSrcKey.setFocusableInTouchMode(false);
+		mSrcKey.setCursorVisible(false);
 
 		refreshSourceKeyAndAuthState();
 	}
@@ -748,16 +745,16 @@ public class ConfigDialog extends Dialog implements View.OnClickListener {
 		}
 	
 	private void refreshSourceKeyAndAuthState() {
-		if (mSrcKey == null || mAuthBtn == null || mAuthKey == null || mAuthBg == null) {
+		if (mSrcKey == null || mAuthBg == null) {
 			return;
 		}
 
-		mSrcKey.setText(PlayerDataProvider.getPlayerAuthFingerprint());
+		String fingerprint = PlayerDataProvider.getPlayerAuthFingerprint();
+		mSrcKey.setText(fingerprint);
 
-		boolean hasStoredKey = !TextUtils.isEmpty(PlayerDataProvider.getPlayerAuthKey());
-		mAuthBtn.setEnabled(false);
-		mAuthKey.setEnabled(false);
 		mAuthBg.setBackgroundColor(AndoWSignage.act.getResources().getColor(
-				hasStoredKey ? android.R.color.holo_green_dark : android.R.color.holo_red_dark));
+				TextUtils.isEmpty(PlayerDataProvider.getPlayerAuthKey())
+						? android.R.color.holo_red_dark
+						: android.R.color.holo_green_dark));
 	}
 }
