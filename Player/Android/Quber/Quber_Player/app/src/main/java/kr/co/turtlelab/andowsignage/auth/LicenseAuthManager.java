@@ -29,6 +29,7 @@ public final class LicenseAuthManager {
     public static final String API_BASE_URL = "https://licensehub.ilycode.app";
 
     private static final String AUTH_APP_PACKAGE = "com.licensehub.deviceauth.app";
+    private static final String VALIDATE_RECEIVER_CLASS = "com.licensehub.deviceauth.app.ValidateRequestReceiver";
 
     private static final String ACTION_AUTHENTICATE = "com.licensehub.deviceauth.AUTHENTICATE";
     private static final String ACTION_VALIDATE_BACKGROUND = "com.licensehub.deviceauth.VALIDATE_BACKGROUND";
@@ -470,7 +471,9 @@ public final class LicenseAuthManager {
         }, VALIDATE_CALLBACK_TIMEOUT_MILLIS);
 
         Intent requestIntent = new Intent(action)
-                .setPackage(AUTH_APP_PACKAGE)
+                .setClassName(AUTH_APP_PACKAGE, VALIDATE_RECEIVER_CLASS)
+                .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+                .addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
                 .putExtra(EXTRA_REQUEST_JSON, requestJson)
                 .putExtra(EXTRA_CALLBACK_INTENT, pendingIntent);
 
