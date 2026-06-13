@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Management;
-using System.Net;
 using System.Net.NetworkInformation;
 using System.Security.Cryptography;
 using System.Text;
@@ -168,7 +167,38 @@ namespace NewHyOn.Shared.Auth
                 return string.Empty;
             }
 
-            return Build(license.ProductId, license.DeviceId);
+            string deviceId = string.IsNullOrWhiteSpace(license.DeviceId)
+                ? license.DeviceFingerprint
+                : license.DeviceId;
+            return Build(license.ProductId, deviceId);
+        }
+
+        public static string Build(ValidationResult validation)
+        {
+            if (validation == null || !validation.IsValid || string.IsNullOrWhiteSpace(validation.PayloadJson))
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                var payload = JsonSerializer.Deserialize<LicenseTokenPayload>(
+                    validation.PayloadJson,
+                    JsonOptions);
+                if (payload == null || payload.ProductId != LicenseHubAuthPolicy.ProductId)
+                {
+                    return string.Empty;
+                }
+
+                string deviceId = string.IsNullOrWhiteSpace(payload.DeviceId)
+                    ? payload.DeviceFingerprint
+                    : payload.DeviceId;
+                return Build(payload.ProductId, deviceId);
+            }
+            catch
+            {
+                return string.Empty;
+            }
         }
 
         public static bool IsValidationMarker(string raw)
@@ -221,27 +251,26 @@ namespace NewHyOn.Shared.Auth
         public static ValidationResult ValidateForCurrentDevice(LicenseHubLocalLicenseFile license)
         {
             string currentFingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
-            if (!IsLicenseHubApiReachable())
-            {
-                return ValidateLocalForDeviceFingerprint(license, currentFingerprint);
-            }
-
             return ValidateUsingCore(
                 license,
                 currentFingerprint,
                 LicenseHubAuthPolicy.LicenseFilePath,
-                discardLocalLicenseWhenServerInvalid: true,
-                allowServerBootstrap: true);
+                discardLocalLicenseWhenServerInvalid: true);
         }
 
         public static ValidationResult ValidateForDeviceFingerprint(LicenseHubLocalLicenseFile license, string expectedFingerprint)
         {
-            return ValidateLocalForDeviceFingerprint(license, expectedFingerprint);
+            return ValidateUsingCore(
+                license,
+                expectedFingerprint,
+                LicenseHubAuthPolicy.LicenseFilePath,
+                discardLocalLicenseWhenServerInvalid: false,
+                enableServerValidation: false);
         }
 
         public static ValidationResult ValidateLocalForDeviceFingerprintOnly(LicenseHubLocalLicenseFile license, string expectedFingerprint)
         {
-            return ValidateLocalForDeviceFingerprint(license, expectedFingerprint);
+            return ValidateForDeviceFingerprint(license, expectedFingerprint);
         }
 
         private static ValidationResult ValidateUsingCore(
@@ -249,83 +278,23 @@ namespace NewHyOn.Shared.Auth
             string expectedFingerprint,
             string licenseFilePath,
             bool discardLocalLicenseWhenServerInvalid,
-            bool allowServerBootstrap)
+            bool enableServerValidation = true)
         {
             string currentFingerprint = (expectedFingerprint ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(currentFingerprint))
-            {
-                return Invalid("기기식별키가 없습니다.");
-            }
-
-            if (license == null && !allowServerBootstrap)
-            {
-                return Invalid("저장된 라이선스 파일이 없습니다.");
-            }
-
-            try
-            {
-                return LicenseHub.DeviceAuth.Core.DeviceAuthClient.ValidateAsync(
-                    new LicenseHub.DeviceAuth.Core.ValidateOptions
-                    {
-                        ApiBaseUrl = LicenseHubAuthPolicy.ApiBaseUrl,
-                        ProductId = LicenseHubAuthPolicy.ProductId,
-                        PublicKeyPem = LicenseHubAuthPolicy.PublicKeyPem,
-                        LicenseFilePath = licenseFilePath ?? string.Empty,
-                        LicenseToken = license?.LicenseToken ?? string.Empty,
-                        DeviceFingerprint = currentFingerprint,
-                        DeviceId = license?.DeviceId ?? string.Empty,
-                        EnableServerValidation = true,
-                        DiscardLocalLicenseWhenServerInvalid = discardLocalLicenseWhenServerInvalid,
-                        ServerValidationTimeoutMilliseconds = 3000
-                    }).GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-                return Invalid("서버 검증 중 오류가 발생했습니다: " + ex.Message);
-            }
-        }
-
-        private static ValidationResult ValidateLocalForDeviceFingerprint(LicenseHubLocalLicenseFile license, string expectedFingerprint)
-        {
-            if (license == null)
-            {
-                return Invalid("저장된 라이선스 파일이 없습니다.");
-            }
-
-            if (license.ProductId != LicenseHubAuthPolicy.ProductId)
-            {
-                return Invalid("라이선스 productId가 일치하지 않습니다.");
-            }
-
-            string token = (license.LicenseToken ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(token))
-            {
-                return Invalid("저장된 라이선스 토큰이 없습니다.");
-            }
-
-            string currentFingerprint = (expectedFingerprint ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(currentFingerprint))
-            {
-                return Invalid("기기식별키가 없습니다.");
-            }
-
-            string fingerprint = (license.DeviceFingerprint ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(fingerprint))
-            {
-                fingerprint = currentFingerprint;
-            }
-
-            if (!string.Equals(fingerprint, currentFingerprint, StringComparison.OrdinalIgnoreCase))
-            {
-                return Invalid("라이선스 기기식별키가 현재 장비와 일치하지 않습니다.");
-            }
-
-            return LicenseTokenValidator.Validate(
-                token,
-                LicenseHubAuthPolicy.PublicKeyPem,
-                LicenseHubAuthPolicy.ProductId,
-                fingerprint.ToUpperInvariant(),
-                DateTimeOffset.UtcNow);
+            return LicenseHub.DeviceAuth.Core.DeviceAuthClient.ValidateAsync(
+                new LicenseHub.DeviceAuth.Core.ValidateOptions
+                {
+                    ApiBaseUrl = LicenseHubAuthPolicy.ApiBaseUrl,
+                    ProductId = LicenseHubAuthPolicy.ProductId,
+                    PublicKeyPem = LicenseHubAuthPolicy.PublicKeyPem,
+                    LicenseFilePath = licenseFilePath ?? string.Empty,
+                    LicenseToken = license?.LicenseToken ?? string.Empty,
+                    DeviceFingerprint = currentFingerprint,
+                    DeviceId = license?.DeviceId ?? string.Empty,
+                    EnableServerValidation = enableServerValidation,
+                    DiscardLocalLicenseWhenServerInvalid = discardLocalLicenseWhenServerInvalid,
+                    ServerValidationTimeoutMilliseconds = 3000
+                }).GetAwaiter().GetResult();
         }
 
         public static bool IsCurrentDeviceLicense(string raw)
@@ -334,79 +303,6 @@ namespace NewHyOn.Shared.Auth
             return ValidateForCurrentDevice(license).IsValid;
         }
 
-        private static ValidationResult Invalid(string reason)
-        {
-            return new ValidationResult
-            {
-                IsValid = false,
-                Reason = reason
-            };
-        }
-
-        private static bool IsLicenseHubApiReachable()
-        {
-            try
-            {
-                if (!HasUsableNetworkInterface())
-                {
-                    return false;
-                }
-
-                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(LicenseHubAuthPolicy.ApiBaseUrl);
-                request.Method = "GET";
-                request.Timeout = 1500;
-                request.ReadWriteTimeout = 1500;
-                request.AllowAutoRedirect = false;
-                request.UserAgent = "NewHyOn-LicenseHub-Validator";
-
-                using (request.GetResponse())
-                {
-                    return true;
-                }
-            }
-            catch (WebException ex)
-            {
-                return ex.Response is HttpWebResponse;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private static bool HasUsableNetworkInterface()
-        {
-            try
-            {
-                NetworkInterface[] adapters = NetworkInterface.GetAllNetworkInterfaces();
-                if (adapters == null || adapters.Length == 0)
-                {
-                    return false;
-                }
-
-                foreach (NetworkInterface adapter in adapters)
-                {
-                    if (adapter == null)
-                    {
-                        continue;
-                    }
-
-                    if (adapter.OperationalStatus != OperationalStatus.Up ||
-                        adapter.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
-                        adapter.NetworkInterfaceType == NetworkInterfaceType.Tunnel)
-                    {
-                        continue;
-                    }
-
-                    return true;
-                }
-            }
-            catch
-            {
-            }
-
-            return false;
-        }
     }
 
     public sealed class LicenseHubDeviceFingerprintInfo

@@ -466,12 +466,6 @@ namespace NewHyOnPlayer
             var validation = LicenseHubLocalValidator.ValidateForCurrentDevice(license);
             if (!validation.IsValid)
             {
-                string storedAuthMarker = ResolveStoredAuthMarkerForCurrentDevice();
-                if (!string.IsNullOrWhiteSpace(storedAuthMarker))
-                {
-                    return storedAuthMarker;
-                }
-
                 ClearStoredAuthKey();
                 return string.Empty;
             }
@@ -479,42 +473,19 @@ namespace NewHyOnPlayer
             string authMarker = LicenseHubAuthMarker.Build(license);
             if (string.IsNullOrWhiteSpace(authMarker))
             {
-                ClearStoredAuthKey();
-                return string.Empty;
+                authMarker = LicenseHubAuthMarker.Build(validation);
             }
 
             var player = manager?.g_PlayerInfo;
-            if (player != null && !string.Equals(player.PIF_AuthKey ?? string.Empty, authMarker, StringComparison.Ordinal))
+            if (player != null &&
+                !string.IsNullOrWhiteSpace(authMarker) &&
+                !string.Equals(player.PIF_AuthKey ?? string.Empty, authMarker, StringComparison.Ordinal))
             {
                 player.PIF_AuthKey = authMarker;
                 manager.SaveData();
             }
 
             return authMarker;
-        }
-
-        private string ResolveStoredAuthMarkerForCurrentDevice()
-        {
-            var player = manager?.g_PlayerInfo;
-            if (player == null)
-            {
-                return string.Empty;
-            }
-
-            string authKey = player.PIF_AuthKey ?? string.Empty;
-            if (!LicenseHubAuthMarker.TryParse(authKey, out LicenseHubValidationMarker marker))
-            {
-                return string.Empty;
-            }
-
-            string fingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
-            if (marker.ProductId != LicenseHubAuthPolicy.ProductId ||
-                !string.Equals(player.PIF_MacAddress ?? string.Empty, fingerprint, StringComparison.OrdinalIgnoreCase))
-            {
-                return string.Empty;
-            }
-
-            return authKey;
         }
 
         private void ClearStoredAuthKey()

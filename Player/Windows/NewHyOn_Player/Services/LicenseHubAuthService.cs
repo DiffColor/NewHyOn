@@ -21,20 +21,12 @@ namespace NewHyOnPlayer.Services
             ValidationResult validation = LicenseHubLocalValidator.ValidateForCurrentDevice(license);
             if (validation.IsValid)
             {
-                PersistLicenseHubAuth(manager, license, validation);
+                PersistLicenseHubAuth(manager, validation);
                 return validation;
             }
 
-            if (IsStoredAuthMarkerForCurrentDevice(manager))
-            {
-                return new ValidationResult
-                {
-                    IsValid = true,
-                    Reason = "저장된 오프라인 인증 정보가 유효합니다."
-                };
-            }
-
             ClearStoredAuthKey(manager);
+
             return validation;
         }
 
@@ -56,23 +48,6 @@ namespace NewHyOnPlayer.Services
             return true;
         }
 
-        private static bool IsStoredAuthMarkerForCurrentDevice(PlayerInfoManager manager)
-        {
-            if (manager?.g_PlayerInfo == null)
-            {
-                return false;
-            }
-
-            if (!LicenseHubAuthMarker.TryParse(manager.g_PlayerInfo.PIF_AuthKey ?? string.Empty, out LicenseHubValidationMarker marker))
-            {
-                return false;
-            }
-
-            string fingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
-            return marker.ProductId == LicenseHubAuthPolicy.ProductId &&
-                string.Equals(manager.g_PlayerInfo.PIF_MacAddress ?? string.Empty, fingerprint, System.StringComparison.OrdinalIgnoreCase);
-        }
-
         private static void ClearStoredAuthKey(PlayerInfoManager manager)
         {
             if (manager?.g_PlayerInfo == null || string.IsNullOrWhiteSpace(manager.g_PlayerInfo.PIF_AuthKey))
@@ -86,7 +61,6 @@ namespace NewHyOnPlayer.Services
 
         private static void PersistLicenseHubAuth(
             PlayerInfoManager manager,
-            LicenseHubLocalLicenseFile license,
             ValidationResult validation)
         {
             if (manager?.g_PlayerInfo == null || validation == null || !validation.IsValid)
@@ -95,14 +69,15 @@ namespace NewHyOnPlayer.Services
             }
 
             bool changed = false;
+            LicenseHubLocalLicenseFile license = LicenseHubLocalLicenseStore.Read();
             string authMarker = LicenseHubAuthMarker.Build(license);
             if (string.IsNullOrWhiteSpace(authMarker))
             {
-                ClearStoredAuthKey(manager);
-                return;
+                authMarker = LicenseHubAuthMarker.Build(validation);
             }
 
-            if (!string.Equals(manager.g_PlayerInfo.PIF_AuthKey ?? string.Empty, authMarker, System.StringComparison.Ordinal))
+            if (!string.IsNullOrWhiteSpace(authMarker) &&
+                !string.Equals(manager.g_PlayerInfo.PIF_AuthKey ?? string.Empty, authMarker, System.StringComparison.Ordinal))
             {
                 manager.g_PlayerInfo.PIF_AuthKey = authMarker;
                 changed = true;
