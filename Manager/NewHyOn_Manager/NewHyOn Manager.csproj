@@ -406,9 +406,6 @@
     <Compile Include="DataManager\PlayerInfoManager.cs" />
     <Compile Include="DataManager\CommandQueueManager.cs" />
     <Compile Include="DataManager\UpdatePayloadBuilder.cs" />
-    <Compile Include="..\..\Player\Windows\SharedAuth\LicenseHubAuthRuntime.cs">
-      <Link>Shared\Auth\LicenseHubAuthRuntime.cs</Link>
-    </Compile>
     <Compile Include="DataManager\ContentDetailsManager.cs" />
     <Compile Include="DataManager\UpdateThrottleSettingsManager.cs" />
     <Compile Include="DataManager\ServerSettingsManager.cs" />
