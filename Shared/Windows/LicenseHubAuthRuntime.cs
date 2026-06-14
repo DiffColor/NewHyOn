@@ -8,8 +8,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-#pragma warning disable CS8603
-
 namespace NewHyOn.Shared.Auth
 {
     public static class LicenseHubAuthPolicy
@@ -259,6 +257,55 @@ namespace NewHyOn.Shared.Auth
                 && marker.ProductId > 0
                 && marker.IsValid
                 && !string.IsNullOrWhiteSpace(marker.DeviceId);
+        }
+    }
+
+    public static class LicenseHubOfflineMarkerValidator
+    {
+        public static bool CanUseOfflineMarker(ValidationResult validation)
+        {
+            return validation != null &&
+                !validation.IsValid &&
+                !validation.ServerChecked &&
+                validation.UsedOfflineFallback;
+        }
+
+        public static bool TryValidateForCurrentDevice(
+            ValidationResult coreValidation,
+            string authKey,
+            string storedFingerprint,
+            out ValidationResult offlineValidation)
+        {
+            offlineValidation = null;
+            if (!CanUseOfflineMarker(coreValidation) ||
+                !IsStoredMarkerForCurrentDevice(authKey, storedFingerprint))
+            {
+                return false;
+            }
+
+            offlineValidation = new ValidationResult
+            {
+                IsValid = true,
+                Reason = string.Empty,
+                ServerChecked = false,
+                UsedOfflineFallback = true
+            };
+            return true;
+        }
+
+        public static bool IsStoredMarkerForCurrentDevice(string authKey, string storedFingerprint)
+        {
+            LicenseHubValidationMarker marker;
+            if (!LicenseHubAuthMarker.TryParse((authKey ?? string.Empty).Trim(), out marker) ||
+                marker.ProductId != LicenseHubAuthPolicy.ProductId)
+            {
+                return false;
+            }
+
+            string normalizedStoredFingerprint = (storedFingerprint ?? string.Empty).Trim();
+            string currentFingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
+            return !string.IsNullOrWhiteSpace(normalizedStoredFingerprint) &&
+                string.Equals(normalizedStoredFingerprint, currentFingerprint, StringComparison.OrdinalIgnoreCase);
         }
     }
 

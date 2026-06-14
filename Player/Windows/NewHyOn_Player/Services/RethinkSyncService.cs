@@ -467,6 +467,12 @@ namespace NewHyOnPlayer
             var validation = LicenseHubLocalValidator.ValidateForCurrentDevice(license);
             if (!validation.IsValid)
             {
+                string offlineAuthMarker = ResolveStoredOfflineAuthMarker(validation);
+                if (!string.IsNullOrWhiteSpace(offlineAuthMarker))
+                {
+                    return offlineAuthMarker;
+                }
+
                 ClearStoredAuthKey();
                 return string.Empty;
             }
@@ -487,6 +493,26 @@ namespace NewHyOnPlayer
             }
 
             return authMarker;
+        }
+
+        private string ResolveStoredOfflineAuthMarker(ValidationResult validation)
+        {
+            if (!LicenseHubOfflineMarkerValidator.CanUseOfflineMarker(validation))
+            {
+                return string.Empty;
+            }
+
+            var player = manager?.g_PlayerInfo;
+            if (player == null)
+            {
+                return string.Empty;
+            }
+
+            string authKey = player.PIF_AuthKey?.Trim() ?? string.Empty;
+            string storedFingerprint = player.PIF_MacAddress?.Trim() ?? string.Empty;
+            return LicenseHubOfflineMarkerValidator.IsStoredMarkerForCurrentDevice(authKey, storedFingerprint)
+                ? authKey
+                : string.Empty;
         }
 
         private void ClearStoredAuthKey()

@@ -378,7 +378,9 @@
     <Compile Include="Services\CommandQueueClient.cs" />
     <Compile Include="Services\HeartbeatReporter.cs" />
     <Compile Include="Services\LicenseHubAuthService.cs" />
-    <Compile Include="Services\LicenseHubCoreAuthRuntime.cs" />
+    <Compile Include="..\..\..\Shared\Windows\LicenseHubAuthRuntime.cs">
+      <Link>Shared\LicenseHubAuthRuntime.cs</Link>
+    </Compile>
     <Compile Include="Services\RethinkSyncService.cs" />
     <Compile Include="Services\SignalRClientService.cs" />
     <Compile Include="Services\ServerSettingsClient.cs" />

@@ -25,6 +25,12 @@ namespace NewHyOnPlayer.Services
                 return validation;
             }
 
+            ValidationResult offlineValidation;
+            if (TryValidateStoredOfflineMarker(manager, validation, out offlineValidation))
+            {
+                return offlineValidation;
+            }
+
             ClearStoredAuthKey(manager);
 
             return validation;
@@ -57,6 +63,26 @@ namespace NewHyOnPlayer.Services
 
             manager.g_PlayerInfo.PIF_AuthKey = string.Empty;
             manager.SaveData();
+        }
+
+        private static bool TryValidateStoredOfflineMarker(
+            PlayerInfoManager manager,
+            ValidationResult coreValidation,
+            out ValidationResult validation)
+        {
+            validation = null;
+            if (manager?.g_PlayerInfo == null)
+            {
+                return false;
+            }
+
+            string authKey = manager.g_PlayerInfo.PIF_AuthKey?.Trim() ?? string.Empty;
+            string storedFingerprint = manager.g_PlayerInfo.PIF_MacAddress?.Trim() ?? string.Empty;
+            return LicenseHubOfflineMarkerValidator.TryValidateForCurrentDevice(
+                coreValidation,
+                authKey,
+                storedFingerprint,
+                out validation);
         }
 
         private static void PersistLicenseHubAuth(

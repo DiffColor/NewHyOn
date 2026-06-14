@@ -67,6 +67,9 @@
     <Compile Include="..\..\..\Shared\Windows\FirewallRuleSynchronizer.cs">
       <Link>Shared\FirewallRuleSynchronizer.cs</Link>
     </Compile>
+    <Compile Include="..\..\..\Shared\Windows\LicenseHubAuthRuntime.cs">
+      <Link>Shared\LicenseHubAuthRuntime.cs</Link>
+    </Compile>
   </ItemGroup>
 
   <ItemGroup>
