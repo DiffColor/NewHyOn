@@ -49,9 +49,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\SharedAuth\LicenseHubAuthRuntime.cs">
-      <Link>Shared\Auth\LicenseHubAuthRuntime.cs</Link>
-    </Compile>
     <Compile Include="..\SharedLiteDb\LiteDbContext.cs">
       <Link>Infrastructure\LiteDbContext.cs</Link>
     </Compile>

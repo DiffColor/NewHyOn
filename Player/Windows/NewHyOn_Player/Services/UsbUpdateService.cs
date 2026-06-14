@@ -1,7 +1,6 @@
 extern alias USBDetector;
 
 using AndoW.Shared;
-using LicenseHub.DeviceAuth.Core;
 using NewHyOn.Shared.Auth;
 using NewHyOnPlayer.DataManager;
 using Newtonsoft.Json;
