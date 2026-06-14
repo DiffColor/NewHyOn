@@ -666,11 +666,6 @@ public sealed class PlayerConfigurationService
             return ("인증 상태 : 정품 인증 완료", true, false);
         }
 
-        if (HasValidStoredOfflineMarker())
-        {
-            return ("인증 상태 : 정품 인증 완료", true, false);
-        }
-
         ClearStoredAuthKey();
         return ("인증 상태 : 미인증", false, true);
     }
@@ -715,16 +710,6 @@ public sealed class PlayerConfigurationService
         }
 
         return true;
-    }
-
-    private bool HasValidStoredOfflineMarker()
-    {
-        string authKey = Normalize(playerInfoManager.PlayerInfo.PIF_AuthKey);
-        string fingerprint = Normalize(playerInfoManager.PlayerInfo.PIF_MacAddress);
-        return LicenseHubAuthMarker.TryParse(authKey, out LicenseHubValidationMarker? marker) &&
-            marker.ProductId == LicenseHubAuthPolicy.ProductId &&
-            !string.IsNullOrWhiteSpace(fingerprint) &&
-            string.Equals(fingerprint, sourceKey, StringComparison.OrdinalIgnoreCase);
     }
 
     private void PersistLicenseHubAuthToPlayerInfo(LicenseHubLocalLicenseFile license, ValidationResult validation)
