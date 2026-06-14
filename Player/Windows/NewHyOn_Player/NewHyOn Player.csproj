@@ -120,6 +120,10 @@
       <HintPath>..\Dependencies\LicenseHub.DeviceAuth\net472\BouncyCastle.Crypto.dll</HintPath>
       <Private>True</Private>
     </Reference>
+    <Reference Include="LicenseHub.DeviceAuth.Core">
+      <HintPath>..\Dependencies\LicenseHub.DeviceAuth\net472\LicenseHub.DeviceAuth.Core.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="MediaInfo.DotNetWrapper, Version=1.0.7.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\packages\MediaInfo.DotNetWrapper.1.0.7\lib\net40\MediaInfo.DotNetWrapper.dll</HintPath>
     </Reference>
@@ -374,7 +378,7 @@
     <Compile Include="Services\CommandQueueClient.cs" />
     <Compile Include="Services\HeartbeatReporter.cs" />
     <Compile Include="Services\LicenseHubAuthService.cs" />
-    <Compile Include="Services\LicenseHubStandaloneAuthRuntime.cs" />
+    <Compile Include="Services\LicenseHubCoreAuthRuntime.cs" />
     <Compile Include="Services\RethinkSyncService.cs" />
     <Compile Include="Services\SignalRClientService.cs" />
     <Compile Include="Services\ServerSettingsClient.cs" />

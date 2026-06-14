@@ -1,3 +1,4 @@
+using LicenseHub.DeviceAuth.Core;
 using NewHyOn.Shared.Auth;
 
 namespace NewHyOnPlayer.Services
