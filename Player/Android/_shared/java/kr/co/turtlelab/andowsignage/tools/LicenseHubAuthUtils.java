@@ -8,7 +8,6 @@ import android.content.IntentFilter;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
-import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.Base64;
 
@@ -226,13 +225,16 @@ public class LicenseHubAuthUtils {
         raw.add(Build.MANUFACTURER);
         raw.add(Build.MODEL);
         raw.add(Build.BOARD);
-        raw.add(Build.FINGERPRINT);
-        raw.add(readAndroidId(context));
+        raw.add(Build.DEVICE);
+        raw.add(Build.HARDWARE);
+        raw.add(Build.PRODUCT);
         if (Build.VERSION.SDK_INT < 29) {
-            raw.add(Build.SERIAL);
+            raw.add(readLegacySerialCandidate());
         }
         raw.add(readSystemProperty("ro.boot.serialno"));
         raw.add(readSystemProperty("ro.serialno"));
+        raw.add(readSystemProperty("ro.boot.hardware"));
+        raw.add(readSystemProperty("ro.hardware"));
         raw.add(readCpuInfoHash());
 
         List<String> normalized = new ArrayList<String>();
@@ -407,17 +409,6 @@ public class LicenseHubAuthUtils {
         return Base64.decode(nullToEmpty(value), Base64.URL_SAFE | Base64.NO_PADDING | Base64.NO_WRAP);
     }
 
-    private static String readAndroidId(Context context) {
-        if (context == null) {
-            return "";
-        }
-        try {
-            return Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
-        } catch (Exception ignored) {
-            return "";
-        }
-    }
-
     private static String readSystemProperty(String key) {
         java.lang.Process process = null;
         try {
@@ -435,6 +426,14 @@ public class LicenseHubAuthUtils {
             if (process != null) {
                 process.destroy();
             }
+        }
+    }
+
+    private static String readLegacySerialCandidate() {
+        try {
+            return nullToEmpty(Build.SERIAL);
+        } catch (Exception ignored) {
+            return "";
         }
     }
 

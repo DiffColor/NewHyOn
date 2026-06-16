@@ -137,6 +137,8 @@ public final class LicenseAuthManager {
         private final String reason;
         private final String serverStatus;
         private final boolean localLicenseDiscarded;
+        private final boolean serverChecked;
+        private final boolean usedOfflineFallback;
         private final String payloadJson;
         private final String rawJson;
 
@@ -155,11 +157,25 @@ public final class LicenseAuthManager {
                                 boolean localLicenseDiscarded,
                                 String payloadJson,
                                 String rawJson) {
+            this(requestId, valid, reason, serverStatus, localLicenseDiscarded, false, false, payloadJson, rawJson);
+        }
+
+        public ValidationResult(String requestId,
+                                boolean valid,
+                                String reason,
+                                String serverStatus,
+                                boolean localLicenseDiscarded,
+                                boolean serverChecked,
+                                boolean usedOfflineFallback,
+                                String payloadJson,
+                                String rawJson) {
             this.requestId = requestId;
             this.valid = valid;
             this.reason = reason;
             this.serverStatus = serverStatus;
             this.localLicenseDiscarded = localLicenseDiscarded;
+            this.serverChecked = serverChecked;
+            this.usedOfflineFallback = usedOfflineFallback;
             this.payloadJson = payloadJson;
             this.rawJson = rawJson;
         }
@@ -182,6 +198,14 @@ public final class LicenseAuthManager {
 
         public boolean isLocalLicenseDiscarded() {
             return localLicenseDiscarded;
+        }
+
+        public boolean isServerChecked() {
+            return serverChecked;
+        }
+
+        public boolean isUsedOfflineFallback() {
+            return usedOfflineFallback;
         }
 
         public String getPayloadJson() {
@@ -604,12 +628,23 @@ public final class LicenseAuthManager {
             String reason = readJsonString(obj, "reason");
             String serverStatus = readJsonString(obj, "serverStatus");
             boolean localLicenseDiscarded = readJsonBoolean(obj, "localLicenseDiscarded");
+            boolean serverChecked = readJsonBoolean(obj, "serverChecked");
+            boolean usedOfflineFallback = readJsonBoolean(obj, "usedOfflineFallback");
             String payloadJson = readJsonString(obj, "payloadJson");
             String resolvedRequestId = readJsonString(obj, "requestId");
             if (TextUtils.isEmpty(resolvedRequestId)) {
                 resolvedRequestId = requestId;
             }
-            return new ValidationResult(resolvedRequestId, isValid, reason, serverStatus, localLicenseDiscarded, payloadJson, rawJson);
+            return new ValidationResult(
+                    resolvedRequestId,
+                    isValid,
+                    reason,
+                    serverStatus,
+                    localLicenseDiscarded,
+                    serverChecked,
+                    usedOfflineFallback,
+                    payloadJson,
+                    rawJson);
         } catch (Exception ignored) {
             return new ValidationResult(requestId, false, "검증 응답 파싱 실패", "");
         }

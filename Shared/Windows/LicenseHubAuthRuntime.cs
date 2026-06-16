@@ -1,4 +1,5 @@
 using LicenseHub.DeviceAuth.Core;
+using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -413,12 +414,21 @@ namespace NewHyOn.Shared.Auth
 
             if (normalized.Length == 0)
             {
-                string fallback = Environment.MachineName + "|" + Environment.OSVersion.VersionString;
-                return new LicenseHubDeviceFingerprintInfo
+                normalized = new[]
+                    {
+                        ReadMachineGuid(),
+                        Environment.MachineName
+                    }
+                    .Select(Normalize)
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(value => value, StringComparer.Ordinal)
+                    .ToArray();
+
+                if (normalized.Length == 0)
                 {
-                    Source = fallback,
-                    Fingerprint = ToHexUpper(Sha256(fallback))
-                };
+                    throw new InvalidOperationException("유효한 Windows 하드웨어 또는 머신 식별 소스를 찾을 수 없습니다.");
+                }
             }
 
             string source = string.Join("|", normalized);
@@ -463,6 +473,22 @@ namespace NewHyOn.Shared.Auth
             }
 
             return string.Empty;
+        }
+
+        private static string ReadMachineGuid()
+        {
+            try
+            {
+                object value = Registry.GetValue(
+                    @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Cryptography",
+                    "MachineGuid",
+                    string.Empty);
+                return value == null ? string.Empty : value.ToString() ?? string.Empty;
+            }
+            catch
+            {
+                return string.Empty;
+            }
         }
 
         private static byte[] Sha256(string value)

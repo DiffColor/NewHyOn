@@ -91,6 +91,7 @@ import kr.co.turtlelab.andowsignage.services.HeartbeatService;
 import kr.co.turtlelab.andowsignage.tools.ExceptionHandler;
 import kr.co.turtlelab.andowsignage.tools.FileUtils;
 import kr.co.turtlelab.andowsignage.tools.LightestTimer;
+import kr.co.turtlelab.andowsignage.tools.LicenseHubAuthUtils;
 import kr.co.turtlelab.andowsignage.tools.LocalPathUtils;
 import kr.co.turtlelab.andowsignage.tools.MediaScanner;
 import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
@@ -597,6 +598,14 @@ public class AndoWSignage extends Activity {
 							openAuthAppForCallback();
 							return;
 						}
+						if (tryUseStoredOfflineMarker(result)) {
+							licenseValidationInProgress = false;
+							licenseValidatedForCurrentRun = true;
+							licenseHubAuthBlocked = false;
+							syncLicenseHubAuthToRemotePlayer();
+							startPlaybackAfterLicenseValidated();
+							return;
+						}
 						if (shouldRetryLicenseHubValidation(result, attempt)) {
 							new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
 								@Override
@@ -655,6 +664,43 @@ public class AndoWSignage extends Activity {
 		}
 
 		return PlayerDataProvider.updatePlayerAuthInfo(authMarker, deviceFingerprint);
+	}
+
+	private boolean tryUseStoredOfflineMarker(LicenseAuthManager.ValidationResult result) {
+		if (result == null
+				|| result.isValid()
+				|| result.isServerChecked()
+				|| !result.isUsedOfflineFallback()) {
+			return false;
+		}
+
+		return isStoredOfflineMarkerForCurrentDevice(
+				PlayerDataProvider.getPlayerAuthKey(),
+				PlayerDataProvider.getPlayerAuthFingerprint());
+	}
+
+	private boolean isStoredOfflineMarkerForCurrentDevice(String authKey, String storedFingerprint) {
+		if (TextUtils.isEmpty(authKey) || TextUtils.isEmpty(storedFingerprint)) {
+			return false;
+		}
+
+		try {
+			JSONObject marker = new JSONObject(authKey.trim());
+			if (!"LicenseHub".equalsIgnoreCase(marker.optString("AuthProvider", ""))
+					|| !"ValidationResult".equalsIgnoreCase(marker.optString("AuthSchema", ""))
+					|| marker.optInt("AuthVersion", 0) < 2
+					|| marker.optInt("ProductId", 0) != LicenseAuthManager.PRODUCT_ID
+					|| !marker.optBoolean("IsValid", false)
+					|| TextUtils.isEmpty(marker.optString("DeviceId", "").trim())) {
+				return false;
+			}
+
+			String currentFingerprint = LicenseHubAuthUtils.generateDeviceFingerprint(this);
+			return !TextUtils.isEmpty(currentFingerprint)
+					&& storedFingerprint.trim().equalsIgnoreCase(currentFingerprint.trim());
+		} catch (Exception ignored) {
+			return false;
+		}
 	}
 
 	private String readJsonString(String rawJson, String key) {
