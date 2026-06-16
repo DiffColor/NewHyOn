@@ -410,23 +410,34 @@ namespace AndoW_Manager
 
             WeekSchInfoElement1.ApplyCurrentTimeTo(g_WeeklyInfoManagerClass.PIF_WPS_InfoList[0]);
 
-            WeekSchInfoElement1.UpdateWeekInfo(g_WeeklyInfoManagerClass.PIF_WPS_InfoList[0], true);
-            WeekSchInfoElement2.UpdateWeekInfo(g_WeeklyInfoManagerClass.PIF_WPS_InfoList[0], true);
-            WeekSchInfoElement3.UpdateWeekInfo(g_WeeklyInfoManagerClass.PIF_WPS_InfoList[0], true);
-            WeekSchInfoElement4.UpdateWeekInfo(g_WeeklyInfoManagerClass.PIF_WPS_InfoList[0], true);
-            WeekSchInfoElement5.UpdateWeekInfo(g_WeeklyInfoManagerClass.PIF_WPS_InfoList[0], true);
-            WeekSchInfoElement6.UpdateWeekInfo(g_WeeklyInfoManagerClass.PIF_WPS_InfoList[0], true);
-            WeekSchInfoElement7.UpdateWeekInfo(g_WeeklyInfoManagerClass.PIF_WPS_InfoList[0], true);
+            WeeklyDayScheduleInfo source = g_WeeklyInfoManagerClass.PIF_WPS_InfoList[0];
 
-            g_WeeklyInfoManagerClass.PIF_WPS_InfoList[0].CopyData(g_WeeklyInfoManagerClass.PIF_WPS_InfoList[0], true);
-            g_WeeklyInfoManagerClass.PIF_WPS_InfoList[1].CopyData(g_WeeklyInfoManagerClass.PIF_WPS_InfoList[0], true);
-            g_WeeklyInfoManagerClass.PIF_WPS_InfoList[2].CopyData(g_WeeklyInfoManagerClass.PIF_WPS_InfoList[0], true);
-            g_WeeklyInfoManagerClass.PIF_WPS_InfoList[3].CopyData(g_WeeklyInfoManagerClass.PIF_WPS_InfoList[0], true);
-            g_WeeklyInfoManagerClass.PIF_WPS_InfoList[4].CopyData(g_WeeklyInfoManagerClass.PIF_WPS_InfoList[0], true);
-            g_WeeklyInfoManagerClass.PIF_WPS_InfoList[5].CopyData(g_WeeklyInfoManagerClass.PIF_WPS_InfoList[0], true);
-            g_WeeklyInfoManagerClass.PIF_WPS_InfoList[6].CopyData(g_WeeklyInfoManagerClass.PIF_WPS_InfoList[0], true);
+            ApplyWeekSchedule(source, 0, WeekSchInfoElement1);
+            ApplyWeekSchedule(source, 1, WeekSchInfoElement2);
+            ApplyWeekSchedule(source, 2, WeekSchInfoElement3);
+            ApplyWeekSchedule(source, 3, WeekSchInfoElement4);
+            ApplyWeekSchedule(source, 4, WeekSchInfoElement5);
+            ApplyWeekSchedule(source, 5, WeekSchInfoElement6);
+            ApplyWeekSchedule(source, 6, WeekSchInfoElement7);
 
             DisplayWeekOfDay();
+        }
+
+        private void ApplyWeekSchedule(WeeklyDayScheduleInfo source, int index, WeekSchInfoElement element)
+        {
+            if (source == null || element == null || g_WeeklyInfoManagerClass.PIF_WPS_InfoList.Count <= index)
+            {
+                return;
+            }
+
+            WeeklyDayScheduleInfo target = g_WeeklyInfoManagerClass.PIF_WPS_InfoList[index];
+            target.StartHour = source.StartHour;
+            target.StartMinute = source.StartMinute;
+            target.EndHour = source.EndHour;
+            target.EndMinute = source.EndMinute;
+            target.IsOnAir = source.IsOnAir;
+
+            element.UpdateWeekInfo(target);
         }
     }
 

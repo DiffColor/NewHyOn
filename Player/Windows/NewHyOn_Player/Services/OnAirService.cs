@@ -363,7 +363,7 @@ namespace NewHyOnPlayer.Services
             if (remaining <= MinimumHibernationLeadTime)
             {
                 Logger.WriteLog(
-                    $"Hibernation skipped: wake-up time is too close. now={now}, scheduledWakeAt={scheduledWakeAt}, remainingSeconds={remaining.TotalSeconds:F1}",
+                    $"Wake-up alarm skipped: wake-up time is too close. now={now}, scheduledWakeAt={scheduledWakeAt}, remainingSeconds={remaining.TotalSeconds:F1}",
                     Logger.GetLogFileName());
                 return false;
             }
@@ -443,9 +443,15 @@ namespace NewHyOnPlayer.Services
 
         private DateTime? FindNextWakeUpTime(SharedWeeklyPlayScheduleInfo weekly, DateTime now)
         {
-            if (weekly == null || CountOnAirDays(weekly) <= 0)
+            if (weekly == null)
             {
-                Logger.WriteErrorLog($"Wake-up calculation failed: no on-air weekly schedule. now={now}", Logger.GetLogFileName());
+                Logger.WriteLog($"Wake-up alarm skipped: weekly schedule is not available. now={now}", Logger.GetLogFileName());
+                return null;
+            }
+
+            if (CountOnAirDays(weekly) <= 0)
+            {
+                Logger.WriteLog($"Wake-up alarm skipped: no on-air weekly schedule. now={now}", Logger.GetLogFileName());
                 return null;
             }
 
@@ -481,7 +487,7 @@ namespace NewHyOnPlayer.Services
                 return wakeAt;
             }
 
-            Logger.WriteErrorLog($"Wake-up calculation failed: no future on-air day. now={now}", Logger.GetLogFileName());
+            Logger.WriteLog($"Wake-up alarm skipped: no future on-air day. now={now}", Logger.GetLogFileName());
             return null;
         }
 
