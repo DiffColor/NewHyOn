@@ -544,7 +544,7 @@ public class RethinkDbClient {
             values.put("PIF_IPAddress", ip);
         }
         String expectedFingerprint = normalizeAuthKey(authSelection.fingerprint);
-        if (authSelection.shouldWriteAuthKey || !TextUtils.isEmpty(expectedFingerprint)) {
+        if (authSelection.shouldWriteFingerprint && !TextUtils.isEmpty(expectedFingerprint)) {
             values.put("PIF_MacAddress", expectedFingerprint);
         }
         if (!TextUtils.isEmpty(osName)) {
@@ -1087,7 +1087,7 @@ public class RethinkDbClient {
     private AuthSyncSelection resolveAuthSync(Map existing, String mac) {
         synchronized (deviceInfoLock) {
             if (forceClearAuthKeyOnce) {
-                return new AuthSyncSelection("", "", true);
+                return new AuthSyncSelection("", "", true, false);
             }
         }
 
@@ -1188,15 +1188,21 @@ public class RethinkDbClient {
         final String authKey;
         final String fingerprint;
         final boolean shouldWriteAuthKey;
+        final boolean shouldWriteFingerprint;
 
         AuthSyncSelection(String authKey, String fingerprint) {
             this(authKey, fingerprint, false);
         }
 
         AuthSyncSelection(String authKey, String fingerprint, boolean shouldWriteAuthKey) {
+            this(authKey, fingerprint, shouldWriteAuthKey, shouldWriteAuthKey);
+        }
+
+        AuthSyncSelection(String authKey, String fingerprint, boolean shouldWriteAuthKey, boolean shouldWriteFingerprint) {
             this.authKey = authKey == null ? "" : authKey;
             this.fingerprint = fingerprint == null ? "" : fingerprint;
             this.shouldWriteAuthKey = shouldWriteAuthKey;
+            this.shouldWriteFingerprint = shouldWriteFingerprint;
         }
     }
 

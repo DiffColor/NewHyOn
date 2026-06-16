@@ -94,8 +94,12 @@ public class PlayerDataProvider {
                     player = r.createObject(RealmPlayer.class, playerId);
                     player.setPlayerName(playerId);
                 }
-                player.setPifAuthKey(authKey == null ? "" : authKey);
-                player.setPifFingerprint(fingerprint == null ? "" : fingerprint);
+                String normalizedAuthKey = authKey == null ? "" : authKey;
+                String normalizedFingerprint = fingerprint == null ? "" : fingerprint;
+                player.setPifAuthKey(normalizedAuthKey);
+                if (!TextUtils.isEmpty(normalizedAuthKey) || !TextUtils.isEmpty(normalizedFingerprint)) {
+                    player.setPifFingerprint(normalizedFingerprint);
+                }
             });
             return true;
         } catch (Throwable ignored) {

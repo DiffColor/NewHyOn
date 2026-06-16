@@ -636,6 +636,10 @@ public class AndoWSignage extends Activity {
 							openAuthAppForCallback();
 							return;
 						}
+						if (isServerRejectedLicense(result)) {
+							cleanupAndOpenAuthApp(result);
+							return;
+						}
 						if (tryUseStoredOfflineMarker(result)) {
 							licenseValidationInProgress = false;
 							licenseValidatedForCurrentRun = true;
@@ -658,6 +662,13 @@ public class AndoWSignage extends Activity {
 				});
 			}
 		});
+	}
+
+	private boolean isServerRejectedLicense(LicenseAuthManager.ValidationResult result) {
+		return result != null
+				&& !result.isValid()
+				&& result.isServerChecked()
+				&& !result.isUsedOfflineFallback();
 	}
 
 	private boolean shouldRetryLicenseHubValidation(LicenseAuthManager.ValidationResult result, int attempt) {
@@ -807,10 +818,11 @@ public class AndoWSignage extends Activity {
 	}
 
 	private void cleanupAndOpenAuthApp(final LicenseAuthManager.ValidationResult validation) {
+		LegacyAuthCleanup.clearLocal();
 		new Thread(new Runnable() {
 			@Override
 			public void run() {
-				LegacyAuthCleanup.clearLocalAndRemoteOnce(AndoWSignage.this);
+				LegacyAuthCleanup.clearRemoteOnce(AndoWSignage.this);
 				SystemUtils.runOnUiThread(new Runnable() {
 					@Override
 					public void run() {
