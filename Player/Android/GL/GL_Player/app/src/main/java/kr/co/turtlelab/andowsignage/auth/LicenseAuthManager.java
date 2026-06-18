@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import kr.co.turtlelab.andowsignage.AndoWSignageApp;
 import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
+import kr.co.turtlelab.andowsignage.dataproviders.PlayerDataProvider;
 
 public final class LicenseAuthManager {
     private static final String TAG = "LicenseAuthManager";
@@ -243,12 +244,16 @@ public final class LicenseAuthManager {
     public static void validate(Context context, ValidationCallback callback) {
         final Context appContext = context.getApplicationContext();
         final String requestId = UUID.randomUUID().toString();
+        final String storedFingerprint = PlayerDataProvider.getPlayerAuthFingerprint().trim();
+        final String storedDeviceId = resolveStoredDeviceId(PlayerDataProvider.getPlayerAuthKey());
 
         JSONObject request = new JSONObject();
         try {
             request.put("requestId", requestId);
             request.put("apiBaseUrl", API_BASE_URL);
             request.put("productId", PRODUCT_ID);
+            request.put("deviceFingerprint", storedFingerprint);
+            request.put("deviceId", storedDeviceId);
             request.put("licenseToken", "");
             request.put("licenseFilePath", "");
             request.put("enableServerValidation", true);
@@ -264,6 +269,21 @@ public final class LicenseAuthManager {
                 requestId,
                 request.toString(),
                 callback);
+    }
+
+    private static String resolveStoredDeviceId(String authKey) {
+        if (TextUtils.isEmpty(authKey)) {
+            return "";
+        }
+        try {
+            JSONObject marker = new JSONObject(authKey.trim());
+            if (marker.optInt("ProductId", 0) != PRODUCT_ID) {
+                return "";
+            }
+            return marker.optString("DeviceId", "").trim();
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
     public static boolean shouldReauthenticate(ValidationResult result) {
