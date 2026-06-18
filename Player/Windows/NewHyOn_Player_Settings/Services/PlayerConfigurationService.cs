@@ -21,11 +21,8 @@ public sealed class PlayerConfigurationService
     private readonly PortInfoManager portInfoManager = new();
     private readonly WeeklyInfoManagerClass weeklyInfoManager = new();
 
-    private readonly string sourceKey;
-
     public PlayerConfigurationService()
     {
-        sourceKey = LicenseHubDeviceFingerprint.Generate().Fingerprint;
         SystemPolicyService.DisableUac();
     }
 
@@ -47,7 +44,7 @@ public sealed class PlayerConfigurationService
                 ? LegacyNetworkService.GetAutoIp().ToString()
                 : playerInfoManager.PlayerInfo.PIF_IPAddress,
             PlayerName = playerInfoManager.PlayerInfo.PIF_PlayerName,
-            SourceKey = sourceKey,
+            SourceKey = GetStoredFingerprint(),
             AuthStatusText = authStatusText,
             IsLicensed = isLicensed,
             IsAuthInputEnabled = authInputEnabled,
@@ -314,7 +311,9 @@ public sealed class PlayerConfigurationService
         }
         else
         {
-            ValidationResult validation = LicenseHubLocalValidator.Validate();
+            ValidationResult validation = LicenseHubLocalValidator.ValidateForStoredFingerprint(
+                LicenseHubLocalLicenseStore.Read(),
+                GetStoredFingerprint());
             message = string.IsNullOrWhiteSpace(validation.Reason)
                 ? "인증 결과를 확인하지 못했습니다."
                 : validation.Reason;
@@ -455,7 +454,6 @@ public sealed class PlayerConfigurationService
     {
         playerInfoManager.PlayerInfo.PIF_PlayerName = snapshot.PlayerName.Trim();
         playerInfoManager.PlayerInfo.PIF_IPAddress = snapshot.PlayerIp.Trim();
-        playerInfoManager.PlayerInfo.PIF_MacAddress = sourceKey;
         playerInfoManager.SaveData();
     }
 
@@ -659,7 +657,7 @@ public sealed class PlayerConfigurationService
     private (string statusText, bool isLicensed, bool authInputEnabled) EvaluateAuthState()
     {
         LicenseHubLocalLicenseFile license = LicenseHubLocalLicenseStore.Read();
-        ValidationResult validation = LicenseHubLocalValidator.ValidateForCurrentDevice(license);
+        ValidationResult validation = LicenseHubLocalValidator.ValidateForStoredFingerprint(license, GetStoredFingerprint());
         if (validation.IsValid)
         {
             PersistLicenseHubAuthToPlayerInfo(license, validation);
@@ -678,8 +676,7 @@ public sealed class PlayerConfigurationService
     private bool PersistOfflineVerifiedAuthToPlayerInfo(AuthCompletionResult authResult)
     {
         string fingerprint = Normalize(authResult.DeviceFingerprint);
-        if (string.IsNullOrWhiteSpace(fingerprint) ||
-            !string.Equals(fingerprint, sourceKey, StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(fingerprint))
         {
             return false;
         }
@@ -752,9 +749,11 @@ public sealed class PlayerConfigurationService
             changed = true;
         }
 
-        if (!string.Equals(playerInfoManager.PlayerInfo.PIF_MacAddress ?? string.Empty, sourceKey, StringComparison.OrdinalIgnoreCase))
+        string fingerprint = LicenseHubAuthMarker.ResolveDeviceFingerprint(persistedLicense, validation);
+        if (!string.IsNullOrWhiteSpace(fingerprint) &&
+            !string.Equals(playerInfoManager.PlayerInfo.PIF_MacAddress ?? string.Empty, fingerprint, StringComparison.OrdinalIgnoreCase))
         {
-            playerInfoManager.PlayerInfo.PIF_MacAddress = sourceKey;
+            playerInfoManager.PlayerInfo.PIF_MacAddress = fingerprint;
             changed = true;
         }
 
@@ -773,6 +772,11 @@ public sealed class PlayerConfigurationService
 
         playerInfoManager.PlayerInfo.PIF_AuthKey = string.Empty;
         playerInfoManager.SaveData();
+    }
+
+    private string GetStoredFingerprint()
+    {
+        return Normalize(playerInfoManager.PlayerInfo.PIF_MacAddress);
     }
 
     private static ScheduleRowModel ToRowModel(WeeklyPlayScheduleInfo row)

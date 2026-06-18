@@ -1,7 +1,6 @@
 extern alias USBDetector;
 
 using AndoW.Shared;
-using NewHyOn.Shared.Auth;
 using NewHyOnPlayer.DataManager;
 using Newtonsoft.Json;
 using System;
@@ -1109,15 +1108,6 @@ namespace NewHyOnPlayer
         private HashSet<string> BuildCurrentDeviceIdentityCandidates()
         {
             var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            try
-            {
-                AddDeviceIdentityCandidate(result, LicenseHubDeviceFingerprint.Generate().Fingerprint);
-            }
-            catch (Exception ex)
-            {
-                Logger.WriteErrorLog($"UsbUpdateService fingerprint generation failed: {ex}", Logger.GetLogFileName());
-            }
 
             AddDeviceIdentityCandidate(result, owner.g_PlayerInfoManager?.g_PlayerInfo?.PIF_MacAddress);
             return result;

@@ -222,6 +222,40 @@ namespace NewHyOn.Shared.Auth
             }
         }
 
+        public static string ResolveDeviceFingerprint(LicenseHubLocalLicenseFile license, ValidationResult validation)
+        {
+            if (license != null &&
+                license.ProductId == LicenseHubAuthPolicy.ProductId &&
+                !string.IsNullOrWhiteSpace(license.DeviceFingerprint))
+            {
+                return license.DeviceFingerprint.Trim();
+            }
+
+            if (validation == null || string.IsNullOrWhiteSpace(validation.PayloadJson))
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                LicenseTokenPayload payload = JsonSerializer.Deserialize<LicenseTokenPayload>(
+                    validation.PayloadJson,
+                    JsonOptions);
+                if (payload == null ||
+                    payload.ProductId != LicenseHubAuthPolicy.ProductId ||
+                    string.IsNullOrWhiteSpace(payload.DeviceFingerprint))
+                {
+                    return string.Empty;
+                }
+
+                return payload.DeviceFingerprint.Trim();
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
         public static bool IsValidationMarker(string raw)
         {
             LicenseHubValidationMarker marker;
@@ -304,9 +338,7 @@ namespace NewHyOn.Shared.Auth
             }
 
             string normalizedStoredFingerprint = (storedFingerprint ?? string.Empty).Trim();
-            string currentFingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
-            return !string.IsNullOrWhiteSpace(normalizedStoredFingerprint) &&
-                string.Equals(normalizedStoredFingerprint, currentFingerprint, StringComparison.OrdinalIgnoreCase);
+            return !string.IsNullOrWhiteSpace(normalizedStoredFingerprint);
         }
     }
 
@@ -319,10 +351,16 @@ namespace NewHyOn.Shared.Auth
 
         public static ValidationResult ValidateForCurrentDevice(LicenseHubLocalLicenseFile license)
         {
-            string currentFingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
+            string storedFingerprint = license == null ? string.Empty : license.DeviceFingerprint ?? string.Empty;
+            return ValidateForStoredFingerprint(license, storedFingerprint);
+        }
+
+        public static ValidationResult ValidateForStoredFingerprint(LicenseHubLocalLicenseFile license, string storedFingerprint)
+        {
+            string validationFingerprint = ResolveValidationFingerprint(license, storedFingerprint);
             return ValidateUsingCore(
                 license,
-                currentFingerprint,
+                validationFingerprint,
                 LicenseHubAuthPolicy.LicenseFilePath,
                 discardLocalLicenseWhenServerInvalid: true,
                 enableServerValidation: true);
@@ -347,6 +385,17 @@ namespace NewHyOn.Shared.Auth
         {
             LicenseHubLocalLicenseFile license = LicenseHubLocalLicenseStore.TryDeserialize(raw);
             return ValidateForCurrentDevice(license).IsValid;
+        }
+
+        private static string ResolveValidationFingerprint(LicenseHubLocalLicenseFile license, string storedFingerprint)
+        {
+            string normalizedStoredFingerprint = (storedFingerprint ?? string.Empty).Trim();
+            if (!string.IsNullOrWhiteSpace(normalizedStoredFingerprint))
+            {
+                return normalizedStoredFingerprint;
+            }
+
+            return license == null ? string.Empty : license.DeviceFingerprint ?? string.Empty;
         }
 
         private static ValidationResult ValidateUsingCore(

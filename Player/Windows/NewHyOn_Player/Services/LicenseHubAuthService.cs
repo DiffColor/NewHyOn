@@ -18,7 +18,8 @@ namespace NewHyOnPlayer.Services
             }
 
             LicenseHubLocalLicenseFile license = LicenseHubLocalLicenseStore.Read();
-            ValidationResult validation = LicenseHubLocalValidator.ValidateForCurrentDevice(license);
+            string storedFingerprint = manager.g_PlayerInfo?.PIF_MacAddress?.Trim() ?? string.Empty;
+            ValidationResult validation = LicenseHubLocalValidator.ValidateForStoredFingerprint(license, storedFingerprint);
             if (validation.IsValid)
             {
                 PersistLicenseHubAuth(manager, validation);
@@ -109,8 +110,9 @@ namespace NewHyOnPlayer.Services
                 changed = true;
             }
 
-            string fingerprint = LicenseHubDeviceFingerprint.Generate().Fingerprint;
-            if (!string.Equals(manager.g_PlayerInfo.PIF_MacAddress ?? string.Empty, fingerprint, System.StringComparison.OrdinalIgnoreCase))
+            string fingerprint = LicenseHubAuthMarker.ResolveDeviceFingerprint(license, validation);
+            if (!string.IsNullOrWhiteSpace(fingerprint) &&
+                !string.Equals(manager.g_PlayerInfo.PIF_MacAddress ?? string.Empty, fingerprint, System.StringComparison.OrdinalIgnoreCase))
             {
                 manager.g_PlayerInfo.PIF_MacAddress = fingerprint;
                 changed = true;

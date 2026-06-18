@@ -464,7 +464,9 @@ namespace NewHyOnPlayer
         private string ResolveOutboundAuthPayload()
         {
             LicenseHubLocalLicenseFile license = LicenseHubLocalLicenseStore.Read();
-            var validation = LicenseHubLocalValidator.ValidateForCurrentDevice(license);
+            var player = manager?.g_PlayerInfo;
+            string storedFingerprint = player?.PIF_MacAddress?.Trim() ?? string.Empty;
+            var validation = LicenseHubLocalValidator.ValidateForStoredFingerprint(license, storedFingerprint);
             if (!validation.IsValid)
             {
                 string offlineAuthMarker = ResolveStoredOfflineAuthMarker(validation);
@@ -483,7 +485,6 @@ namespace NewHyOnPlayer
                 authMarker = LicenseHubAuthMarker.Build(validation);
             }
 
-            var player = manager?.g_PlayerInfo;
             if (player != null &&
                 !string.IsNullOrWhiteSpace(authMarker) &&
                 !string.Equals(player.PIF_AuthKey ?? string.Empty, authMarker, StringComparison.Ordinal))
