@@ -97,9 +97,7 @@ public class PlayerDataProvider {
                 String normalizedAuthKey = authKey == null ? "" : authKey;
                 String normalizedFingerprint = fingerprint == null ? "" : fingerprint;
                 player.setPifAuthKey(normalizedAuthKey);
-                if (!TextUtils.isEmpty(normalizedAuthKey) || !TextUtils.isEmpty(normalizedFingerprint)) {
-                    player.setPifFingerprint(normalizedFingerprint);
-                }
+                player.setPifFingerprint(normalizedFingerprint);
             });
             return true;
         } catch (Throwable ignored) {
