@@ -92,7 +92,6 @@ import kr.co.turtlelab.andowsignage.services.HeartbeatService;
 import kr.co.turtlelab.andowsignage.tools.ExceptionHandler;
 import kr.co.turtlelab.andowsignage.tools.FileUtils;
 import kr.co.turtlelab.andowsignage.tools.LightestTimer;
-import kr.co.turtlelab.andowsignage.tools.LicenseHubAuthUtils;
 import kr.co.turtlelab.andowsignage.tools.LocalPathUtils;
 import kr.co.turtlelab.andowsignage.tools.MediaScanner;
 import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
@@ -622,6 +621,15 @@ public class AndoWSignage extends Activity {
 							openAuthAppForCallback();
 							return;
 						}
+						if (shouldRetryLicenseHubValidation(result, attempt)) {
+							new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
+								@Override
+								public void run() {
+									runLicenseHubValidationAttempt(attempt + 1);
+								}
+							}, LICENSE_VALIDATION_RETRY_DELAY_MILLIS);
+							return;
+						}
 						if (isServerRejectedLicense(result)) {
 							cleanupAndOpenAuthApp(result);
 							return;
@@ -634,13 +642,8 @@ public class AndoWSignage extends Activity {
 							startPlaybackAfterLicenseValidated();
 							return;
 						}
-						if (shouldRetryLicenseHubValidation(result, attempt)) {
-							new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
-								@Override
-								public void run() {
-									runLicenseHubValidationAttempt(attempt + 1);
-								}
-							}, LICENSE_VALIDATION_RETRY_DELAY_MILLIS);
+						if (isAuthAppResponseTimeout(result)) {
+							closeAfterAuthFailure("인증 앱 응답 시간 초과로 라이선스를 확인하지 못했습니다.");
 							return;
 						}
 						cleanupAndOpenAuthApp(result);
@@ -653,8 +656,33 @@ public class AndoWSignage extends Activity {
 	private boolean isServerRejectedLicense(LicenseAuthManager.ValidationResult result) {
 		return result != null
 				&& !result.isValid()
-				&& result.isServerChecked()
-				&& !result.isUsedOfflineFallback();
+				&& (result.isServerChecked()
+				|| result.isLocalLicenseDiscarded()
+				|| hasInvalidLicenseSignal(result.getServerStatus())
+				|| hasInvalidLicenseSignal(result.getReason()));
+	}
+
+	private boolean hasInvalidLicenseSignal(String value) {
+		if (TextUtils.isEmpty(value)) {
+			return false;
+		}
+		String normalized = value.trim().toLowerCase(java.util.Locale.ROOT);
+		return normalized.contains("invalid")
+				|| normalized.contains("inactive")
+				|| normalized.contains("deactivate")
+				|| normalized.contains("expired")
+				|| normalized.contains("revok")
+				|| normalized.contains("delete")
+				|| normalized.contains("remove")
+				|| normalized.contains("not_found")
+				|| normalized.contains("not found")
+				|| normalized.contains("무효")
+				|| normalized.contains("유효하지")
+				|| normalized.contains("비활성")
+				|| normalized.contains("만료")
+				|| normalized.contains("폐기")
+				|| normalized.contains("삭제")
+				|| normalized.contains("제거");
 	}
 
 	private boolean shouldRetryLicenseHubValidation(LicenseAuthManager.ValidationResult result, int attempt) {
@@ -670,9 +698,18 @@ public class AndoWSignage extends Activity {
 			return false;
 		}
 		reason = reason.trim();
-		return "콜백 리시버 등록 실패".equals(reason)
-				|| "인증 앱 응답 시간 초과".equals(reason)
+		return "인증 앱 응답 시간 초과".equals(reason)
+				|| "콜백 리시버 등록 실패".equals(reason)
 				|| reason.startsWith("인증 앱 요청 실패:");
+	}
+
+	private boolean isAuthAppResponseTimeout(LicenseAuthManager.ValidationResult result) {
+		return result != null
+				&& !result.isValid()
+				&& TextUtils.isEmpty(result.getServerStatus())
+				&& !result.isServerChecked()
+				&& !result.isUsedOfflineFallback()
+				&& "인증 앱 응답 시간 초과".equals(result.getReason());
 	}
 
 	private boolean syncValidatedAuthData(LicenseAuthManager.ValidationResult result) {
@@ -705,6 +742,9 @@ public class AndoWSignage extends Activity {
 		if (result == null
 				|| result.isValid()
 				|| result.isServerChecked()
+				|| result.isLocalLicenseDiscarded()
+				|| hasInvalidLicenseSignal(result.getServerStatus())
+				|| hasInvalidLicenseSignal(result.getReason())
 				|| !result.isUsedOfflineFallback()) {
 			return false;
 		}
@@ -730,9 +770,7 @@ public class AndoWSignage extends Activity {
 				return false;
 			}
 
-			String currentFingerprint = LicenseHubAuthUtils.generateDeviceFingerprint(this);
-			return !TextUtils.isEmpty(currentFingerprint)
-					&& storedFingerprint.trim().equalsIgnoreCase(currentFingerprint.trim());
+			return !TextUtils.isEmpty(storedFingerprint.trim());
 		} catch (Exception ignored) {
 			return false;
 		}
