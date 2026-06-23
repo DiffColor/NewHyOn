@@ -1,0 +1,575 @@
+import {
+  clearPlayerSettings,
+  DEFAULT_PLAYER_SETTINGS,
+  loadPlayerSettings,
+  savePlayerSettings,
+  type PlayerSettings,
+} from './player-settings';
+import {
+  getDefaultWeeklySchedule,
+  loadWeeklySchedule,
+  saveWeeklySchedule,
+  type WeeklyDayCode,
+  type WeeklyScheduleRow,
+} from './weekly-schedule';
+import { clearRemoteManifest } from './update-payload';
+
+type SettingControl = HTMLInputElement | HTMLButtonElement;
+type KeypadAction = 'backspace' | 'clear' | 'space' | 'done' | 'cancel';
+type WeeklyScheduleField = 'startHour' | 'startMinute' | 'endHour' | 'endMinute';
+
+interface KeypadKey {
+  readonly label: string;
+  readonly value?: string;
+  readonly action?: KeypadAction;
+}
+
+interface SettingsOverlayOptions {
+  readonly onApply: (settings: PlayerSettings) => void;
+  readonly onClose?: () => void;
+  readonly onAuthenticate?: () => void;
+  readonly getAuthStatusText?: () => string;
+}
+
+const KEYPAD_COLUMNS = 10;
+const REMOTE_KEYPAD_KEYS: KeypadKey[] = [
+  ...'1234567890'.split('').map((value) => ({ label: value, value })),
+  ...'qwertyuiop'.split('').map((value) => ({ label: value, value })),
+  ...'asdfghjkl.'.split('').map((value) => ({ label: value, value })),
+  ...'zxcvbnm-_/'.split('').map((value) => ({ label: value, value })),
+  { label: ':', value: ':' },
+  { label: '?', value: '?' },
+  { label: '&', value: '&' },
+  { label: '=', value: '=' },
+  { label: '%', value: '%' },
+  { label: '#', value: '#' },
+  { label: '@', value: '@' },
+  { label: '지움', action: 'backspace' },
+  { label: '전체', action: 'clear' },
+  { label: '공백', action: 'space' },
+  { label: '완료', action: 'done' },
+  { label: '취소', action: 'cancel' },
+];
+
+function createRow(label: string, control: HTMLElement): HTMLLabelElement {
+  const row = document.createElement('label');
+  row.className = 'settings-row';
+  const text = document.createElement('span');
+  text.className = 'settings-row__label';
+  text.textContent = label;
+  row.append(text, control);
+  return row;
+}
+
+function createInput(name: keyof PlayerSettings, value: string, placeholder: string): HTMLInputElement {
+  const input = document.createElement('input');
+  input.className = 'settings-input';
+  input.dataset.settingControl = 'true';
+  input.dataset.settingName = name;
+  input.type = 'text';
+  input.value = value;
+  input.placeholder = placeholder;
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  return input;
+}
+
+function createToggle(name: keyof PlayerSettings, active: boolean): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.className = 'settings-toggle';
+  button.dataset.settingControl = 'true';
+  button.dataset.settingName = name;
+  button.type = 'button';
+  button.setAttribute('aria-pressed', String(active));
+  button.textContent = active ? 'ON' : 'OFF';
+  return button;
+}
+
+function createAction(action: string, text: string): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.className = 'settings-action';
+  button.dataset.settingControl = 'true';
+  button.dataset.settingAction = action;
+  button.type = 'button';
+  button.textContent = text;
+  return button;
+}
+
+function createScheduleInput(dayCode: WeeklyDayCode, field: WeeklyScheduleField, value: number): HTMLInputElement {
+  const input = document.createElement('input');
+  input.className = 'settings-input settings-input--time';
+  input.dataset.settingControl = 'true';
+  input.dataset.scheduleDay = dayCode;
+  input.dataset.scheduleField = field;
+  input.inputMode = 'numeric';
+  input.type = 'text';
+  input.value = String(value).padStart(2, '0');
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  return input;
+}
+
+function createScheduleDayButton(row: WeeklyScheduleRow): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.className = 'weekly-settings__day';
+  button.dataset.settingControl = 'true';
+  button.dataset.scheduleDay = row.dayCode;
+  button.dataset.scheduleField = 'isOnAir';
+  button.type = 'button';
+  button.setAttribute('aria-pressed', String(row.isOnAir));
+  button.setAttribute('aria-label', `${row.dayLabel} 방송 ${row.isOnAir ? '켜짐' : '꺼짐'}`);
+  button.textContent = row.dayLabel;
+  return button;
+}
+
+export class SettingsOverlay {
+  private readonly root = document.createElement('aside');
+  private readonly controls: SettingControl[] = [];
+  private readonly keypadButtons: HTMLButtonElement[] = [];
+  private keypadRoot: HTMLElement | null = null;
+  private keypadPreview: HTMLElement | null = null;
+  private keypadInput: HTMLInputElement | null = null;
+  private openState = false;
+
+  constructor(private readonly options: SettingsOverlayOptions) {
+    this.root.className = 'settings-overlay settings-overlay--hidden';
+    this.root.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(this.root);
+    this.render(loadPlayerSettings());
+  }
+
+  get isOpen(): boolean {
+    return this.openState;
+  }
+
+  open(): void {
+    this.render(loadPlayerSettings());
+    this.root.classList.remove('settings-overlay--hidden');
+    this.root.setAttribute('aria-hidden', 'false');
+    this.openState = true;
+    this.focusControl(0);
+  }
+
+  close(): void {
+    this.closeKeypad();
+    this.root.classList.add('settings-overlay--hidden');
+    this.root.setAttribute('aria-hidden', 'true');
+    this.openState = false;
+    this.options.onClose?.();
+  }
+
+  handleKeyDown(event: KeyboardEvent): boolean {
+    if (!this.openState) {
+      return false;
+    }
+
+    if (this.keypadRoot) {
+      return this.handleKeypadKeyDown(event);
+    }
+
+    if (
+      event.key === 'Back'
+      || event.key === 'BrowserBack'
+      || event.key === 'Escape'
+      || event.key === 'Return'
+      || event.key === 'GoBack'
+      || event.key === 'Exit'
+      || event.keyCode === 10009
+      || event.keyCode === 10182
+    ) {
+      event.preventDefault();
+      this.close();
+      return true;
+    }
+
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      this.focusRelative(1);
+      return true;
+    }
+
+    if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+      event.preventDefault();
+      this.focusRelative(-1);
+      return true;
+    }
+
+    if (event.key === 'Enter') {
+      const active = document.activeElement;
+      if (active instanceof HTMLInputElement && active.dataset.settingControl === 'true') {
+        event.preventDefault();
+        this.openKeypad(active);
+        return true;
+      }
+
+      if (active instanceof HTMLButtonElement && active.dataset.settingControl === 'true') {
+        event.preventDefault();
+        this.activateButton(active);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private render(settings: PlayerSettings): void {
+    this.root.textContent = '';
+    this.controls.splice(0);
+
+    const panel = document.createElement('section');
+    panel.className = 'settings-panel';
+
+    const title = document.createElement('h2');
+    title.className = 'settings-title';
+    title.textContent = '기기 설정';
+
+    const playerIdInput = createInput('playerId', settings.playerId, 'PLAYER-01');
+    const managerInput = createInput('managerAddress', settings.managerAddress, '10.0.0.10 또는 10.0.0.10:8181');
+    const aspectToggle = createToggle('preserveAspectRatio', settings.preserveAspectRatio);
+    const switchOnEndToggle = createToggle('switchOnContentEnd', settings.switchOnContentEnd);
+    const authStatus = document.createElement('div');
+    authStatus.className = 'settings-status';
+    authStatus.textContent = this.options.getAuthStatusText?.() ?? '인증 상태 : 미확인';
+
+    const actionBar = document.createElement('div');
+    actionBar.className = 'settings-actions';
+    actionBar.append(createAction('apply', '적용'), createAction('reset', '초기화'), createAction('close', '닫기'));
+    if (this.options.onAuthenticate) {
+      actionBar.append(createAction('auth', '인증'));
+    }
+
+    panel.append(
+      title,
+      authStatus,
+      createRow('기기 이름', playerIdInput),
+      createRow('데이터서버', managerInput),
+      createRow('화면 비율 유지', aspectToggle),
+      createRow('콘텐츠 종료 시 전환', switchOnEndToggle),
+      actionBar,
+      this.createWeeklySchedulePanel(loadWeeklySchedule()),
+    );
+    this.root.appendChild(panel);
+
+    this.controls.push(
+      ...Array.from(this.root.querySelectorAll<SettingControl>('[data-setting-control="true"]')),
+    );
+  }
+
+  private focusControl(index: number): void {
+    const control = this.controls[index];
+    if (!control) {
+      return;
+    }
+
+    control.focus();
+    if (control instanceof HTMLInputElement) {
+      control.select();
+    }
+  }
+
+  private focusRelative(offset: number): void {
+    const activeIndex = this.controls.findIndex((control) => control === document.activeElement);
+    const nextIndex = activeIndex < 0 ? 0 : (activeIndex + offset + this.controls.length) % this.controls.length;
+    this.focusControl(nextIndex);
+  }
+
+  private openKeypad(input: HTMLInputElement): void {
+    this.closeKeypad();
+    this.keypadInput = input;
+
+    const keypad = document.createElement('section');
+    keypad.className = 'remote-keypad';
+
+    const title = document.createElement('h3');
+    title.className = 'remote-keypad__title';
+    title.textContent = `${this.labelForInput(input)} 입력`;
+
+    const preview = document.createElement('div');
+    preview.className = 'remote-keypad__preview';
+    preview.textContent = input.value || input.placeholder;
+    this.keypadPreview = preview;
+
+    const grid = document.createElement('div');
+    grid.className = 'remote-keypad__grid';
+
+    this.keypadButtons.splice(0);
+    REMOTE_KEYPAD_KEYS.forEach((key) => {
+      const button = document.createElement('button');
+      button.className = 'remote-keypad__key';
+      button.type = 'button';
+      button.textContent = key.label;
+      if (key.value !== undefined) {
+        button.dataset.keypadValue = key.value;
+      }
+      if (key.action) {
+        button.dataset.keypadAction = key.action;
+      }
+      grid.appendChild(button);
+      this.keypadButtons.push(button);
+    });
+
+    keypad.append(title, preview, grid);
+    this.root.appendChild(keypad);
+    this.keypadRoot = keypad;
+    this.focusKeypadButton(0);
+  }
+
+  private labelForInput(input: HTMLInputElement): string {
+    const row = input.closest('.settings-row');
+    return row?.querySelector('.settings-row__label')?.textContent ?? '값';
+  }
+
+  private closeKeypad(): void {
+    this.keypadRoot?.remove();
+    this.keypadRoot = null;
+    this.keypadPreview = null;
+    const input = this.keypadInput;
+    this.keypadInput = null;
+    this.keypadButtons.splice(0);
+    input?.focus();
+    input?.select();
+  }
+
+  private handleKeypadKeyDown(event: KeyboardEvent): boolean {
+    if (
+      event.key === 'Back'
+      || event.key === 'BrowserBack'
+      || event.key === 'Escape'
+      || event.key === 'Return'
+      || event.key === 'GoBack'
+      || event.key === 'Exit'
+      || event.keyCode === 10009
+      || event.keyCode === 10182
+    ) {
+      event.preventDefault();
+      this.closeKeypad();
+      return true;
+    }
+
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      this.focusRelativeKeypadButton(1);
+      return true;
+    }
+
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      this.focusRelativeKeypadButton(-1);
+      return true;
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      this.focusRelativeKeypadButton(KEYPAD_COLUMNS);
+      return true;
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      this.focusRelativeKeypadButton(-KEYPAD_COLUMNS);
+      return true;
+    }
+
+    if (event.key === 'Enter') {
+      const active = document.activeElement;
+      if (active instanceof HTMLButtonElement && active.classList.contains('remote-keypad__key')) {
+        event.preventDefault();
+        this.activateKeypadButton(active);
+        return true;
+      }
+    }
+
+    return true;
+  }
+
+  private focusKeypadButton(index: number): void {
+    const normalizedIndex = Math.min(Math.max(0, index), this.keypadButtons.length - 1);
+    this.keypadButtons[normalizedIndex]?.focus();
+  }
+
+  private focusRelativeKeypadButton(offset: number): void {
+    const activeIndex = this.keypadButtons.findIndex((button) => button === document.activeElement);
+    const nextIndex = activeIndex < 0 ? 0 : Math.min(Math.max(0, activeIndex + offset), this.keypadButtons.length - 1);
+    this.focusKeypadButton(nextIndex);
+  }
+
+  private activateKeypadButton(button: HTMLButtonElement): void {
+    const input = this.keypadInput;
+    if (!input) {
+      return;
+    }
+
+    const value = button.dataset.keypadValue;
+    if (value !== undefined) {
+      input.value += value;
+      this.updateKeypadPreview();
+      return;
+    }
+
+    const action = button.dataset.keypadAction as KeypadAction | undefined;
+    if (action === 'backspace') {
+      input.value = input.value.slice(0, -1);
+      this.updateKeypadPreview();
+      return;
+    }
+
+    if (action === 'clear') {
+      input.value = '';
+      this.updateKeypadPreview();
+      return;
+    }
+
+    if (action === 'space') {
+      input.value += ' ';
+      this.updateKeypadPreview();
+      return;
+    }
+
+    if (action === 'done' || action === 'cancel') {
+      this.closeKeypad();
+    }
+  }
+
+  private updateKeypadPreview(): void {
+    if (!this.keypadPreview || !this.keypadInput) {
+      return;
+    }
+
+    this.keypadPreview.textContent = this.keypadInput.value || this.keypadInput.placeholder;
+  }
+
+  private activateButton(button: HTMLButtonElement): void {
+    const settingName = button.dataset.settingName;
+    if (
+      settingName === 'preserveAspectRatio'
+      || settingName === 'switchOnContentEnd'
+    ) {
+      const nextValue = button.getAttribute('aria-pressed') !== 'true';
+      button.setAttribute('aria-pressed', String(nextValue));
+      button.textContent = nextValue ? 'ON' : 'OFF';
+      return;
+    }
+
+    if (button.dataset.scheduleField === 'isOnAir') {
+      const nextValue = button.getAttribute('aria-pressed') !== 'true';
+      button.setAttribute('aria-pressed', String(nextValue));
+      button.setAttribute('aria-label', `${button.textContent ?? '요일'} 방송 ${nextValue ? '켜짐' : '꺼짐'}`);
+      return;
+    }
+
+    const action = button.dataset.settingAction;
+    if (action === 'apply') {
+      const settings = this.collectSettings();
+      savePlayerSettings(settings);
+      saveWeeklySchedule(this.collectWeeklySchedule());
+      this.options.onApply(settings);
+      return;
+    }
+
+    if (action === 'reset') {
+      clearPlayerSettings();
+      clearRemoteManifest();
+      saveWeeklySchedule(getDefaultWeeklySchedule());
+      this.render(DEFAULT_PLAYER_SETTINGS);
+      this.focusControl(0);
+      return;
+    }
+
+    if (action === 'close') {
+      this.close();
+      return;
+    }
+
+    if (action === 'auth') {
+      this.close();
+      this.options.onAuthenticate?.();
+    }
+  }
+
+  private collectSettings(): PlayerSettings {
+    const current = loadPlayerSettings();
+    const playerId = this.root.querySelector<HTMLInputElement>('[data-setting-name="playerId"]')?.value.trim() ?? '';
+    const managerAddress = this.root.querySelector<HTMLInputElement>('[data-setting-name="managerAddress"]')?.value.trim() ?? '';
+    const preserveAspectRatio =
+      this.root.querySelector<HTMLButtonElement>('[data-setting-name="preserveAspectRatio"]')?.getAttribute('aria-pressed') === 'true';
+    const switchOnContentEnd =
+      this.root.querySelector<HTMLButtonElement>('[data-setting-name="switchOnContentEnd"]')?.getAttribute('aria-pressed') === 'true';
+
+    return {
+      ...current,
+      playerId,
+      managerAddress,
+      preserveAspectRatio,
+      switchOnContentEnd,
+    };
+  }
+
+  private createWeeklySchedulePanel(rows: readonly WeeklyScheduleRow[]): HTMLElement {
+    const section = document.createElement('section');
+    section.className = 'weekly-settings';
+
+    const title = document.createElement('h3');
+    title.className = 'weekly-settings__title';
+    title.textContent = '주간 스케줄';
+
+    const grid = document.createElement('div');
+    grid.className = 'weekly-settings__grid';
+    ['요일', '시작', '종료'].forEach((label) => {
+      const header = document.createElement('span');
+      header.className = 'weekly-settings__header';
+      header.textContent = label;
+      grid.appendChild(header);
+    });
+
+    rows.forEach((row) => {
+      const start = document.createElement('div');
+      start.className = 'weekly-settings__time';
+      start.append(
+        createScheduleInput(row.dayCode, 'startHour', row.startHour),
+        createScheduleInput(row.dayCode, 'startMinute', row.startMinute),
+      );
+
+      const end = document.createElement('div');
+      end.className = 'weekly-settings__time';
+      end.append(
+        createScheduleInput(row.dayCode, 'endHour', row.endHour),
+        createScheduleInput(row.dayCode, 'endMinute', row.endMinute),
+      );
+
+      grid.append(createScheduleDayButton(row), start, end);
+    });
+
+    section.append(title, grid);
+    return section;
+  }
+
+  private collectWeeklySchedule(): WeeklyScheduleRow[] {
+    return getDefaultWeeklySchedule().map((defaultRow) => {
+      const isOnAir =
+        this.root.querySelector<HTMLButtonElement>(
+          `[data-schedule-day="${defaultRow.dayCode}"][data-schedule-field="isOnAir"]`,
+        )?.getAttribute('aria-pressed') === 'true';
+
+      return {
+        ...defaultRow,
+        isOnAir,
+        startHour: this.readScheduleTime(defaultRow.dayCode, 'startHour', 23),
+        startMinute: this.readScheduleTime(defaultRow.dayCode, 'startMinute', 59),
+        endHour: this.readScheduleTime(defaultRow.dayCode, 'endHour', 23),
+        endMinute: this.readScheduleTime(defaultRow.dayCode, 'endMinute', 59),
+      };
+    });
+  }
+
+  private readScheduleTime(dayCode: WeeklyDayCode, field: WeeklyScheduleField, max: number): number {
+    const raw = this.root.querySelector<HTMLInputElement>(
+      `[data-schedule-day="${dayCode}"][data-schedule-field="${field}"]`,
+    )?.value ?? '';
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed)) {
+      return 0;
+    }
+
+    return Math.min(Math.max(0, Math.round(parsed)), max);
+  }
+}

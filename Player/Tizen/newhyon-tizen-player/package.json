@@ -1,0 +1,30 @@
+{
+  "name": "newhyon-tizen-player",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "build": "vite build && node scripts/postbuild.mjs",
+    "package:wgt": "npm run build && bash scripts/package-clean.sh",
+    "verify": "npm run typecheck && npm run test && npm run build"
+  },
+  "dependencies": {
+    "@horizon/client": "2.0.0",
+    "@noble/hashes": "^2.2.0",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "@types/qrcode": "^1.5.6",
+    "jsdom": "^27.3.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.7",
+    "vitest": "^4.1.9"
+  },
+  "overrides": {
+    "esbuild": "^0.28.1",
+    "ws": "^8.18.3"
+  }
+}

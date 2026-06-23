@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NewHyOn Tizen Player</title>
+    <script type="text/javascript" src="$WEBAPIS/webapis/webapis.js"></script>
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <main id="stage" class="stage" aria-label="NewHyOn signage playback stage"></main>
+      <aside id="broadcast-standby" class="broadcast-standby broadcast-standby--hidden" aria-hidden="true"></aside>
+      <aside id="loading-overlay" class="loading-overlay loading-overlay--startup">
+        <div class="loading-text">
+          <strong id="loading-title">플레이어 준비 중</strong>
+          <span id="loading-message">시스템을 초기화합니다.</span>
+        </div>
+        <ol class="loading-stepper" aria-label="플레이어 준비 단계">
+          <li class="loading-step loading-step--pending">
+            <span class="loading-step__marker" aria-hidden="true"></span>
+            <span class="loading-step__label">서버 확인</span>
+            <span id="loading-db-status" class="loading-step__status">대기</span>
+          </li>
+          <li class="loading-step loading-step--pending">
+            <span class="loading-step__marker" aria-hidden="true"></span>
+            <span class="loading-step__label">실시간 연결</span>
+            <span id="loading-signalr-status" class="loading-step__status">대기</span>
+          </li>
+          <li class="loading-step loading-step--pending">
+            <span class="loading-step__marker" aria-hidden="true"></span>
+            <span class="loading-step__label">콘텐츠 저장소</span>
+            <span id="loading-ftp-status" class="loading-step__status">대기</span>
+          </li>
+          <li class="loading-step loading-step--pending">
+            <span class="loading-step__marker" aria-hidden="true"></span>
+            <span class="loading-step__label">기기 인증</span>
+            <span id="loading-auth-status" class="loading-step__status">대기</span>
+          </li>
+        </ol>
+      </aside>
+      <aside id="debug-hud" class="debug-hud debug-hud--hidden">
+        <div class="debug-hud__header">
+          <h1>NewHyOn Tizen Player</h1>
+          <p id="hud-subtitle">Windows player model compatible playback</p>
+        </div>
+        <dl class="status-grid">
+          <div>
+            <dt>상태</dt>
+            <dd id="status-state">booting</dd>
+          </div>
+          <div>
+            <dt>플레이리스트</dt>
+            <dd id="status-playlist">-</dd>
+          </div>
+          <div>
+            <dt>페이지</dt>
+            <dd id="status-page">-</dd>
+          </div>
+          <div>
+            <dt>경과</dt>
+            <dd id="status-elapsed">0.0s</dd>
+          </div>
+          <div class="status-grid__full">
+            <dt>업데이트</dt>
+            <dd id="status-update">대기</dd>
+          </div>
+          <div>
+            <dt>마지막 키</dt>
+            <dd id="status-last-key">-</dd>
+          </div>
+          <div>
+            <dt>마지막 액션</dt>
+            <dd id="status-last-action">-</dd>
+          </div>
+          <div class="status-grid__full">
+            <dt>플랫폼 API</dt>
+            <dd id="status-platform">-</dd>
+          </div>
+          <div class="status-grid__full">
+            <dt>통신</dt>
+            <dd id="status-communication">DB: - / SignalR: - / FTP: -</dd>
+          </div>
+          <div class="status-grid__full">
+            <dt>인증</dt>
+            <dd id="status-auth">LicenseHub: -</dd>
+          </div>
+          <div class="status-grid__full">
+            <dt>슬롯</dt>
+            <dd id="status-slots">-</dd>
+          </div>
+          <div class="status-grid__full">
+            <dt>메시지</dt>
+            <dd id="status-message">플레이어를 준비합니다.</dd>
+          </div>
+        </dl>
+        <pre id="log-output" class="log-output"></pre>
+      </aside>
+    </div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

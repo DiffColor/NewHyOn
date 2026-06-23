@@ -1,0 +1,999 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { NewHyOnPlayerApp } from '../src/app/newhyon-player-app';
+import { DEFAULT_PLAYER_SETTINGS } from '../src/app/player-settings';
+import { loadRemoteManifest } from '../src/app/update-payload';
+import { getDefaultWeeklySchedule, saveWeeklySchedule } from '../src/app/weekly-schedule';
+import type { PlayerManifest } from '../src/domain/models';
+
+function renderAppShell(): void {
+  document.body.innerHTML = `
+    <main id="stage"></main>
+    <aside id="broadcast-standby" class="broadcast-standby--hidden" aria-hidden="true"></aside>
+    <aside id="loading-overlay">
+      <strong id="loading-title"></strong>
+      <span id="loading-message"></span>
+      <dd id="loading-db-status"></dd>
+      <dd id="loading-signalr-status"></dd>
+      <dd id="loading-ftp-status"></dd>
+      <dd id="loading-auth-status"></dd>
+    </aside>
+    <aside id="debug-hud" class="debug-hud--hidden">
+      <dd id="status-state"></dd>
+      <dd id="status-playlist"></dd>
+      <dd id="status-page"></dd>
+      <dd id="status-elapsed"></dd>
+      <dd id="status-last-key"></dd>
+      <dd id="status-last-action"></dd>
+      <dd id="status-platform"></dd>
+      <dd id="status-communication"></dd>
+      <dd id="status-auth"></dd>
+      <dd id="status-update"></dd>
+      <dd id="status-slots"></dd>
+      <dd id="status-message"></dd>
+      <pre id="log-output"></pre>
+    </aside>
+  `;
+}
+
+function createPlayer(play: () => void): AVPlayApi {
+  let listener: AVPlayListener | null = null;
+  return {
+    open: vi.fn(),
+    prepare: vi.fn(),
+    prepareAsync: vi.fn((successCallback: () => void) => successCallback()),
+    play: vi.fn(() => {
+      play();
+      listener?.oncurrentplaytime?.(0);
+    }),
+    pause: vi.fn(),
+    stop: vi.fn(),
+    close: vi.fn(),
+    setListener: vi.fn((nextListener) => {
+      listener = nextListener;
+    }),
+    setDisplayRect: vi.fn(),
+    setDisplayMethod: vi.fn(),
+    setVideoStillMode: vi.fn(),
+    setTimeoutForBuffering: vi.fn(),
+    setLooping: vi.fn(),
+    getState: vi.fn(() => 'IDLE'),
+  };
+}
+
+function createWebApis(
+  avplay: AVPlayApi,
+  setPanelMute = vi.fn(),
+  avplaystore: AVPlayStoreManager | null | undefined = { getPlayer: () => avplay },
+): WebApisGlobal {
+  let panelMute: 'ON' | 'OFF' = 'OFF';
+  let messageDisplay: 'ON' | 'OFF' = 'ON';
+  let remoteConfiguration: 'ON' | 'OFF' = 'OFF';
+
+  return {
+    avplay,
+    avplaystore: avplaystore ?? undefined,
+    systemcontrol: {
+      setPanelMute: (state) => {
+        panelMute = state;
+        setPanelMute(state);
+      },
+      getPanelMute: () => panelMute,
+      setMessageDisplay: (state) => {
+        messageDisplay = state;
+      },
+      getMessageDisplay: () => messageDisplay,
+      rebootDevice: vi.fn(),
+    },
+    remotepower: {
+      powerOff: vi.fn(),
+      setRemoteConfiguration: (state) => {
+        remoteConfiguration = state;
+      },
+      getRemoteConfiguration: () => remoteConfiguration,
+    },
+  };
+}
+
+function createManifest(): PlayerManifest {
+  return {
+    playlistName: 'playlist',
+    preserveAspectRatio: false,
+    pages: [
+      {
+        PIC_PageName: 'page',
+        PIC_PlaytimeSecond: 10,
+        PIC_CanvasWidth: 1920,
+        PIC_CanvasHeight: 1080,
+        PIC_Elements: [
+          {
+            EIF_Name: 'video',
+            EIF_Type: 'Media',
+            EIF_Width: 1920,
+            EIF_Height: 1080,
+            EIF_PosLeft: 0,
+            EIF_PosTop: 0,
+            EIF_IsMuted: true,
+            EIF_ContentsInfoClassList: [
+              {
+                CIF_FileName: 'video.mp4',
+                CIF_FileFullPath: 'https://example.com/video.mp4',
+                CIF_ContentType: 'Video',
+                CIF_PlayMinute: '00',
+                CIF_PlaySec: '10',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function createSinglePageImageManifest(): PlayerManifest {
+  return {
+    playlistName: 'playlist',
+    preserveAspectRatio: false,
+    pages: [
+      {
+        PIC_PageName: 'image-page',
+        PIC_PlaytimeSecond: 10,
+        PIC_CanvasWidth: 1920,
+        PIC_CanvasHeight: 1080,
+        PIC_Elements: [
+          {
+            EIF_Name: 'images',
+            EIF_Type: 'Media',
+            EIF_Width: 1920,
+            EIF_Height: 1080,
+            EIF_PosLeft: 0,
+            EIF_PosTop: 0,
+            EIF_IsMuted: true,
+            EIF_ContentsInfoClassList: [
+              {
+                CIF_FileName: 'first.png',
+                CIF_FileFullPath: 'https://example.com/first.png',
+                CIF_ContentType: 'Image',
+                CIF_PlayMinute: '00',
+                CIF_PlaySec: '03',
+              },
+              {
+                CIF_FileName: 'second.png',
+                CIF_FileFullPath: 'https://example.com/second.png',
+                CIF_ContentType: 'Image',
+                CIF_PlayMinute: '00',
+                CIF_PlaySec: '03',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+describe('NewHyOnPlayerApp', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+    window.localStorage.clear();
+  });
+
+  beforeEach(() => {
+    renderAppShell();
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => undefined);
+    window.webapis = createWebApis(createPlayer(() => undefined));
+    window.tizen = undefined;
+  });
+
+  it('재생 가능한 콘텐츠가 없으면 Android 인트로 영상을 재생한다', async () => {
+    const open = vi.fn();
+    const avplayPlay = vi.fn();
+    window.webapis = createWebApis({
+      ...createPlayer(avplayPlay),
+      open,
+    });
+
+    const app = new NewHyOnPlayerApp({
+      manifest: {
+        playlistName: 'empty',
+        preserveAspectRatio: false,
+        pages: [],
+      },
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('Android Intro');
+    const introVideo = document.querySelector<HTMLVideoElement>('.empty-intro-video');
+    expect(introVideo).not.toBeNull();
+    expect(introVideo?.getAttribute('src')).toBe('media/intro.mp4');
+    expect(introVideo?.loop).toBe(true);
+    expect(introVideo?.muted).toBe(true);
+    expect(open).not.toHaveBeenCalled();
+    expect(avplayPlay).not.toHaveBeenCalled();
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
+    app.destroy();
+  });
+
+  it('콘텐츠 없음 인트로 영상은 HTML video loop로 같은 요소를 계속 재생한다', async () => {
+    vi.useFakeTimers();
+    const open = vi.fn();
+    const avplayPlay = vi.fn();
+    window.webapis = createWebApis({
+      ...createPlayer(avplayPlay),
+      open,
+    });
+
+    const app = new NewHyOnPlayerApp({
+      manifest: {
+        playlistName: 'empty',
+        preserveAspectRatio: false,
+        pages: [],
+      },
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+    const introVideo = document.querySelector<HTMLVideoElement>('.empty-intro-video');
+    expect(introVideo).not.toBeNull();
+    expect(introVideo?.loop).toBe(true);
+    expect(open).not.toHaveBeenCalled();
+    expect(avplayPlay).not.toHaveBeenCalled();
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(15000);
+    await Promise.resolve();
+
+    expect(document.querySelector('.empty-intro-video')).toBe(introVideo);
+    expect(open).not.toHaveBeenCalled();
+    expect(avplayPlay).not.toHaveBeenCalled();
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
+    app.destroy();
+  });
+
+  it('정지 후 Play/Pause를 누르면 현재 페이지를 다시 시작한다', async () => {
+    vi.useFakeTimers();
+    const play = vi.fn();
+    window.webapis = createWebApis(createPlayer(play));
+
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+    expect(play).toHaveBeenCalledTimes(1);
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'MediaStop' }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'MediaPlayPause' }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(document.querySelector('#status-message')?.textContent).toBe('페이지 재생: page');
+    app.destroy();
+  });
+
+  it('일시정지 상태의 HUD 경과 시간을 멈춘 시점으로 유지한다', async () => {
+    vi.useFakeTimers();
+    window.webapis = createWebApis(createPlayer(() => undefined));
+
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+    await vi.advanceTimersByTimeAsync(3500);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'MediaPlayPause' }));
+
+    expect(document.querySelector('#status-state')?.textContent).toBe('paused');
+    expect(document.querySelector('#status-elapsed')?.textContent).toBe('3.5s / 10s');
+    app.destroy();
+  });
+
+  it('단일 페이지 만료 시 현재 페이지를 다시 만들지 않고 루프를 유지한다', async () => {
+    vi.useFakeTimers();
+    const play = vi.fn();
+    const stop = vi.fn();
+    const close = vi.fn();
+    window.webapis = createWebApis({
+      ...createPlayer(play),
+      stop,
+      close,
+    });
+
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+    expect(play).toHaveBeenCalledTimes(1);
+    stop.mockClear();
+    close.mockClear();
+
+    await vi.advanceTimersByTimeAsync(10000);
+    await Promise.resolve();
+
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(stop).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+    app.destroy();
+  });
+
+  it('단일 페이지의 다중 이미지 슬롯은 콘텐츠만 전환하고 페이지 DOM은 재생성하지 않는다', async () => {
+    vi.useFakeTimers();
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      configurable: true,
+      get() {
+        return this.getAttribute('src') ?? '';
+      },
+      set(value: string) {
+        this.setAttribute('src', value);
+        queueMicrotask(() => this.onload?.(new Event('load')));
+      },
+    });
+
+    try {
+      const app = new NewHyOnPlayerApp({
+        manifest: createSinglePageImageManifest(),
+        settings: {
+          ...DEFAULT_PLAYER_SETTINGS,
+          playerId: '',
+          managerAddress: '',
+          manifestUrl: '',
+          preserveAspectRatio: false,
+          switchOnContentEnd: false,
+          hudInitiallyVisible: false,
+        },
+        hudInitiallyVisible: false,
+      });
+
+      const startPromise = app.start();
+      await vi.runAllTicks();
+      await vi.advanceTimersByTimeAsync(32);
+      await startPromise;
+      const slotElement = document.querySelector('.slot');
+      expect(slotElement).not.toBeNull();
+      expect(window.NEWHYON_PLAYER_HEALTH?.diagnostics).toMatchObject({
+        pageStartCount: 1,
+        contentShowCount: 1,
+        lastContent: 'slot 1: first.png',
+      });
+
+      await vi.advanceTimersByTimeAsync(3000);
+      await vi.runAllTicks();
+      await vi.advanceTimersByTimeAsync(32);
+      expect(window.NEWHYON_PLAYER_HEALTH?.diagnostics).toMatchObject({
+        pageStartCount: 1,
+        contentShowCount: 2,
+        lastContent: 'slot 1: second.png',
+      });
+
+      await vi.advanceTimersByTimeAsync(7000);
+      await vi.runAllTicks();
+      await vi.advanceTimersByTimeAsync(96);
+      expect(document.querySelector('.slot')).toBe(slotElement);
+      expect(window.NEWHYON_PLAYER_HEALTH?.diagnostics.pageStartCount).toBe(1);
+      expect(window.NEWHYON_PLAYER_HEALTH?.diagnostics.contentShowCount).toBeGreaterThan(2);
+      app.destroy();
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
+      }
+    }
+  });
+
+  it('방송시간 전에는 검은 대기 상태를 유지하고 시작 시간이 되면 재생한다', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 22, 8, 59, 30));
+    const rows = getDefaultWeeklySchedule();
+    rows[0] = {
+      ...rows[0]!,
+      isOnAir: true,
+      startHour: 9,
+      startMinute: 0,
+      endHour: 18,
+      endMinute: 0,
+    };
+    saveWeeklySchedule(rows);
+    const play = vi.fn();
+    const setPanelMute = vi.fn();
+    window.webapis = createWebApis(createPlayer(play), setPanelMute);
+
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+
+    expect(play).not.toHaveBeenCalled();
+    expect(setPanelMute).toHaveBeenCalledWith('ON');
+    expect(document.querySelector('#status-state')?.textContent).toBe('off-air');
+    expect(document.querySelector('#broadcast-standby')?.classList.contains('broadcast-standby--hidden')).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(30100);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(setPanelMute).toHaveBeenLastCalledWith('OFF');
+    expect(document.querySelector('#status-state')?.textContent).toBe('playing');
+    expect(document.querySelector('#broadcast-standby')?.classList.contains('broadcast-standby--hidden')).toBe(true);
+    app.destroy();
+  });
+
+  it('updatelist 다운로드 중에는 기존 콘텐츠를 유지하고 완료 후 새 콘텐츠를 적용한다', async () => {
+    vi.useFakeTimers();
+    const play = vi.fn();
+    const getPlayer = vi.fn(() => createPlayer(play));
+    window.webapis = createWebApis(createPlayer(play), vi.fn(), { getPlayer });
+
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+    await app.start();
+    expect(document.querySelector('#loading-overlay')?.classList.contains('loading-overlay--hidden')).toBe(true);
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
+
+    const downloadCallbacks: DownloadCallback[] = [];
+    window.tizen = {
+      filesystem: {
+        toURI: (path) => `file:///opt/usr/home/owner/content/${path}`,
+        pathExists: (path) => path === 'downloads/updated.mp4',
+      },
+      DownloadRequest: vi.fn(function DownloadRequest(
+        this: DownloadRequest,
+        url: string,
+        destination?: string | null,
+        fileName?: string | null,
+        networkType?: 'CELLULAR' | 'WIFI' | 'ALL' | null,
+      ) {
+        this.url = url;
+        this.destination = destination;
+        this.fileName = fileName;
+        this.networkType = networkType;
+      }) as unknown as DownloadRequestConstructor,
+      download: {
+        start: vi.fn((_request, callback) => {
+          if (callback) {
+            downloadCallbacks.push(callback);
+          }
+          return 1;
+        }),
+      },
+    };
+
+    const updatePayload = {
+      PageList: { PLI_PageListName: 'updated-list' },
+      Pages: [
+        {
+          PIC_PageName: 'updated-page',
+          PIC_PlaytimeSecond: 10,
+          PIC_CanvasWidth: 1920,
+          PIC_CanvasHeight: 1080,
+          PIC_Elements: [
+            {
+              EIF_Name: 'updated-video',
+              EIF_Type: 'Media',
+              EIF_Width: 1920,
+              EIF_Height: 1080,
+              EIF_PosLeft: 0,
+              EIF_PosTop: 0,
+              EIF_IsMuted: true,
+              EIF_ContentsInfoClassList: [
+                {
+                  CIF_FileName: 'updated.mp4',
+                  CIF_FileFullPath: 'https://cdn.example.com/updated.mp4',
+                  CIF_ContentType: 'Video',
+                  CIF_PlayMinute: '00',
+                  CIF_PlaySec: '10',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const updatePromise = (app as unknown as {
+      applyUpdateListCommand(
+        payload: typeof updatePayload,
+        urgent: boolean,
+        commandId: string | null,
+      ): Promise<unknown>;
+    }).applyUpdateListCommand(updatePayload, true, 'cmd-1');
+    await Promise.resolve();
+
+    expect(window.tizen.download?.start).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('#loading-overlay')?.classList.contains('loading-overlay--hidden')).toBe(true);
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
+    expect(document.querySelector('#status-update')?.textContent).toContain('다운로드 중');
+    expect(document.querySelector('#status-update')?.textContent).toContain('0%');
+    expect(document.querySelector('#status-update')?.textContent).toContain('updated-list');
+    expect(play).toHaveBeenCalledTimes(1);
+
+    expect(downloadCallbacks).toHaveLength(1);
+    downloadCallbacks[0]!.oncompleted?.(1, 'downloads/updated.mp4');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
+    expect(document.querySelectorAll('.slot')).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(32);
+    await updatePromise;
+
+    expect(document.querySelector('#loading-overlay')?.classList.contains('loading-overlay--hidden')).toBe(true);
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('updated-list');
+    expect(document.querySelector('#status-page')?.textContent).toContain('updated-page');
+    expect(document.querySelector('#status-update')?.textContent).toContain('완료');
+    expect(document.querySelector('#status-update')?.textContent).toContain('100%');
+    expect(window.NEWHYON_PLAYER_HEALTH?.diagnostics.updateProgress).toBe(100);
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(getPlayer).toHaveBeenCalledTimes(4);
+    expect(loadRemoteManifest()?.playlistName).toBe('updated-list');
+    app.destroy();
+  });
+
+  it('심리스 전환 준비에 필요한 추가 AVPlay 세션이 없으면 기존 콘텐츠를 유지하고 업데이트를 실패 처리한다', async () => {
+    vi.useFakeTimers();
+    const play = vi.fn();
+    const initialPlayers = [createPlayer(play), createPlayer(play)];
+    const getPlayer = vi.fn(() => initialPlayers.shift() as AVPlayApi);
+    window.webapis = createWebApis(createPlayer(play), vi.fn(), { getPlayer });
+
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+    await app.start();
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
+    expect(play).toHaveBeenCalledTimes(1);
+
+    window.tizen = {
+      filesystem: {
+        toURI: (path) => `file:///opt/usr/home/owner/content/${path}`,
+        pathExists: (path) => path === 'downloads/updated.mp4',
+      },
+    };
+
+    const updatePayload = {
+      PageList: { PLI_PageListName: 'updated-list' },
+      Pages: [
+        {
+          PIC_PageName: 'updated-page',
+          PIC_PlaytimeSecond: 10,
+          PIC_CanvasWidth: 1920,
+          PIC_CanvasHeight: 1080,
+          PIC_Elements: [
+            {
+              EIF_Name: 'updated-video',
+              EIF_Type: 'Media',
+              EIF_Width: 1920,
+              EIF_Height: 1080,
+              EIF_PosLeft: 0,
+              EIF_PosTop: 0,
+              EIF_IsMuted: true,
+              EIF_ContentsInfoClassList: [
+                {
+                  CIF_FileName: 'updated.mp4',
+                  CIF_FileFullPath: 'downloads/updated.mp4',
+                  CIF_ContentType: 'Video',
+                  CIF_PlayMinute: '00',
+                  CIF_PlaySec: '10',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    await expect((app as unknown as {
+      applyUpdateListCommand(
+        payload: typeof updatePayload,
+        urgent: boolean,
+        commandId: string | null,
+      ): Promise<unknown>;
+    }).applyUpdateListCommand(updatePayload, true, 'cmd-no-extra-session')).rejects.toThrow('심리스 전환 준비 실패');
+
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
+    expect(document.querySelector('#status-page')?.textContent).toContain('page');
+    expect(document.querySelector('#status-update')?.textContent).toContain('실패');
+    expect(document.querySelector('#status-update')?.textContent).toContain('심리스 전환 준비 실패');
+    expect(document.querySelectorAll('.slot')).toHaveLength(1);
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(getPlayer).toHaveBeenCalledTimes(3);
+    expect(loadRemoteManifest()).toBeNull();
+    app.destroy();
+  });
+
+  it('새 이미지 콘텐츠 로드가 끝나기 전에는 updatelist 상태를 기존 콘텐츠로 유지한다', async () => {
+    vi.useFakeTimers();
+    const play = vi.fn();
+    window.webapis = createWebApis(createPlayer(play));
+    window.tizen = {
+      filesystem: {
+        toURI: (path) => `file:///opt/usr/home/owner/content/${path}`,
+        pathExists: (path) => path === 'downloads/updated.png',
+      },
+    };
+
+    const srcDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    const completeDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'complete');
+    const decodeDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'decode');
+    const loadedImages = new WeakSet<HTMLImageElement>();
+    let pendingImage: HTMLImageElement | null = null;
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      configurable: true,
+      get() {
+        return this.getAttribute('src') ?? '';
+      },
+      set(value: string) {
+        this.setAttribute('src', value);
+        pendingImage = this;
+      },
+    });
+    Object.defineProperty(HTMLImageElement.prototype, 'complete', {
+      configurable: true,
+      get() {
+        return loadedImages.has(this);
+      },
+    });
+    Object.defineProperty(HTMLImageElement.prototype, 'decode', {
+      configurable: true,
+      value: vi.fn().mockResolvedValue(undefined),
+    });
+
+    try {
+      const app = new NewHyOnPlayerApp({
+        manifest: createManifest(),
+        settings: {
+          ...DEFAULT_PLAYER_SETTINGS,
+          playerId: '',
+          managerAddress: '',
+          manifestUrl: '',
+          preserveAspectRatio: false,
+          switchOnContentEnd: false,
+          hudInitiallyVisible: false,
+        },
+        hudInitiallyVisible: false,
+      });
+      await app.start();
+      expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
+
+      const updatePayload = {
+        PageList: { PLI_PageListName: 'updated-image-list' },
+        Pages: [
+          {
+            PIC_PageName: 'updated-image-page',
+            PIC_PlaytimeSecond: 10,
+            PIC_CanvasWidth: 1920,
+            PIC_CanvasHeight: 1080,
+            PIC_Elements: [
+              {
+                EIF_Name: 'updated-image',
+                EIF_Type: 'Media',
+                EIF_Width: 1920,
+                EIF_Height: 1080,
+                EIF_PosLeft: 0,
+                EIF_PosTop: 0,
+                EIF_IsMuted: true,
+                EIF_ContentsInfoClassList: [
+                  {
+                    CIF_FileName: 'updated.png',
+                    CIF_FileFullPath: 'downloads/updated.png',
+                    CIF_ContentType: 'Image',
+                    CIF_PlayMinute: '00',
+                    CIF_PlaySec: '10',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+
+      const updatePromise = (app as unknown as {
+        applyUpdateListCommand(
+          payload: typeof updatePayload,
+          urgent: boolean,
+          commandId: string | null,
+        ): Promise<unknown>;
+      }).applyUpdateListCommand(updatePayload, false, 'cmd-image');
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(pendingImage).not.toBeNull();
+      expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
+      expect(document.querySelector('#status-page')?.textContent).toContain('page');
+      expect(document.querySelector('#status-update')?.textContent).toContain('적용 중');
+      expect(document.querySelectorAll('.slot')).toHaveLength(2);
+
+      loadedImages.add(pendingImage!);
+      pendingImage!.onload?.(new Event('load'));
+      await vi.advanceTimersByTimeAsync(32);
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(32);
+      await updatePromise;
+
+      expect(document.querySelector('#status-playlist')?.textContent).toBe('updated-image-list');
+      expect(document.querySelector('#status-page')?.textContent).toContain('updated-image-page');
+      expect(document.querySelectorAll('.slot')).toHaveLength(1);
+      app.destroy();
+    } finally {
+      if (srcDescriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'src', srcDescriptor);
+      }
+      if (completeDescriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'complete', completeDescriptor);
+      }
+      if (decodeDescriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'decode', decodeDescriptor);
+      } else {
+        delete (HTMLImageElement.prototype as Partial<HTMLImageElement>).decode;
+      }
+    }
+  });
+
+  it('empty-intro 상태에서 재생 콘텐츠 업데이트가 들어와도 다운로드 중에는 인트로를 유지하고 완료 후 콘텐츠를 적용한다', async () => {
+    vi.useFakeTimers();
+    const open = vi.fn();
+    const avplayPlay = vi.fn();
+    window.webapis = createWebApis({
+      ...createPlayer(avplayPlay),
+      open,
+    });
+    const downloadCallbacks: DownloadCallback[] = [];
+    window.tizen = {
+      filesystem: {
+        toURI: (path) => `file:///opt/usr/apps/NewHyOnT01.Player/${path}`,
+        pathExists: (path) => path === 'wgt-package/media/intro.mp4' || path === 'downloads/updated.mp4',
+      },
+      DownloadRequest: vi.fn(function DownloadRequest(
+        this: DownloadRequest,
+        url: string,
+        destination?: string | null,
+        fileName?: string | null,
+        networkType?: 'CELLULAR' | 'WIFI' | 'ALL' | null,
+      ) {
+        this.url = url;
+        this.destination = destination;
+        this.fileName = fileName;
+        this.networkType = networkType;
+      }) as unknown as DownloadRequestConstructor,
+      download: {
+        start: vi.fn((_request, callback) => {
+          if (callback) {
+            downloadCallbacks.push(callback);
+          }
+          return 1;
+        }),
+      },
+    };
+
+    const app = new NewHyOnPlayerApp({
+      manifest: {
+        playlistName: 'empty',
+        preserveAspectRatio: false,
+        pages: [],
+      },
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+    await app.start();
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('Android Intro');
+    expect(document.querySelector('.empty-intro-video')).not.toBeNull();
+    expect(open).not.toHaveBeenCalled();
+    expect(avplayPlay).not.toHaveBeenCalled();
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
+
+    const updatePayload = {
+      PageList: { PLI_PageListName: 'updated-list' },
+      Pages: [
+        {
+          PIC_PageName: 'updated-page',
+          PIC_PlaytimeSecond: 10,
+          PIC_CanvasWidth: 1920,
+          PIC_CanvasHeight: 1080,
+          PIC_Elements: [
+            {
+              EIF_Name: 'updated-video',
+              EIF_Type: 'Media',
+              EIF_Width: 1920,
+              EIF_Height: 1080,
+              EIF_PosLeft: 0,
+              EIF_PosTop: 0,
+              EIF_IsMuted: true,
+              EIF_ContentsInfoClassList: [
+                {
+                  CIF_FileName: 'updated.mp4',
+                  CIF_FileFullPath: 'https://cdn.example.com/updated.mp4',
+                  CIF_ContentType: 'Video',
+                  CIF_PlayMinute: '00',
+                  CIF_PlaySec: '10',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const updatePromise = (app as unknown as {
+      applyUpdateListCommand(
+        payload: typeof updatePayload,
+        urgent: boolean,
+        commandId: string | null,
+      ): Promise<unknown>;
+    }).applyUpdateListCommand(updatePayload, true, 'cmd-content');
+    await Promise.resolve();
+
+    expect(window.tizen.download?.start).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('#status-state')?.textContent).toBe('playing');
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('Android Intro');
+    expect(document.querySelectorAll('.slot')).toHaveLength(0);
+    expect(document.querySelector('.empty-intro-video')).not.toBeNull();
+    expect(open).not.toHaveBeenCalled();
+    expect(avplayPlay).not.toHaveBeenCalled();
+
+    expect(downloadCallbacks).toHaveLength(1);
+    downloadCallbacks[0]!.oncompleted?.(1, 'downloads/updated.mp4');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('Android Intro');
+    expect(document.querySelector('.empty-intro-video')).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(32);
+    await updatePromise;
+
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('updated-list');
+    expect(document.querySelector('#status-page')?.textContent).toContain('updated-page');
+    expect(document.querySelector('.empty-intro-video')).toBeNull();
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(avplayPlay).toHaveBeenCalledTimes(1);
+    app.destroy();
+  });
+
+  it('updatelist가 실제로 빈 데이터일 때만 콘텐츠 없음 인트로 모드로 전환한다', async () => {
+    const open = vi.fn();
+    const avplayPlay = vi.fn();
+    window.webapis = createWebApis({
+      ...createPlayer(avplayPlay),
+      open,
+    });
+    window.tizen = {
+      filesystem: {
+        toURI: (path) => `file:///opt/usr/apps/NewHyOnT01.Player/${path}`,
+        pathExists: (path) => path === 'wgt-package/media/intro.mp4',
+      },
+    };
+
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
+    expect(avplayPlay).toHaveBeenCalledTimes(1);
+
+    const emptyPayload = {
+      PageList: { PLI_PageListName: 'empty-list' },
+      Pages: [],
+    };
+    await (app as unknown as {
+      applyUpdateListCommand(
+        payload: typeof emptyPayload,
+        urgent: boolean,
+        commandId: string | null,
+      ): Promise<unknown>;
+    }).applyUpdateListCommand(emptyPayload, false, 'cmd-empty');
+
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('Android Intro');
+    expect(document.querySelector('#status-page')?.textContent).toContain('Android Intro');
+    const introVideo = document.querySelector<HTMLVideoElement>('.empty-intro-video');
+    expect(introVideo).not.toBeNull();
+    expect(introVideo?.getAttribute('src')).toBe('media/intro.mp4');
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenLastCalledWith('https://example.com/video.mp4');
+    expect(avplayPlay).toHaveBeenCalledTimes(1);
+    app.destroy();
+  });
+});
