@@ -74,7 +74,7 @@ else
   "${TIZEN_CLI_PATH}" package -t wgt -s "${TIZEN_PROFILE}" -- "${STAGE_DIR}"
 fi
 
-PACKAGED_WGT="$(find "${STAGE_DIR}" -maxdepth 1 -type f -name '*.wgt' | sort | tail -n 1)"
+PACKAGED_WGT="$(find "${STAGE_DIR}" -type f -name '*.wgt' | sort | tail -n 1)"
 [[ -n "${PACKAGED_WGT}" ]] || {
   printf 'stage 디렉터리에서 생성된 .wgt 파일을 찾지 못했습니다.\n' >&2
   exit 1

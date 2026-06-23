@@ -67,6 +67,8 @@ function createInput(name: keyof PlayerSettings, value: string, placeholder: str
   input.dataset.settingControl = 'true';
   input.dataset.settingName = name;
   input.type = 'text';
+  input.inputMode = 'none';
+  input.readOnly = true;
   input.value = value;
   input.placeholder = placeholder;
   input.autocomplete = 'off';
@@ -101,8 +103,9 @@ function createScheduleInput(dayCode: WeeklyDayCode, field: WeeklyScheduleField,
   input.dataset.settingControl = 'true';
   input.dataset.scheduleDay = dayCode;
   input.dataset.scheduleField = field;
-  input.inputMode = 'numeric';
   input.type = 'text';
+  input.inputMode = 'none';
+  input.readOnly = true;
   input.value = String(value).padStart(2, '0');
   input.autocomplete = 'off';
   input.spellcheck = false;
@@ -262,9 +265,6 @@ export class SettingsOverlay {
     }
 
     control.focus();
-    if (control instanceof HTMLInputElement) {
-      control.select();
-    }
   }
 
   private focusRelative(offset: number): void {
@@ -327,7 +327,6 @@ export class SettingsOverlay {
     this.keypadInput = null;
     this.keypadButtons.splice(0);
     input?.focus();
-    input?.select();
   }
 
   private handleKeypadKeyDown(event: KeyboardEvent): boolean {

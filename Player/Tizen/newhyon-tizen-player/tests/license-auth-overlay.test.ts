@@ -147,4 +147,20 @@ describe('LicenseAuthOverlay', () => {
     expect(document.querySelector('.license-auth-content:not(.license-auth-content--hidden) .license-auth-guide')?.textContent)
       .toContain('1단계 QR을 모바일에서 스캔');
   });
+
+  it('인증창에서 Back 키를 누르면 인증을 취소하고 창을 닫는다', async () => {
+    const overlay = new LicenseAuthOverlay({ service: createService() });
+    const authResult = overlay.open('start');
+    await vi.waitFor(() => expect(toCanvas).toHaveBeenCalled());
+
+    const handled = overlay.handleKeyDown(keyEvent('Back'));
+    await expect(authResult).resolves.toMatchObject({
+      isValid: false,
+      mode: 'NONE',
+      status: 'cancelled',
+    });
+
+    expect(handled).toBe(true);
+    expect(document.querySelector('.license-auth-overlay')?.classList.contains('license-auth-overlay--hidden')).toBe(true);
+  });
 });

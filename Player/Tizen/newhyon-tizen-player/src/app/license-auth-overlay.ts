@@ -127,12 +127,18 @@ export class LicenseAuthOverlay {
     }
 
     if (this.otpPad.classList.contains('license-auth-otp--visible')) {
+      if (isBackKey(event)) {
+        event.preventDefault();
+        this.cancelAuthentication();
+        return true;
+      }
+
       return this.handleOtpKeyDown(event);
     }
 
     if (isBackKey(event)) {
       event.preventDefault();
-      this.setStatus('인증이 완료되기 전에는 인증창을 닫을 수 없습니다.', true);
+      this.cancelAuthentication();
       return true;
     }
 
@@ -624,6 +630,25 @@ export class LicenseAuthOverlay {
     this.setStatus(state.mode === 'OFFLINE' ? '오프라인 인증이 완료되었습니다.' : '온라인 인증이 완료되었습니다.');
     this.options.onStatus?.(state.status, state.mode);
     this.resolve?.(state);
+    this.resolve = null;
+    this.close();
+  }
+
+  private cancelAuthentication(): void {
+    const cancelledState: LicenseAuthState = {
+      isValid: false,
+      mode: 'NONE',
+      status: 'cancelled',
+      reason: '사용자가 LicenseHub 인증을 취소했습니다.',
+      deviceFingerprint: '',
+      deviceId: '',
+      licenseToken: '',
+      serverChecked: false,
+      usedOfflineFallback: false,
+    };
+    this.setStatus(cancelledState.reason, true);
+    this.options.onStatus?.('cancelled', cancelledState.reason);
+    this.resolve?.(cancelledState);
     this.resolve = null;
     this.close();
   }

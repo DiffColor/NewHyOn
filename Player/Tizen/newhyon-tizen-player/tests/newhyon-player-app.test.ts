@@ -304,6 +304,78 @@ describe('NewHyOnPlayerApp', () => {
     app.destroy();
   });
 
+  it('미인증 상태로 전환되면 기존 콘텐츠를 정리하고 Android 인트로만 반복 재생한다', async () => {
+    const play = vi.fn();
+    const open = vi.fn();
+    window.webapis = createWebApis({
+      ...createPlayer(play),
+      open,
+    });
+
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
+    expect(document.querySelector('.slot')).not.toBeNull();
+    expect(play).toHaveBeenCalledTimes(1);
+
+    await (app as unknown as {
+      enterUnauthenticatedIntroPlayback(detail: string, startIfOnAir: boolean): Promise<void>;
+    }).enterUnauthenticatedIntroPlayback('사용자가 LicenseHub 인증을 취소했습니다.', true);
+
+    const introVideo = document.querySelector<HTMLVideoElement>('.empty-intro-video');
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('Android Intro');
+    expect(document.querySelector('#status-auth')?.textContent).toContain('unauthenticated');
+    expect(document.querySelector('.slot')).toBeNull();
+    expect(introVideo).not.toBeNull();
+    expect(introVideo?.loop).toBe(true);
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledTimes(1);
+    app.destroy();
+  });
+
+  it('HUD 로그창은 최근 입력 로그를 위에 표시한다', async () => {
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'B' }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '0' }));
+
+    const logLines = document.querySelector('#log-output')?.textContent?.split('\n') ?? [];
+    const openSettingsIndex = logLines.findIndex((line) => line.includes('0 -> open-settings'));
+    const toggleHudIndex = logLines.findIndex((line) => line.includes('B -> toggle-hud'));
+
+    expect(openSettingsIndex).toBeGreaterThanOrEqual(0);
+    expect(toggleHudIndex).toBeGreaterThanOrEqual(0);
+    expect(openSettingsIndex).toBeLessThan(toggleHudIndex);
+    app.destroy();
+  });
+
   it('일시정지 상태의 HUD 경과 시간을 멈춘 시점으로 유지한다', async () => {
     vi.useFakeTimers();
     window.webapis = createWebApis(createPlayer(() => undefined));

@@ -79,6 +79,19 @@ describe('SettingsOverlay', () => {
 
     overlay.open();
     expect(activeSettingName()).toBe('playerId');
+    expect(document.querySelector('.remote-keypad')).toBeNull();
+
+    const playerIdInput = document.activeElement as HTMLInputElement;
+    expect(playerIdInput.readOnly).toBe(true);
+    expect(playerIdInput.inputMode).toBe('none');
+
+    overlay.handleKeyDown(keyEvent('ArrowDown'));
+    expect(activeSettingName()).toBe('managerAddress');
+    expect(document.querySelector('.remote-keypad')).toBeNull();
+    expect((document.activeElement as HTMLInputElement).readOnly).toBe(true);
+
+    overlay.handleKeyDown(keyEvent('ArrowUp'));
+    expect(activeSettingName()).toBe('playerId');
 
     overlay.handleKeyDown(keyEvent('Enter'));
     expect(document.querySelector('.remote-keypad')).not.toBeNull();

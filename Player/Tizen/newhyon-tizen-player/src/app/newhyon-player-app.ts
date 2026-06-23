@@ -175,6 +175,8 @@ export class NewHyOnPlayerApp {
   private authService: LicenseHubAuthService | null = null;
   private authOverlay: LicenseAuthOverlay | null = null;
   private lastAuthState: LicenseAuthState | null = null;
+  private currentContentManifest: RuntimeConfig['manifest'];
+  private contentPlaybackAllowed = true;
   private offlineHeartbeatRequested = false;
   private broadcastOnAir = true;
   private panelMuted: boolean | null = null;
@@ -222,6 +224,7 @@ export class NewHyOnPlayerApp {
       message: getRequiredElement('#status-message'),
       logOutput: getRequiredElement('#log-output'),
     };
+    this.currentContentManifest = this.config.manifest;
     const resolution = this.createStartupPagePlans(this.config.manifest);
     this.pagePlans = resolution.pagePlans;
     this.playbackMode = resolution.mode;
@@ -309,7 +312,8 @@ export class NewHyOnPlayerApp {
 
   private bindUi(): void {
     this.logger.subscribe((entries) => {
-      this.view.logOutput.textContent = entries
+      this.view.logOutput.textContent = [...entries]
+        .reverse()
         .map((entry) => `${entry.timestamp} | ${entry.level.toUpperCase()} | ${entry.scope} | ${entry.message}`)
         .join('\n');
     });
@@ -607,7 +611,8 @@ export class NewHyOnPlayerApp {
   }
 
   private async applyManifest(manifest: RuntimeConfig['manifest'], source: string): Promise<void> {
-    const resolution = this.createUpdatePagePlans(manifest);
+    this.currentContentManifest = manifest;
+    const resolution = this.createEffectiveUpdatePagePlans(manifest);
     const previousState = this.capturePlaybackState();
     const canRestoreCurrentPlayback = this.broadcastOnAir
       && this.hasActivePlaybackSurface();
@@ -879,6 +884,7 @@ export class NewHyOnPlayerApp {
     }
 
     this.setAuthStatus('checking', 'LicenseHub 인증 확인 중');
+    this.contentPlaybackAllowed = false;
     this.authService = new LicenseHubAuthService({
       playerGuid: this.communication.playerGuid,
       playerName: this.communication.playerName,
@@ -909,6 +915,7 @@ export class NewHyOnPlayerApp {
     }
 
     if (state.isValid) {
+      this.contentPlaybackAllowed = true;
       this.setAuthStatus('authenticated', `${state.mode} ${state.status}`);
       this.lastAuthState = state;
       await this.syncPlayerInfo(state);
@@ -918,9 +925,11 @@ export class NewHyOnPlayerApp {
     this.showLoading('LicenseHub 인증 필요', state.reason || '인증을 완료해야 플레이어를 시작할 수 있습니다.');
     const resolved = await this.authOverlay.open(state.reason || 'LicenseHub 인증을 진행해 주세요.');
     if (!resolved.isValid) {
-      throw new Error(resolved.reason || 'LicenseHub 인증에 실패했습니다.');
+      await this.enterUnauthenticatedIntroPlayback(resolved.reason || 'LicenseHub 인증이 완료되지 않았습니다.', false);
+      return;
     }
 
+    this.contentPlaybackAllowed = true;
     this.setAuthStatus('authenticated', `${resolved.mode} ${resolved.status}`);
     this.lastAuthState = resolved;
     await this.syncPlayerInfo(resolved);
@@ -951,17 +960,25 @@ export class NewHyOnPlayerApp {
 
     const resolved = await this.authOverlay.open(message);
     if (resolved.isValid) {
+      this.contentPlaybackAllowed = true;
       this.setAuthStatus('authenticated', `${resolved.mode} ${resolved.status}`);
       this.lastAuthState = resolved;
+      let syncError: string | null = null;
       try {
         await this.syncPlayerInfo(resolved, { hideLoadingWhenDone: true });
-        this.setMessage('LicenseHub 인증이 완료되었습니다.');
       } catch (error) {
         this.hideLoading();
-        this.setMessage(`LicenseHub 인증 완료, PlayerInfo 동기화 실패: ${formatError(error)}`);
-        this.logger.warn('communication', `인증 후 PlayerInfoManager 동기화 실패: ${formatError(error)}`);
+        syncError = formatError(error);
+        this.logger.warn('communication', `인증 후 PlayerInfoManager 동기화 실패: ${syncError}`);
       }
+      await this.enterAuthenticatedContentPlayback();
+      this.setMessage(syncError
+        ? `LicenseHub 인증 완료, PlayerInfo 동기화 실패: ${syncError}`
+        : 'LicenseHub 인증이 완료되었습니다.');
+      return;
     }
+
+    await this.enterUnauthenticatedIntroPlayback(resolved.reason || 'LicenseHub 인증이 완료되지 않았습니다.', true);
   }
 
   private async syncPlayerInfo(authState: LicenseAuthState | null, uiOptions: PlayerInfoSyncUiOptions = {}): Promise<void> {
@@ -1421,6 +1438,52 @@ export class NewHyOnPlayerApp {
 
     this.logger.info('manifest', 'updatelist에 재생 가능한 데이터가 없어 empty-intro 모드로 전환합니다.');
     return this.createEmptyIntroPagePlans(manifest);
+  }
+
+  private createEffectiveUpdatePagePlans(manifest: RuntimeConfig['manifest']): PagePlanResolution {
+    if (!this.contentPlaybackAllowed) {
+      this.logger.info('auth', 'LicenseHub 미인증 상태라 콘텐츠 대신 Android intro 영상을 유지합니다.');
+      return this.createEmptyIntroPagePlans(manifest);
+    }
+
+    return this.createUpdatePagePlans(manifest);
+  }
+
+  private async enterUnauthenticatedIntroPlayback(detail: string, startIfOnAir: boolean): Promise<void> {
+    this.contentPlaybackAllowed = false;
+    this.lastAuthState = null;
+    this.setAuthStatus('unauthenticated', detail);
+    const resolution = this.createEmptyIntroPagePlans(this.currentContentManifest);
+    if (startIfOnAir && this.broadcastOnAir) {
+      await this.playPage(0, {
+        preservePreviousUntilReady: true,
+        pagePlans: resolution.pagePlans,
+        playbackMode: resolution.mode,
+      });
+      this.setMessage('LicenseHub 인증이 취소되어 인트로 영상만 재생합니다.');
+      return;
+    }
+
+    this.commitPlaybackPlan(resolution.pagePlans, resolution.mode, 0);
+    this.setMessage('LicenseHub 미인증 상태라 인트로 영상만 재생합니다.');
+    this.render();
+    this.writeRuntimeHealth('auth-unauthenticated-intro');
+  }
+
+  private async enterAuthenticatedContentPlayback(): Promise<void> {
+    const resolution = this.createUpdatePagePlans(this.currentContentManifest);
+    if (this.broadcastOnAir) {
+      await this.playPage(0, {
+        preservePreviousUntilReady: true,
+        pagePlans: resolution.pagePlans,
+        playbackMode: resolution.mode,
+      });
+      return;
+    }
+
+    this.commitPlaybackPlan(resolution.pagePlans, resolution.mode, 0);
+    this.render();
+    this.writeRuntimeHealth('auth-authenticated-content-ready');
   }
 
   private createContentPagePlans(manifest: RuntimeConfig['manifest']): SeamlessPagePlan[] {
