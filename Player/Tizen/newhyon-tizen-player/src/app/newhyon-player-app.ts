@@ -925,7 +925,7 @@ export class NewHyOnPlayerApp {
     this.showLoading('LicenseHub 인증 필요', state.reason || '인증을 완료해야 플레이어를 시작할 수 있습니다.');
     const resolved = await this.authOverlay.open(state.reason || 'LicenseHub 인증을 진행해 주세요.');
     if (!resolved.isValid) {
-      await this.enterUnauthenticatedIntroPlayback(resolved.reason || 'LicenseHub 인증이 완료되지 않았습니다.', false);
+      await this.handleAuthenticationCancellation(resolved.reason || 'LicenseHub 인증이 완료되지 않았습니다.', false);
       return;
     }
 
@@ -978,7 +978,7 @@ export class NewHyOnPlayerApp {
       return;
     }
 
-    await this.enterUnauthenticatedIntroPlayback(resolved.reason || 'LicenseHub 인증이 완료되지 않았습니다.', true);
+    await this.handleAuthenticationCancellation(resolved.reason || 'LicenseHub 인증이 완료되지 않았습니다.', true);
   }
 
   private async syncPlayerInfo(authState: LicenseAuthState | null, uiOptions: PlayerInfoSyncUiOptions = {}): Promise<void> {
@@ -1447,6 +1447,48 @@ export class NewHyOnPlayerApp {
     }
 
     return this.createUpdatePagePlans(manifest);
+  }
+
+  private async handleAuthenticationCancellation(detail: string, startIfOnAir: boolean): Promise<void> {
+    const currentState = await this.validateCurrentAuthenticationAfterCancellation();
+    if (currentState?.isValid) {
+      this.contentPlaybackAllowed = true;
+      this.lastAuthState = currentState;
+      this.setAuthStatus('authenticated', `${currentState.mode} ${currentState.status}`);
+      try {
+        await this.syncPlayerInfo(currentState, { showLoading: false });
+      } catch (error) {
+        this.logger.warn('communication', `인증 취소 후 PlayerInfoManager 동기화 실패: ${formatError(error)}`);
+      }
+
+      if (startIfOnAir && this.broadcastOnAir && this.playbackMode !== 'content') {
+        await this.enterAuthenticatedContentPlayback();
+      }
+      this.setMessage('LicenseHub 인증이 유효해 콘텐츠 재생을 유지합니다.');
+      return;
+    }
+
+    if (this.lastAuthState?.isValid) {
+      this.contentPlaybackAllowed = true;
+      this.setAuthStatus('authenticated', `${this.lastAuthState.mode} ${this.lastAuthState.status}`);
+      this.setMessage('기존 LicenseHub 인증 상태를 유지합니다.');
+      return;
+    }
+
+    await this.enterUnauthenticatedIntroPlayback(detail, startIfOnAir);
+  }
+
+  private async validateCurrentAuthenticationAfterCancellation(): Promise<LicenseAuthState | null> {
+    if (!this.authService) {
+      return null;
+    }
+
+    try {
+      return await this.authService.validateStoredOrBootstrap();
+    } catch (error) {
+      this.logger.warn('auth', `인증 취소 후 LicenseHub 상태 재확인 실패: ${formatError(error)}`);
+      return null;
+    }
   }
 
   private async enterUnauthenticatedIntroPlayback(detail: string, startIfOnAir: boolean): Promise<void> {

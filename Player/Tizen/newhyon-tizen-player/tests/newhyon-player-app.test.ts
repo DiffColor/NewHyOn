@@ -3,6 +3,7 @@ import { NewHyOnPlayerApp } from '../src/app/newhyon-player-app';
 import { DEFAULT_PLAYER_SETTINGS } from '../src/app/player-settings';
 import { loadRemoteManifest } from '../src/app/update-payload';
 import { getDefaultWeeklySchedule, saveWeeklySchedule } from '../src/app/weekly-schedule';
+import type { LicenseAuthState, LicenseHubAuthService } from '../src/app/licensehub-auth';
 import type { PlayerManifest } from '../src/domain/models';
 
 function renderAppShell(): void {
@@ -168,6 +169,20 @@ function createSinglePageImageManifest(): PlayerManifest {
         ],
       },
     ],
+  };
+}
+
+function validAuthState(mode: 'ONLINE' | 'OFFLINE' = 'ONLINE'): LicenseAuthState {
+  return {
+    isValid: true,
+    mode,
+    status: mode === 'ONLINE' ? 'server-valid' : 'offline-verified',
+    reason: '',
+    deviceFingerprint: 'fingerprint-1',
+    deviceId: 'device-1',
+    licenseToken: mode === 'ONLINE' ? 'token-1' : '',
+    serverChecked: mode === 'ONLINE',
+    usedOfflineFallback: mode === 'OFFLINE',
   };
 }
 
@@ -343,6 +358,56 @@ describe('NewHyOnPlayerApp', () => {
     expect(introVideo?.loop).toBe(true);
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
     expect(open).toHaveBeenCalledTimes(1);
+    app.destroy();
+  });
+
+  it('인증창을 취소해도 현재 기기 인증이 유효하면 인트로가 아니라 콘텐츠를 재생한다', async () => {
+    const play = vi.fn();
+    const open = vi.fn();
+    window.webapis = createWebApis({
+      ...createPlayer(play),
+      open,
+    });
+
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+    await (app as unknown as {
+      enterUnauthenticatedIntroPlayback(detail: string, startIfOnAir: boolean): Promise<void>;
+    }).enterUnauthenticatedIntroPlayback('LicenseHub 인증이 완료되지 않았습니다.', true);
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('Android Intro');
+    expect(document.querySelector('.empty-intro-video')).not.toBeNull();
+
+    const validateStoredOrBootstrap = vi.fn(async () => validAuthState('ONLINE'));
+    const appInternals = app as unknown as {
+      authService: LicenseHubAuthService;
+      handleAuthenticationCancellation(detail: string, startIfOnAir: boolean): Promise<void>;
+    };
+    appInternals.authService = {
+      validateStoredOrBootstrap,
+    } as unknown as LicenseHubAuthService;
+
+    await appInternals.handleAuthenticationCancellation('사용자가 LicenseHub 인증을 취소했습니다.', true);
+
+    expect(validateStoredOrBootstrap).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
+    expect(document.querySelector('#status-auth')?.textContent).toContain('authenticated');
+    expect(document.querySelector('.empty-intro-video')).toBeNull();
+    expect(document.querySelector('.slot')).not.toBeNull();
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(play).toHaveBeenCalledTimes(2);
     app.destroy();
   });
 
