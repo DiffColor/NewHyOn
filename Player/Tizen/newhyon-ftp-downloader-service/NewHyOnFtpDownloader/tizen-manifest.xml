@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns="http://tizen.org/ns/packages" api-version="5" package="NewHyOnFtpD01" version="1.0.0">
+  <profile name="common" />
+  <privileges>
+    <privilege>http://tizen.org/privilege/internet</privilege>
+    <privilege>http://tizen.org/privilege/appdir.shareddata</privilege>
+    <privilege>http://tizen.org/privilege/filesystem.read</privilege>
+    <privilege>http://tizen.org/privilege/filesystem.write</privilege>
+  </privileges>
+  <service-application appid="NewHyOnFtpD01.Downloader"
+                       exec="NewHyOnFtpDownloader.dll"
+                       type="dotnet"
+                       multiple="false"
+                       taskmanage="false"
+                       nodisplay="true">
+    <label>NewHyOn FTP Downloader</label>
+    <app-control>
+      <operation name="http://turtlelab.co.kr/appcontrol/newhyon/ftp-download" />
+      <mime name="application/octet-stream" />
+    </app-control>
+  </service-application>
+</manifest>
