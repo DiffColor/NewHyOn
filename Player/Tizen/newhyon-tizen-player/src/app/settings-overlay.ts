@@ -66,6 +66,7 @@ function createInput(name: keyof PlayerSettings, value: string, placeholder: str
   input.className = 'settings-input';
   input.dataset.settingControl = 'true';
   input.dataset.settingName = name;
+  input.tabIndex = -1;
   input.type = 'text';
   input.inputMode = 'none';
   input.readOnly = true;
@@ -103,6 +104,7 @@ function createScheduleInput(dayCode: WeeklyDayCode, field: WeeklyScheduleField,
   input.dataset.settingControl = 'true';
   input.dataset.scheduleDay = dayCode;
   input.dataset.scheduleField = field;
+  input.tabIndex = -1;
   input.type = 'text';
   input.inputMode = 'none';
   input.readOnly = true;
@@ -132,6 +134,7 @@ export class SettingsOverlay {
   private keypadRoot: HTMLElement | null = null;
   private keypadPreview: HTMLElement | null = null;
   private keypadInput: HTMLInputElement | null = null;
+  private selectedControlIndex = 0;
   private openState = false;
 
   constructor(private readonly options: SettingsOverlayOptions) {
@@ -198,7 +201,7 @@ export class SettingsOverlay {
     }
 
     if (event.key === 'Enter') {
-      const active = document.activeElement;
+      const active = this.selectedControl();
       if (active instanceof HTMLInputElement && active.dataset.settingControl === 'true') {
         event.preventDefault();
         this.openKeypad(active);
@@ -218,6 +221,7 @@ export class SettingsOverlay {
   private render(settings: PlayerSettings): void {
     this.root.textContent = '';
     this.controls.splice(0);
+    this.selectedControlIndex = 0;
 
     const panel = document.createElement('section');
     panel.className = 'settings-panel';
@@ -256,21 +260,57 @@ export class SettingsOverlay {
     this.controls.push(
       ...Array.from(this.root.querySelectorAll<SettingControl>('[data-setting-control="true"]')),
     );
+    this.controls.forEach((control, index) => {
+      if (control instanceof HTMLButtonElement) {
+        control.addEventListener('focus', () => {
+          this.markSelectedControl(index);
+        });
+      }
+    });
   }
 
   private focusControl(index: number): void {
-    const control = this.controls[index];
+    const normalizedIndex = Math.min(Math.max(0, index), this.controls.length - 1);
+    const control = this.controls[normalizedIndex];
     if (!control) {
+      return;
+    }
+
+    this.markSelectedControl(normalizedIndex);
+    if (control instanceof HTMLInputElement) {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
       return;
     }
 
     control.focus();
   }
 
+  private markSelectedControl(index: number): void {
+    const normalizedIndex = Math.min(Math.max(0, index), this.controls.length - 1);
+    const control = this.controls[normalizedIndex];
+    if (!control) {
+      return;
+    }
+
+    this.controls.forEach((candidate) => {
+      candidate.classList.remove('settings-control--active');
+      delete candidate.dataset.settingActive;
+    });
+
+    this.selectedControlIndex = normalizedIndex;
+    control.classList.add('settings-control--active');
+    control.dataset.settingActive = 'true';
+  }
+
   private focusRelative(offset: number): void {
-    const activeIndex = this.controls.findIndex((control) => control === document.activeElement);
-    const nextIndex = activeIndex < 0 ? 0 : (activeIndex + offset + this.controls.length) % this.controls.length;
+    const nextIndex = (this.selectedControlIndex + offset + this.controls.length) % this.controls.length;
     this.focusControl(nextIndex);
+  }
+
+  private selectedControl(): SettingControl | null {
+    return this.controls[this.selectedControlIndex] ?? null;
   }
 
   private openKeypad(input: HTMLInputElement): void {
@@ -326,7 +366,10 @@ export class SettingsOverlay {
     const input = this.keypadInput;
     this.keypadInput = null;
     this.keypadButtons.splice(0);
-    input?.focus();
+    if (input) {
+      const inputIndex = this.controls.findIndex((control) => control === input);
+      this.focusControl(inputIndex < 0 ? this.selectedControlIndex : inputIndex);
+    }
   }
 
   private handleKeypadKeyDown(event: KeyboardEvent): boolean {

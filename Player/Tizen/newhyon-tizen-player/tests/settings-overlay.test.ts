@@ -9,8 +9,12 @@ function keyEvent(key: string): KeyboardEvent {
 }
 
 function activeSettingName(): string | undefined {
-  const active = document.activeElement as HTMLElement | null;
+  const active = document.querySelector<HTMLElement>('[data-setting-active="true"]');
   return active?.dataset.settingName ?? active?.dataset.settingAction;
+}
+
+function activeSettingControl(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('[data-setting-active="true"]');
 }
 
 describe('SettingsOverlay', () => {
@@ -25,13 +29,21 @@ describe('SettingsOverlay', () => {
 
     overlay.open();
     expect(activeSettingName()).toBe('playerId');
+    expect(document.activeElement).not.toBe(activeSettingControl());
 
-    const playerIdInput = document.activeElement as HTMLInputElement;
+    const playerIdInput = document.querySelector<HTMLInputElement>('[data-setting-name="playerId"]');
+    if (!playerIdInput) {
+      throw new Error('기기 이름 입력 필드를 찾지 못했습니다.');
+    }
     playerIdInput.value = 'player-01';
 
     overlay.handleKeyDown(keyEvent('ArrowDown'));
     expect(activeSettingName()).toBe('managerAddress');
-    (document.activeElement as HTMLInputElement).value = '10.0.0.10';
+    const managerInput = document.querySelector<HTMLInputElement>('[data-setting-name="managerAddress"]');
+    if (!managerInput) {
+      throw new Error('데이터서버 입력 필드를 찾지 못했습니다.');
+    }
+    managerInput.value = '10.0.0.10';
 
     overlay.handleKeyDown(keyEvent('ArrowDown'));
     expect(activeSettingName()).toBe('preserveAspectRatio');
@@ -80,15 +92,22 @@ describe('SettingsOverlay', () => {
     overlay.open();
     expect(activeSettingName()).toBe('playerId');
     expect(document.querySelector('.remote-keypad')).toBeNull();
+    expect(document.activeElement).not.toBe(activeSettingControl());
 
-    const playerIdInput = document.activeElement as HTMLInputElement;
+    const playerIdInput = document.querySelector<HTMLInputElement>('[data-setting-name="playerId"]');
+    if (!playerIdInput) {
+      throw new Error('기기 이름 입력 필드를 찾지 못했습니다.');
+    }
     expect(playerIdInput.readOnly).toBe(true);
     expect(playerIdInput.inputMode).toBe('none');
+    expect(playerIdInput.tabIndex).toBe(-1);
 
     overlay.handleKeyDown(keyEvent('ArrowDown'));
     expect(activeSettingName()).toBe('managerAddress');
     expect(document.querySelector('.remote-keypad')).toBeNull();
-    expect((document.activeElement as HTMLInputElement).readOnly).toBe(true);
+    const managerInput = document.querySelector<HTMLInputElement>('[data-setting-name="managerAddress"]');
+    expect(document.activeElement).not.toBe(managerInput);
+    expect(managerInput?.readOnly).toBe(true);
 
     overlay.handleKeyDown(keyEvent('ArrowUp'));
     expect(activeSettingName()).toBe('playerId');
@@ -105,6 +124,7 @@ describe('SettingsOverlay', () => {
     overlay.handleKeyDown(keyEvent('Back'));
     expect(document.querySelector('.remote-keypad')).toBeNull();
     expect(activeSettingName()).toBe('playerId');
+    expect(document.activeElement).not.toBe(playerIdInput);
   });
 
   it('인증 상태를 표시하고 주간 스케줄을 수정해 저장한다', () => {

@@ -559,9 +559,13 @@ body {
 }
 
 .settings-input:focus,
+.settings-input.settings-control--active,
 .settings-toggle:focus,
+.settings-toggle.settings-control--active,
 .settings-action:focus,
-.weekly-settings__day:focus {
+.settings-action.settings-control--active,
+.weekly-settings__day:focus,
+.weekly-settings__day.settings-control--active {
   outline: 4px solid #f3c84b;
   outline-offset: 3px;
   border-color: #f3c84b;
