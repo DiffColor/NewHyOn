@@ -135,7 +135,7 @@ describe('SlotPlayer', () => {
 
   it('단일 콘텐츠는 재생 시간이 지나도 같은 콘텐츠를 다시 열지 않는다', async () => {
     vi.useFakeTimers();
-    const play = vi.fn(async () => undefined);
+    const play = vi.fn(async (..._args: unknown[]) => undefined);
     const session = {
       play,
       pause: vi.fn(),
@@ -155,7 +155,7 @@ describe('SlotPlayer', () => {
 
   it('일시정지 후 재개하면 다중 콘텐츠의 전체 시간이 아니라 남은 시간만 재생한다', async () => {
     vi.useFakeTimers();
-    const play = vi.fn(async () => undefined);
+    const play = vi.fn(async (..._args: unknown[]) => undefined);
     const session = {
       play,
       pause: vi.fn(),
@@ -179,6 +179,34 @@ describe('SlotPlayer', () => {
     expect(play).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1);
     expect(play).toHaveBeenCalledTimes(2);
+  });
+
+  it('다중 영상 슬롯은 현재 영상 재생 중 다음 영상 prepare를 호출하지 않는다', async () => {
+    vi.useFakeTimers();
+    const play = vi.fn(async (..._args: unknown[]) => undefined);
+    const prepare = vi.fn(async (..._args: unknown[]) => undefined);
+    const session = {
+      play,
+      prepare,
+      pause: vi.fn(),
+      resume: vi.fn(),
+      stop: vi.fn(),
+      state: vi.fn(() => 'PLAYING'),
+      applyDisplayRect: vi.fn(),
+    } as unknown as AvplaySession;
+    const slot = new SlotPlayer(0, document.createElement('section'), createTwoVideoSlot(), false, false, () => session, new RingLogger(5));
+
+    await slot.start();
+    await vi.runAllTicks();
+
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(prepare).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(prepare).not.toHaveBeenCalled();
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(play.mock.calls[0]?.[5]).toMatchObject({ waitForFirstFrame: true });
+    expect(play.mock.calls[1]?.[5]).toMatchObject({ waitForFirstFrame: true });
   });
 
   it('현재 콘텐츠 종료 후 전환 설정이 켜지면 영상 종료 이벤트로 다음 콘텐츠를 재생한다', async () => {

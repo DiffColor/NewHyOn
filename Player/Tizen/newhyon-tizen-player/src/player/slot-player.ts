@@ -19,6 +19,8 @@ export class SlotPlayer {
   private active = false;
   private videoSession: AvplaySession | null = null;
   private failureMessage: string | null = null;
+  private preparedItemIndex: number | null = null;
+  private preparePromise: Promise<void> | null = null;
 
   constructor(
     private readonly slotIndex: number,
@@ -57,6 +59,7 @@ export class SlotPlayer {
     this.active = false;
     this.clearTimer();
     this.resetItemClock();
+    this.clearPreparedItem();
     this.videoSession?.stop();
     this.currentImage.removeAttribute('src');
     this.standbyImage.removeAttribute('src');
@@ -84,6 +87,7 @@ export class SlotPlayer {
     if (item && this.shouldScheduleTimer(item)) {
       this.scheduleAdvance(item.durationSeconds, this.itemPausedElapsedMs);
     }
+    void this.prepareNextItem();
   }
 
   async restartFromBeginning(): Promise<void> {
@@ -93,6 +97,7 @@ export class SlotPlayer {
 
     this.clearTimer();
     this.resetItemClock();
+    this.clearPreparedItem();
     if (!this.canAdvanceContent()) {
       return;
     }
@@ -138,14 +143,19 @@ export class SlotPlayer {
       } else {
         this.element.classList.add('slot--video-active');
         this.hideImages();
+        const shouldWaitForFirstFrame = this.waitForVideoFirstFrame || this.canAdvanceContent();
         this.videoSession = this.getVideoSession();
         await this.videoSession.play(item, this.slot, this.element, this.preserveAspectRatio, () => {
           void this.handleVideoEnded();
         }, {
-          waitForFirstFrame: this.waitForVideoFirstFrame,
+          waitForFirstFrame: shouldWaitForFirstFrame,
         });
+        if (this.preparedItemIndex === this.itemIndex) {
+          this.clearPreparedItem();
+        }
       }
       this.onContentShown(this.slotIndex, item);
+      void this.prepareNextItem();
     } catch (error) {
       this.suspendAfterFailure(error);
       return false;
@@ -183,6 +193,7 @@ export class SlotPlayer {
     this.active = false;
     this.clearTimer();
     this.resetItemClock();
+    this.clearPreparedItem();
     this.videoSession?.stop();
     this.hideImages();
     this.element.classList.remove('slot--video-active');
@@ -194,6 +205,26 @@ export class SlotPlayer {
   private async showImage(item: SeamlessContentItem): Promise<void> {
     const image = this.standbyImage;
     const previousImage = this.currentImage;
+    image.style.objectFit = this.preserveAspectRatio ? 'contain' : 'fill';
+
+    if (this.preparedItemIndex === this.itemIndex && this.preparePromise) {
+      await this.preparePromise;
+    } else {
+      await this.prepareImageElement(image, item);
+    }
+
+    previousImage.style.zIndex = '1';
+    image.style.zIndex = '2';
+    image.classList.add('slot-image--visible');
+    previousImage.classList.remove('slot-image--visible');
+    previousImage.style.zIndex = '0';
+    image.style.zIndex = '1';
+    [this.currentImage, this.standbyImage] = [this.standbyImage, this.currentImage];
+    this.clearPreparedItem();
+    this.logger.info('slot', `slot ${this.slotIndex + 1} image: ${item.name}`);
+  }
+
+  private async prepareImageElement(image: HTMLImageElement, item: SeamlessContentItem): Promise<void> {
     const sourceUrl = resolveImageSourceUrl(item.sourceUrl);
     image.style.objectFit = this.preserveAspectRatio ? 'contain' : 'fill';
 
@@ -205,16 +236,6 @@ export class SlotPlayer {
       });
     }
     await image.decode?.();
-
-    previousImage.style.zIndex = '1';
-    image.style.zIndex = '2';
-    image.classList.add('slot-image--visible');
-    await this.waitForPaint();
-    previousImage.classList.remove('slot-image--visible');
-    previousImage.style.zIndex = '0';
-    image.style.zIndex = '1';
-    [this.currentImage, this.standbyImage] = [this.standbyImage, this.currentImage];
-    this.logger.info('slot', `slot ${this.slotIndex + 1} image: ${item.name}`);
   }
 
   private hideImages(): void {
@@ -245,6 +266,40 @@ export class SlotPlayer {
     await this.showCurrentItem();
   }
 
+  private async prepareNextItem(): Promise<void> {
+    if (!this.active || !this.canAdvanceContent()) {
+      return;
+    }
+
+    const nextIndex = (this.itemIndex + 1) % this.slot.items.length;
+    if (this.preparedItemIndex === nextIndex || this.preparePromise) {
+      return;
+    }
+
+    const nextItem = this.slot.items[nextIndex];
+    if (!nextItem || nextItem.contentType !== 'Image') {
+      return;
+    }
+
+    this.preparedItemIndex = nextIndex;
+    this.preparePromise = this.prepareImageElement(this.standbyImage, nextItem).catch((error) => {
+      this.clearPreparedItem();
+      this.logger.warn('slot', `slot ${this.slotIndex + 1} 다음 콘텐츠 준비 실패: ${String(error)}`);
+      throw error;
+    });
+
+    try {
+      await this.preparePromise;
+    } catch {
+      // The transition path will retry and surface a hard failure if the item still cannot start.
+    }
+  }
+
+  private clearPreparedItem(): void {
+    this.preparedItemIndex = null;
+    this.preparePromise = null;
+  }
+
   private clearTimer(): void {
     if (this.timerId !== null) {
       window.clearTimeout(this.timerId);
@@ -273,11 +328,4 @@ export class SlotPlayer {
     return this.slot.items.length > 1;
   }
 
-  private waitForPaint(): Promise<void> {
-    return new Promise((resolve) => {
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => resolve());
-      });
-    });
-  }
 }

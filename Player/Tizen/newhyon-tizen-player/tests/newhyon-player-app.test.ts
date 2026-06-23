@@ -130,6 +130,33 @@ function createManifest(): PlayerManifest {
   };
 }
 
+function createTwoPageManifest(): PlayerManifest {
+  const first = createManifest().pages[0]!;
+  return {
+    playlistName: 'playlist',
+    preserveAspectRatio: false,
+    pages: [
+      {
+        ...first,
+        PIC_PageName: 'first-page',
+      },
+      {
+        ...first,
+        PIC_PageName: 'second-page',
+        PIC_Elements: first.PIC_Elements?.map((element) => ({
+          ...element,
+          EIF_Name: 'second-video',
+          EIF_ContentsInfoClassList: element.EIF_ContentsInfoClassList?.map((content) => ({
+            ...content,
+            CIF_FileName: 'second.mp4',
+            CIF_FileFullPath: 'https://example.com/second.mp4',
+          })),
+        })),
+      },
+    ],
+  };
+}
+
 function createSinglePageImageManifest(): PlayerManifest {
   return {
     playlistName: 'playlist',
@@ -504,6 +531,53 @@ describe('NewHyOnPlayerApp', () => {
     expect(play).toHaveBeenCalledTimes(1);
     expect(stop).not.toHaveBeenCalled();
     expect(close).not.toHaveBeenCalled();
+    app.destroy();
+  });
+
+  it('페이지 만료 전에는 다음 페이지 AVPlay를 미리 건드리지 않고 만료 후 전환한다', async () => {
+    vi.useFakeTimers();
+    const play = vi.fn();
+    const getPlayer = vi.fn(() => ({
+      ...createPlayer(play),
+      getState: vi.fn(() => 'PLAYING'),
+    }));
+    window.webapis = createWebApis(createPlayer(play), vi.fn(), { getPlayer });
+
+    const app = new NewHyOnPlayerApp({
+      manifest: createTwoPageManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+    expect(document.querySelector('#status-page')?.textContent).toContain('first-page');
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(getPlayer).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(6499);
+    await Promise.resolve();
+    expect(document.querySelector('#status-page')?.textContent).toContain('first-page');
+    expect(document.querySelectorAll('.slot')).toHaveLength(1);
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(getPlayer).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(3501);
+    await vi.advanceTimersByTimeAsync(32);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(document.querySelector('#status-page')?.textContent).toContain('second-page');
+    expect(document.querySelectorAll('.slot')).toHaveLength(1);
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(getPlayer).toHaveBeenCalledTimes(4);
+    expect(window.NEWHYON_PLAYER_HEALTH?.diagnostics.pageStartCount).toBe(2);
     app.destroy();
   });
 

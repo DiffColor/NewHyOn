@@ -1228,7 +1228,7 @@ export class NewHyOnPlayerApp {
       return;
     }
 
-    void this.playPage(this.pageIndex + 1);
+    void this.playPage(this.pageIndex + 1, { preservePreviousUntilReady: true });
   }
 
   private scheduleHudTimer(): void {
@@ -1954,9 +1954,9 @@ export class NewHyOnPlayerApp {
       this.settingsOverlay?.open();
       this.setMessage('설정창을 열었습니다.');
     } else if (action === 'next-page') {
-      void this.playPage(this.pageIndex + 1);
+      void this.playPage(this.pageIndex + 1, { preservePreviousUntilReady: true });
     } else if (action === 'previous-page') {
-      void this.playPage(this.pageIndex - 1);
+      void this.playPage(this.pageIndex - 1, { preservePreviousUntilReady: true });
     }
   };
 }

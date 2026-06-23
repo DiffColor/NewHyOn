@@ -118,9 +118,13 @@ describe('AvplaySession', () => {
     document.body.appendChild(slotElement);
 
     await session.play(createVideoItem(), createSlotPlan(), slotElement, true, vi.fn());
+    expect(playerA.prepareAsync).toHaveBeenCalledTimes(1);
+    expect(playerA.prepare).not.toHaveBeenCalled();
     expect(playerA.setDisplayMethod).toHaveBeenLastCalledWith('PLAYER_DISPLAY_MODE_LETTER_BOX');
 
     await session.play(createVideoItem(), createSlotPlan(), slotElement, false, vi.fn());
+    expect(playerB.prepareAsync).toHaveBeenCalledTimes(1);
+    expect(playerB.prepare).not.toHaveBeenCalled();
     expect(playerB.setDisplayMethod).toHaveBeenLastCalledWith('PLAYER_DISPLAY_MODE_FULL_SCREEN');
   });
 
@@ -214,6 +218,39 @@ describe('AvplaySession', () => {
     await session.play(createVideoItem('third.mp4'), slotPlan, slotElement, false, vi.fn());
     expect(laneA.style.zIndex).toBe('22');
     expect(laneB.style.zIndex).toBe('21');
+  });
+
+  it('다음 영상 전환 prepare 전에 현재 lane still mode를 먼저 켠다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    const callOrder: string[] = [];
+    playerA.setVideoStillMode = vi.fn((mode) => {
+      callOrder.push(`a.still:${mode}`);
+    });
+    playerB.prepareAsync = vi.fn((successCallback: () => void) => {
+      callOrder.push('b.prepareAsync');
+      successCallback();
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+    const slot = createSlotPlan();
+    const slotElement = document.createElement('section');
+    const first = createVideoItem('first.mp4');
+    const second = createVideoItem('second.mp4');
+
+    await session.play(first, slot, slotElement, false, vi.fn());
+    callOrder.splice(0);
+
+    await session.play(second, slot, slotElement, false, vi.fn());
+
+    expect(callOrder[0]).toBe('a.still:true');
+    expect(callOrder[1]).toBe('b.prepareAsync');
+    expect(playerB.play).toHaveBeenCalledTimes(1);
   });
 
   it('첫 프레임 대기 옵션은 재생 시간 이벤트 전까지 play 완료를 보류한다', async () => {

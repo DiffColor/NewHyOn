@@ -78,10 +78,6 @@ export class AvplaySession {
   ): Promise<void> {
     this.displayContext = { slot, slotElement };
     const nextLaneIndex = this.currentLaneIndex === 0 ? 1 : 0;
-    this.holdCurrentLaneForTransition();
-    this.currentItem = item;
-    this.currentEndedHandler = onStreamEnded;
-
     const lane = this.lanes[nextLaneIndex];
     const sourceUrl = resolveAvplaySourceUrl(item.sourceUrl);
     const firstFrameReady = options.waitForFirstFrame
@@ -89,15 +85,21 @@ export class AvplaySession {
       : null;
     this.logger.info('avplay', `slot ${this.index} lane ${nextLaneIndex + 1} open: ${item.name}`);
     try {
+      const previousLaneIndex = this.currentLaneIndex;
+      this.holdCurrentFrameForTransition();
       this.resetLaneForPlayback(nextLaneIndex);
       this.configureLaneForItem(nextLaneIndex, item, sourceUrl, slot, slotElement, preserveAspectRatio, firstFrameReady);
-      lane.player.prepare();
+      await this.prepareLaneAsync(nextLaneIndex, item.name);
       lane.player.setVideoStillMode?.('false');
       lane.player.play();
 
+      this.currentItem = item;
+      this.currentEndedHandler = onStreamEnded;
       this.currentLaneIndex = nextLaneIndex;
+      this.heldLaneIndex = previousLaneIndex;
       this.updateObjectVisibility();
       await firstFrameReady?.promise;
+      this.freezeAndStopHeldLane();
     } catch (error) {
       firstFrameReady?.cancel();
       throw error;
@@ -238,20 +240,39 @@ export class AvplaySession {
     return this.lanes[this.currentLaneIndex];
   }
 
-  private holdCurrentLaneForTransition(): void {
-    if (this.currentLaneIndex === null) {
-      return;
-    }
-
-    this.freezeAndStopLane(this.currentLaneIndex);
-    this.heldLaneIndex = this.currentLaneIndex;
-  }
-
   private resetLaneForPlayback(laneIndex: number): void {
     this.stopLane(laneIndex);
     if (this.heldLaneIndex === laneIndex) {
       this.heldLaneIndex = null;
     }
+  }
+
+  private prepareLaneAsync(laneIndex: number, itemName: string): Promise<void> {
+    const lane = this.lanes[laneIndex];
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const resolveOnce = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        this.logger.debug('avplay', `slot ${this.index} lane ${laneIndex + 1} prepared: ${itemName}`);
+        resolve();
+      };
+      const rejectOnce = (error: AVPlayErrorLike) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        reject(new Error(`slot ${this.index} lane ${laneIndex + 1} AVPlay prepareAsync 오류: ${formatAvplayError(error, '')}`));
+      };
+
+      try {
+        lane.player.prepareAsync(resolveOnce, rejectOnce);
+      } catch (error) {
+        rejectOnce(error as AVPlayErrorLike);
+      }
+    });
   }
 
   private configureLaneForItem(
@@ -272,6 +293,19 @@ export class AvplaySession {
     lane.player.setLooping?.(item.shouldLoop);
   }
 
+  private holdCurrentFrameForTransition(): void {
+    if (this.currentLaneIndex === null) {
+      return;
+    }
+
+    const lane = this.lanes[this.currentLaneIndex];
+    try {
+      lane.player.setVideoStillMode?.('true');
+    } catch (error) {
+      this.logger.warn('avplay', `slot ${this.index} lane ${this.currentLaneIndex + 1} transition still mode 실패: ${String(error)}`);
+    }
+  }
+
   private freezeAndStopLane(laneIndex: number): void {
     const lane = this.lanes[laneIndex];
     try {
@@ -280,6 +314,14 @@ export class AvplaySession {
       this.logger.warn('avplay', `slot ${this.index} lane ${laneIndex + 1} still mode 실패: ${String(error)}`);
     }
     this.stopLane(laneIndex);
+  }
+
+  private freezeAndStopHeldLane(): void {
+    if (this.heldLaneIndex === null || this.heldLaneIndex === this.currentLaneIndex) {
+      return;
+    }
+
+    this.freezeAndStopLane(this.heldLaneIndex);
   }
 
   private stopLane(laneIndex: number): void {
