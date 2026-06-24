@@ -87,6 +87,13 @@ function createTwoImageSlot(): SeamlessSlotPlan {
   };
 }
 
+function createVideoThenImageSlot(): SeamlessSlotPlan {
+  return {
+    ...createVideoSlot(),
+    items: [createVideoItem('first.mp4'), createImageItem('second.png')],
+  };
+}
+
 describe('SlotPlayer', () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -375,6 +382,99 @@ describe('SlotPlayer', () => {
       expect(slot.snapshot()).toContain('second.png');
       expect(hadNoVisibleImage).toBe(false);
       removeSpy.mockRestore();
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
+      }
+    }
+  });
+
+  it('이미지 슬롯은 AVPlay 세션 없음 상태를 오류처럼 표시하지 않는다', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      configurable: true,
+      get() {
+        return this.getAttribute('src') ?? '';
+      },
+      set(value: string) {
+        this.setAttribute('src', value);
+        queueMicrotask(() => this.onload?.(new Event('load')));
+      },
+    });
+
+    try {
+      const slot = new SlotPlayer(
+        0,
+        document.createElement('section'),
+        {
+          ...createTwoImageSlot(),
+          items: [createImageItem('first.png')],
+        },
+        false,
+        false,
+        () => {
+          throw new Error('이미지 슬롯은 AVPlay 세션을 사용하지 않습니다.');
+        },
+        new RingLogger(5),
+      );
+
+      await slot.start();
+
+      expect(slot.snapshot()).toContain('(IMAGE)');
+      expect(slot.snapshot()).not.toContain('NO_VIDEO_SESSION');
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
+      }
+    }
+  });
+
+  it('영상에서 이미지로 전환되면 idle AVPlay 세션 임대를 반납한다', async () => {
+    vi.useFakeTimers();
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      configurable: true,
+      get() {
+        return this.getAttribute('src') ?? '';
+      },
+      set(value: string) {
+        this.setAttribute('src', value);
+        queueMicrotask(() => this.onload?.(new Event('load')));
+      },
+    });
+
+    try {
+      const session = {
+        play: vi.fn(async () => undefined),
+        pause: vi.fn(),
+        resume: vi.fn(),
+        stop: vi.fn(),
+        state: vi.fn(() => 'PLAYING'),
+        applyDisplayRect: vi.fn(),
+      } as unknown as AvplaySession;
+      const release = vi.fn();
+      const slot = new SlotPlayer(
+        0,
+        document.createElement('section'),
+        createVideoThenImageSlot(),
+        false,
+        false,
+        () => session,
+        new RingLogger(5),
+        () => undefined,
+        false,
+        release,
+      );
+
+      await slot.start();
+      expect(release).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(10000);
+      await vi.runAllTicks();
+
+      expect(session.stop).toHaveBeenCalledTimes(1);
+      expect(release).toHaveBeenCalledWith(session);
+      expect(slot.snapshot()).toContain('second.png (IMAGE)');
     } finally {
       if (descriptor) {
         Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);

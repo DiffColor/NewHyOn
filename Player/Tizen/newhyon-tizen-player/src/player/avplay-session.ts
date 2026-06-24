@@ -434,6 +434,14 @@ export class AvplaySessionPool {
     this.slotLeases.clear();
   }
 
+  release(session: AvplaySession): void {
+    Array.from(this.slotLeases.entries())
+      .filter(([, leasedSession]) => leasedSession === session)
+      .forEach(([slotIndex]) => {
+        this.slotLeases.delete(slotIndex);
+      });
+  }
+
   commitTransitionLeases(slotIndexOffset: number): void {
     const committed = new Map<number, AvplaySession>();
     this.slotLeases.forEach((session, slotIndex) => {

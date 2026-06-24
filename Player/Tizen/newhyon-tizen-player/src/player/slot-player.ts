@@ -32,6 +32,7 @@ export class SlotPlayer {
     private readonly logger: RingLogger,
     private readonly onContentShown: ContentShownHandler = () => undefined,
     private readonly waitForVideoFirstFrame = false,
+    private readonly releaseVideoSession: (session: AvplaySession) => void = () => undefined,
   ) {
     this.currentImage = this.imageA;
     this.standbyImage = this.imageB;
@@ -60,7 +61,7 @@ export class SlotPlayer {
     this.clearTimer();
     this.resetItemClock();
     this.clearPreparedItem();
-    this.videoSession?.stop();
+    this.releaseCurrentVideoSession();
     this.currentImage.removeAttribute('src');
     this.standbyImage.removeAttribute('src');
     this.currentImage.classList.remove('slot-image--visible');
@@ -119,7 +120,15 @@ export class SlotPlayer {
       return `${this.slot.elementName || `slot-${this.slotIndex + 1}`}: ${item?.name ?? '-'} (ERROR: ${this.failureMessage})`;
     }
 
-    const state = this.videoSession?.state() ?? 'NO_VIDEO_SESSION';
+    if (!item) {
+      return `${this.slot.elementName || `slot-${this.slotIndex + 1}`}: - (EMPTY)`;
+    }
+
+    if (item.contentType === 'Image') {
+      return `${this.slot.elementName || `slot-${this.slotIndex + 1}`}: ${item.name} (IMAGE)`;
+    }
+
+    const state = this.videoSession?.state() ?? 'VIDEO_SESSION_NOT_READY';
     return `${this.slot.elementName || `slot-${this.slotIndex + 1}`}: ${item?.name ?? '-'} (${state})`;
   }
 
@@ -138,7 +147,7 @@ export class SlotPlayer {
     try {
       if (item.contentType === 'Image') {
         this.element.classList.remove('slot--video-active');
-        this.videoSession?.stop();
+        this.releaseCurrentVideoSession();
         await this.showImage(item);
       } else {
         this.element.classList.add('slot--video-active');
@@ -194,7 +203,7 @@ export class SlotPlayer {
     this.clearTimer();
     this.resetItemClock();
     this.clearPreparedItem();
-    this.videoSession?.stop();
+    this.releaseCurrentVideoSession();
     this.hideImages();
     this.element.classList.remove('slot--video-active');
     this.element.classList.add('slot--empty');
@@ -298,6 +307,17 @@ export class SlotPlayer {
   private clearPreparedItem(): void {
     this.preparedItemIndex = null;
     this.preparePromise = null;
+  }
+
+  private releaseCurrentVideoSession(): void {
+    if (!this.videoSession) {
+      return;
+    }
+
+    const session = this.videoSession;
+    session.stop();
+    this.videoSession = null;
+    this.releaseVideoSession(session);
   }
 
   private clearTimer(): void {

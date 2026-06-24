@@ -68,6 +68,30 @@ describe('AvplaySessionPool', () => {
     expect(() => pool.acquire(2)).toThrow('Tizen AVPlayStore 세션 한도를 초과했습니다');
     expect(getPlayer).toHaveBeenCalledTimes(4);
   });
+
+  it('반납된 idle 세션은 다음 슬롯에서 재사용한다', () => {
+    const getPlayer = vi.fn(createPlayer);
+    window.webapis = {
+      avplay: createPlayer(),
+      avplaystore: {
+        getPlayer,
+      },
+    };
+
+    const pool = new AvplaySessionPool(document.body, new RingLogger(1), () => ({
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    }));
+
+    const first = pool.acquire(0);
+    expect(getPlayer).toHaveBeenCalledTimes(2);
+
+    pool.release(first);
+    const reused = pool.acquire(100);
+
+    expect(reused).toBe(first);
+    expect(getPlayer).toHaveBeenCalledTimes(2);
+  });
 });
 
 function createVideoItem(fileName = 'video.mp4'): SeamlessContentItem {

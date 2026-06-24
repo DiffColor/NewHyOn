@@ -1124,6 +1124,7 @@ export class NewHyOnPlayerApp {
             stagedContentShown.push({ slotIndex: shownSlotIndex, item });
           },
           preservePrevious,
+          (session) => avplayPool!.release(session),
         ),
       );
     });
