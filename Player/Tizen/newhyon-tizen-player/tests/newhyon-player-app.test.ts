@@ -863,6 +863,78 @@ describe('NewHyOnPlayerApp', () => {
     app.destroy();
   });
 
+  it('updateschedule의 활성 예약 playlist가 비어 있으면 기존 콘텐츠를 유지한다', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 22, 9, 1, 0));
+    const play = vi.fn();
+    window.webapis = createWebApis(createPlayer(play));
+
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
+
+    await (app as unknown as {
+      applyUpdateScheduleCommand(payload: UpdatePayload): Promise<boolean>;
+    }).applyUpdateScheduleCommand({
+      Schedule: {
+        GeneratedAt: '2026-06-22 09:00:00',
+        SpecialSchedules: [
+          {
+            Id: 'schedule-empty',
+            PageListName: 'empty-scheduled-list',
+            DayOfWeek1: false,
+            DayOfWeek2: true,
+            DayOfWeek3: false,
+            DayOfWeek4: false,
+            DayOfWeek5: false,
+            DayOfWeek6: false,
+            DayOfWeek7: false,
+            IsPeriodEnable: false,
+            DisplayStartH: 9,
+            DisplayStartM: 0,
+            DisplayEndH: 18,
+            DisplayEndM: 0,
+          },
+        ],
+        Playlists: {
+          empty: {
+            PlaylistName: 'empty-scheduled-list',
+            PageList: { PLI_PageListName: 'empty-scheduled-list' },
+            Pages: [
+              {
+                PIC_PageName: 'empty-scheduled-page',
+                PIC_PlaytimeSecond: 10,
+                PIC_CanvasWidth: 1920,
+                PIC_CanvasHeight: 1080,
+                PIC_Elements: [],
+              },
+            ],
+          },
+        },
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
+    expect(document.querySelector('#status-page')?.textContent).not.toContain('Tizen Intro');
+    expect(document.querySelector('#status-message')?.textContent).toContain('예약 스케줄 데이터 없음');
+    app.destroy();
+  });
+
   it('updatelist 다운로드 중에는 기존 콘텐츠를 유지하고 완료 후 새 콘텐츠를 적용한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn();

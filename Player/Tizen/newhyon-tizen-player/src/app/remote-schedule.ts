@@ -239,9 +239,8 @@ function extractSpecialSchedules(schedule: unknown): SpecialSchedulePayload[] {
 
   const scheduleObject = schedule as Record<string, unknown>;
   const value = scheduleObject.SpecialSchedules ?? scheduleObject.specialSchedules;
-  return Array.isArray(value)
-    ? value.filter((item): item is SpecialSchedulePayload => Boolean(item) && typeof item === 'object')
-    : [];
+  return objectCollectionValues(value)
+    .filter((item): item is SpecialSchedulePayload => Boolean(item) && typeof item === 'object');
 }
 
 function extractSchedulePlaylists(schedule: unknown): SchedulePlaylistPayload[] {
@@ -251,9 +250,20 @@ function extractSchedulePlaylists(schedule: unknown): SchedulePlaylistPayload[] 
 
   const scheduleObject = schedule as Record<string, unknown>;
   const value = scheduleObject.Playlists ?? scheduleObject.playlists;
-  return Array.isArray(value)
-    ? value.filter((item): item is SchedulePlaylistPayload => Boolean(item) && typeof item === 'object')
-    : [];
+  return objectCollectionValues(value)
+    .filter((item): item is SchedulePlaylistPayload => Boolean(item) && typeof item === 'object');
+}
+
+function objectCollectionValues(value: unknown): unknown[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (!value || typeof value !== 'object') {
+    return [];
+  }
+
+  return Object.values(value);
 }
 
 function selectActiveSchedule(schedules: readonly SpecialSchedulePayload[], now: Date): SpecialSchedulePayload | null {

@@ -848,10 +848,11 @@ export class NewHyOnPlayerApp {
     }
 
     const scheduleObject = snapshot.schedule as { Playlists?: unknown; playlists?: unknown };
-    const playlists = Array.isArray(scheduleObject.Playlists)
-      ? scheduleObject.Playlists
-      : Array.isArray(scheduleObject.playlists)
-        ? scheduleObject.playlists
+    const playlistCollection = scheduleObject.Playlists ?? scheduleObject.playlists;
+    const playlists = Array.isArray(playlistCollection)
+      ? playlistCollection
+      : playlistCollection && typeof playlistCollection === 'object'
+        ? Object.values(playlistCollection)
         : [];
     const target = playlists.find((playlist) => {
       if (!playlist || typeof playlist !== 'object') {
@@ -1579,12 +1580,23 @@ export class NewHyOnPlayerApp {
       return;
     }
 
-    const resolution = this.createEffectiveUpdatePagePlans(manifest);
+    if (!this.contentPlaybackAllowed) {
+      this.logger.info('schedule', `LicenseHub 미인증 상태라 예약 playlist 적용을 보류합니다: ${decision.playlistName}`);
+      return;
+    }
+
+    const pagePlans = this.createContentPagePlans(manifest);
+    if (pagePlans.length === 0) {
+      this.logger.warn('schedule', `예약 playlist에 재생 가능한 콘텐츠가 없어 기존 화면을 유지합니다: ${decision.playlistName}`);
+      this.setMessage(`예약 스케줄 데이터 없음: ${decision.playlistName}`);
+      return;
+    }
+
     await this.playPage(0, {
       preservePreviousUntilReady: true,
       commitPageTimelineBeforeSurfaceSwap: true,
-      pagePlans: resolution.pagePlans,
-      playbackMode: resolution.mode,
+      pagePlans,
+      playbackMode: 'content',
     });
     this.activeRemoteSchedulePlaylistName = decision.playlistName;
     this.setMessage(`예약 스케줄 적용: ${decision.playlistName}`);
