@@ -16,6 +16,23 @@ namespace AndoW_Manager.SubWindow
         private SpecialScheduleViewData sThisData;
         private List<SpecialScheduleViewData> sSameData;
 
+        private sealed class ScheduleEditTargetPlan
+        {
+            public SpecialScheduleInfoClass Target { get; set; }
+            public List<string> EditablePlayers { get; set; } = new List<string>();
+            public List<string> ExcludedTizenPlayers { get; set; } = new List<string>();
+
+            public bool HasEditablePlayers
+            {
+                get { return EditablePlayers != null && EditablePlayers.Count > 0; }
+            }
+
+            public bool RequiresSplit
+            {
+                get { return HasEditablePlayers && ExcludedTizenPlayers != null && ExcludedTizenPlayers.Count > 0; }
+            }
+        }
+
         public EditSpecialWindow()
         {
             InitializeComponent();
@@ -218,13 +235,34 @@ namespace AndoW_Manager.SubWindow
                 targets.Select(x => x?.GUID).Where(x => string.IsNullOrWhiteSpace(x) == false),
                 StringComparer.CurrentCultureIgnoreCase);
             HashSet<string> updatedPlayers = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+            List<ScheduleEditTargetPlan> editPlans = BuildScheduleEditTargetPlans(targets);
+            List<string> excludedTizenPlayers = editPlans
+                .SelectMany(x => x.ExcludedTizenPlayers ?? new List<string>())
+                .Where(x => string.IsNullOrWhiteSpace(x) == false)
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+            List<ScheduleEditTargetPlan> editablePlans = editPlans
+                .Where(x => x != null && x.HasEditablePlayers)
+                .ToList();
 
-            foreach (SpecialScheduleInfoClass target in targets)
+            if (editablePlans.Count < 1)
             {
-                if (target == null)
+                if (excludedTizenPlayers.Count > 0)
+                    ShowTizenScheduleEditExcludedMessage(excludedTizenPlayers, true);
+                else
+                    MainWindow.Instance.EnqueueSnackMsg("수정 가능한 대상이 없습니다.");
+
+                return false;
+            }
+
+            foreach (ScheduleEditTargetPlan plan in editablePlans)
+            {
+                if (plan == null || plan.Target == null)
                     continue;
 
-                SpecialScheduleInfoClass candidate = BuildScheduleInfo(target, playlist, startDate, endDate, startTime, endTime, days);
+                SpecialScheduleInfoClass candidateSource = CloneScheduleWithPlayers(plan.Target, plan.EditablePlayers);
+                SpecialScheduleInfoClass candidate = BuildScheduleInfo(candidateSource, playlist, startDate, endDate, startTime, endTime, days);
                 if (HasDuplicateSchedule(manager.g_SpecialScheduleInfoClassList, excludedIds, candidate))
                 {
                     MainWindow.Instance.EnqueueSnackMsg("해당 대상에 중복되는 스케줄이 존재합니다. 확인 후 등록해주세요.");
@@ -232,27 +270,125 @@ namespace AndoW_Manager.SubWindow
                 }
             }
 
-            foreach (SpecialScheduleInfoClass target in targets)
+            foreach (ScheduleEditTargetPlan plan in editablePlans)
             {
-                if (target == null || string.IsNullOrWhiteSpace(target.GUID))
+                if (plan == null || plan.Target == null || string.IsNullOrWhiteSpace(plan.Target.GUID))
                     continue;
 
-                SpecialScheduleInfoClass updated = BuildScheduleInfo(target, playlist, startDate, endDate, startTime, endTime, days);
-                updated.GUID = target.GUID;
-                manager.EditDeviceInfoClass(target, updated, string.Empty);
+                if (plan.RequiresSplit)
+                {
+                    SpecialScheduleInfoClass preservedTizenSchedule = CloneScheduleWithPlayers(plan.Target, plan.ExcludedTizenPlayers);
+                    preservedTizenSchedule.GUID = plan.Target.GUID;
+                    manager.EditDeviceInfoClass(plan.Target, preservedTizenSchedule, string.Empty);
 
-                if (updated.PlayerNames == null)
-                    continue;
+                    SpecialScheduleInfoClass updatedSplitSchedule = BuildScheduleInfo(
+                        CloneScheduleWithPlayers(plan.Target, plan.EditablePlayers),
+                        playlist,
+                        startDate,
+                        endDate,
+                        startTime,
+                        endTime,
+                        days);
+                    updatedSplitSchedule.GUID = Guid.NewGuid().ToString();
+                    manager.AddSpecialScheduleInfoClass(updatedSplitSchedule, string.Empty);
+                }
+                else
+                {
+                    SpecialScheduleInfoClass updated = BuildScheduleInfo(
+                        CloneScheduleWithPlayers(plan.Target, plan.EditablePlayers),
+                        playlist,
+                        startDate,
+                        endDate,
+                        startTime,
+                        endTime,
+                        days);
+                    updated.GUID = plan.Target.GUID;
+                    manager.EditDeviceInfoClass(plan.Target, updated, string.Empty);
+                }
 
-                foreach (string player in updated.PlayerNames)
+                foreach (string player in plan.EditablePlayers)
                 {
                     if (string.IsNullOrWhiteSpace(player) == false)
                         updatedPlayers.Add(player);
                 }
             }
 
+            ShowTizenScheduleEditExcludedMessage(excludedTizenPlayers, false);
             SendScheduleUpdates(updatedPlayers);
             return true;
+        }
+
+        private List<ScheduleEditTargetPlan> BuildScheduleEditTargetPlans(IEnumerable<SpecialScheduleInfoClass> targets)
+        {
+            List<ScheduleEditTargetPlan> plans = new List<ScheduleEditTargetPlan>();
+            if (targets == null)
+                return plans;
+
+            foreach (SpecialScheduleInfoClass target in targets)
+            {
+                if (target == null)
+                    continue;
+
+                ScheduleEditTargetPlan plan = new ScheduleEditTargetPlan
+                {
+                    Target = target
+                };
+
+                foreach (string playerName in GetDistinctPlayerNames(target.PlayerNames))
+                {
+                    if (IsTizenPlayerName(playerName))
+                        plan.ExcludedTizenPlayers.Add(playerName);
+                    else
+                        plan.EditablePlayers.Add(playerName);
+                }
+
+                plans.Add(plan);
+            }
+
+            return plans;
+        }
+
+        private bool IsTizenPlayerName(string playerName)
+        {
+            if (string.IsNullOrWhiteSpace(playerName))
+                return false;
+
+            PlayerInfoClass playerInfo = DataShop.Instance.g_PlayerInfoManager.GetPlayerInfoByName(playerName);
+            return TizenPlaylistUpdatePolicy.IsTizenPlayer(playerInfo);
+        }
+
+        private static SpecialScheduleInfoClass CloneScheduleWithPlayers(SpecialScheduleInfoClass source, IEnumerable<string> players)
+        {
+            SpecialScheduleInfoClass clone = new SpecialScheduleInfoClass();
+            clone.CopyData(source);
+            clone.PlayerNames = GetDistinctPlayerNames(players);
+            return clone;
+        }
+
+        private static List<string> GetDistinctPlayerNames(IEnumerable<string> players)
+        {
+            return (players ?? new List<string>())
+                .Where(x => string.IsNullOrWhiteSpace(x) == false)
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+        }
+
+        private static void ShowTizenScheduleEditExcludedMessage(IEnumerable<string> excludedPlayers, bool isCanceled)
+        {
+            List<string> names = (excludedPlayers ?? new List<string>())
+                .Where(x => string.IsNullOrWhiteSpace(x) == false)
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+            if (names.Count < 1)
+                return;
+
+            string playerText = string.Join(", ", names);
+            string message = isCanceled
+                ? string.Format("Tizen 플레이어 [{0}]는 스케줄 수정 업데이트가 취소되었습니다.{1}수정 가능한 대상이 없어 스케줄 수정이 취소되었습니다.", playerText, Environment.NewLine)
+                : string.Format("Tizen 플레이어 [{0}]는 스케줄 수정 업데이트가 취소되어 대상에서 제외되었습니다.", playerText);
+
+            MessageTools.ShowMessageBox(message, "확인");
         }
 
         private bool HasDuplicateSchedule(IEnumerable<SpecialScheduleInfoClass> schedules, HashSet<string> excludedIds, SpecialScheduleInfoClass candidate)
