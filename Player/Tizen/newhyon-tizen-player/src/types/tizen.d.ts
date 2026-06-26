@@ -145,6 +145,7 @@ declare global {
 
   interface TizenFile {
     readonly name?: string;
+    readonly fileSize?: number;
     resolve(path: string): TizenFile;
     createFile(relativeFilePath: string): TizenFile;
     openStream(
@@ -156,6 +157,8 @@ declare global {
   }
 
   interface TizenFileStream {
+    readonly bytesAvailable?: number;
+    read?(count: number): string;
     write(text: string): void;
     close(): void;
   }

@@ -1,5 +1,10 @@
 import './styles.css';
 import { NewHyOnPlayerApp } from './app/newhyon-player-app';
+import {
+  enableDurableLocalStorageMirror,
+  flushDurableLocalStorage,
+  restoreDurableLocalStorage,
+} from './app/durable-local-storage';
 import { resolveRuntimeConfig } from './app/runtime-config';
 
 async function ensureSamsungWebApis(): Promise<void> {
@@ -28,6 +33,14 @@ async function ensureSamsungWebApis(): Promise<void> {
 async function bootstrap(): Promise<void> {
   try {
     await ensureSamsungWebApis();
+    await restoreDurableLocalStorage();
+    enableDurableLocalStorageMirror();
+    window.addEventListener('pagehide', () => {
+      void flushDurableLocalStorage();
+    });
+    window.addEventListener('beforeunload', () => {
+      void flushDurableLocalStorage();
+    });
     const config = await resolveRuntimeConfig();
     const app = new NewHyOnPlayerApp(config);
     await app.start();

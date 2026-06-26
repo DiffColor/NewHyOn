@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { collectRuntimeDiagnostics, formatRuntimeDiagnostics } from '../src/app/runtime-diagnostics';
 
 describe('runtime diagnostics', () => {
@@ -14,6 +14,11 @@ describe('runtime diagnostics', () => {
       systemcontrol: {},
     };
     window.tizen = {
+      ApplicationControl: vi.fn() as unknown as TizenApplicationControlConstructor,
+      ApplicationControlData: vi.fn() as unknown as TizenApplicationControlDataConstructor,
+      application: {
+        launchAppControl: () => undefined,
+      },
       tvinputdevice: {
         registerKey: () => undefined,
       },
@@ -23,7 +28,7 @@ describe('runtime diagnostics', () => {
     };
 
     expect(formatRuntimeDiagnostics(collectRuntimeDiagnostics())).toBe(
-      'webapis=OK avplay=OK avplaystore=MISS network=MISS productinfo=OK systemcontrol=OK remotepower=MISS tizen=OK download=MISS filesystem=OK input=OK audio=MISS',
+      'webapis=OK avplay=OK avplaystore=MISS network=MISS productinfo=OK systemcontrol=OK remotepower=MISS tizen=OK download=MISS filesystem=OK app=OK appctrl=OK input=OK audio=MISS',
     );
   });
 });

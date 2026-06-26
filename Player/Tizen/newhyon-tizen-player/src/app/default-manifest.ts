@@ -1,21 +1,21 @@
 import type { PlayerManifest } from '../domain/models';
 
-export const ANDROID_INTRO_VIDEO_FILE = 'media/intro.mp4';
-export const ANDROID_INTRO_VIDEO_PATH = `wgt-package/${ANDROID_INTRO_VIDEO_FILE}`;
+export const TIZEN_INTRO_VIDEO_FILE = 'media/intro.mp4';
+export const TIZEN_INTRO_VIDEO_PATH = `wgt-package/${TIZEN_INTRO_VIDEO_FILE}`;
 
-export function createAndroidIntroManifest(preserveAspectRatio: boolean): PlayerManifest {
+export function createTizenIntroManifest(preserveAspectRatio: boolean): PlayerManifest {
   return {
-    playlistName: 'Android Intro',
+    playlistName: 'Tizen Intro',
     preserveAspectRatio,
     pages: [
       {
-        PIC_PageName: 'Android Intro',
+        PIC_PageName: 'Tizen Intro',
         PIC_PlaytimeSecond: 15,
         PIC_CanvasWidth: 1920,
         PIC_CanvasHeight: 1080,
         PIC_Elements: [
           {
-            EIF_Name: 'Android Intro Video',
+            EIF_Name: 'Tizen Intro Video',
             EIF_Type: 'Media',
             EIF_Width: 1920,
             EIF_Height: 1080,
@@ -26,20 +26,20 @@ export function createAndroidIntroManifest(preserveAspectRatio: boolean): Player
             EIF_ContentsInfoClassList: [
               {
                 CIF_FileName: 'intro.mp4',
-                CIF_FileFullPath: ANDROID_INTRO_VIDEO_PATH,
+                CIF_FileFullPath: TIZEN_INTRO_VIDEO_PATH,
                 CIF_ContentType: 'Video',
                 CIF_PlayMinute: '00',
                 CIF_PlaySec: '15',
-                CIF_StrGUID: 'android-intro-video',
+                CIF_StrGUID: 'tizen-intro-video',
                 CIF_FileExist: true,
               },
               {
                 CIF_FileName: 'intro.mp4',
-                CIF_FileFullPath: ANDROID_INTRO_VIDEO_PATH,
+                CIF_FileFullPath: TIZEN_INTRO_VIDEO_PATH,
                 CIF_ContentType: 'Video',
                 CIF_PlayMinute: '00',
                 CIF_PlaySec: '15',
-                CIF_StrGUID: 'android-intro-video-repeat',
+                CIF_StrGUID: 'tizen-intro-video-repeat',
                 CIF_FileExist: true,
               },
             ],
@@ -50,4 +50,4 @@ export function createAndroidIntroManifest(preserveAspectRatio: boolean): Player
   };
 }
 
-export const DEFAULT_MANIFEST: PlayerManifest = createAndroidIntroManifest(false);
+export const DEFAULT_MANIFEST: PlayerManifest = createTizenIntroManifest(false);

@@ -1,6 +1,6 @@
 import type { RuntimeConfig } from './runtime-config';
 import { RingLogger } from '../core/logger';
-import { buildPagePlan, type SeamlessContentItem, type SeamlessPagePlan } from '../domain/page-plan';
+import { buildPagePlan, type SeamlessContentItem, type SeamlessPagePlan, type SeamlessSlotPlan } from '../domain/page-plan';
 import {
   REMOTE_KEY_REGISTRATION_LIST,
   resolveRemoteControlAction,
@@ -8,7 +8,7 @@ import {
 } from '../input/remote-control';
 import { AvplaySessionPool } from '../player/avplay-session';
 import { TizenAudioPolicy } from '../player/audio-policy';
-import { SlotPlayer } from '../player/slot-player';
+import { SlotPlayer, type SlotPlayerTimelineSnapshot } from '../player/slot-player';
 import { RuntimeHealthReporter } from './runtime-health-reporter';
 import { collectRuntimeDiagnostics, formatRuntimeDiagnostics } from './runtime-diagnostics';
 import { SettingsOverlay } from './settings-overlay';
@@ -22,7 +22,16 @@ import { LicenseHubAuthService, type LicenseAuthState } from './licensehub-auth'
 import { LicenseAuthOverlay } from './license-auth-overlay';
 import { syncPlayerInfoMessage } from './player-info-sync';
 import { RemoteCommandService, type RemoteCommandCallbackResult } from './remote-command-service';
-import { saveRemoteScheduleFromUpdatePayload } from './remote-schedule';
+import {
+  buildManifestFromRemoteSchedulePlaylist,
+  buildManifestsFromRemoteSchedulePlaylists,
+  evaluateRemoteSchedule,
+  loadRemoteSchedule,
+  saveRemoteScheduleSnapshot,
+  saveRemoteScheduleFromUpdatePayload,
+  type RemoteScheduleDecision,
+  type RemoteScheduleSnapshot,
+} from './remote-schedule';
 import {
   configureSsspSignageForPlayer,
   prepareSsspPowerOff,
@@ -36,7 +45,7 @@ import {
 } from './sssp-content-cache';
 import { buildManifestFromUpdatePayload, saveRemoteManifest, type UpdatePayload } from './update-payload';
 import { evaluateWeeklySchedule, loadWeeklySchedule, saveWeeklyScheduleFromUpdatePayload } from './weekly-schedule';
-import { ANDROID_INTRO_VIDEO_FILE, createAndroidIntroManifest } from './default-manifest';
+import { TIZEN_INTRO_VIDEO_FILE, createTizenIntroManifest } from './default-manifest';
 
 interface ViewRefs {
   readonly stage: HTMLElement;
@@ -60,6 +69,7 @@ interface ViewRefs {
   readonly auth: HTMLElement;
   readonly update: HTMLElement;
   readonly slots: HTMLElement;
+  readonly timeline: HTMLElement;
   readonly message: HTMLElement;
   readonly logOutput: HTMLElement;
 }
@@ -80,6 +90,7 @@ interface PagePlayOptions {
   readonly preservePreviousUntilReady?: boolean;
   readonly pagePlans?: readonly SeamlessPagePlan[];
   readonly playbackMode?: PlaybackMode;
+  readonly commitPageTimelineBeforeSurfaceSwap?: boolean;
 }
 
 interface EmptyIntroVideoOptions {
@@ -120,6 +131,7 @@ interface UpdateOverlayState {
 type LoadingStepState = 'pending' | 'active' | 'complete' | 'error' | 'skipped';
 
 const TRANSITION_SLOT_INDEX_OFFSET = 100;
+const MASTER_TICK_INTERVAL_MS = 1000;
 
 function getRequiredElement<T extends HTMLElement>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -149,9 +161,14 @@ export class NewHyOnPlayerApp {
   private pageIndex = 0;
   private pageStartedAt = 0;
   private pagePausedElapsedMs = 0;
-  private pageTimerId: number | null = null;
-  private hudTimerId: number | null = null;
-  private broadcastScheduleTimerId: number | null = null;
+  private masterTimerId: number | null = null;
+  private pageTransitionInProgress = false;
+  private slotTimelineSyncInProgress = false;
+  private scheduleCheckInProgress = false;
+  private remoteScheduleSwitchInProgress = false;
+  private activeRemoteSchedulePlaylistName: string | null = null;
+  private lastScheduleCheckSecond = -1;
+  private lastBroadcastScheduleCheckMinute = -1;
   private settingsOverlay: SettingsOverlay | null = null;
   private lastRemoteKey = '-';
   private lastRemoteAction = '-';
@@ -221,6 +238,7 @@ export class NewHyOnPlayerApp {
       auth: getRequiredElement('#status-auth'),
       update: getRequiredElement('#status-update'),
       slots: getRequiredElement('#status-slots'),
+      timeline: getRequiredElement('#status-timeline'),
       message: getRequiredElement('#status-message'),
       logOutput: getRequiredElement('#log-output'),
     };
@@ -261,7 +279,7 @@ export class NewHyOnPlayerApp {
       this.startHeartbeat();
       this.remoteCommandService?.start();
       await this.applyBroadcastSchedule('startup');
-      this.scheduleBroadcastScheduleCheck();
+      this.startMasterTimer();
       this.hideLoading();
     } catch (error) {
       const message = formatError(error);
@@ -274,8 +292,7 @@ export class NewHyOnPlayerApp {
 
   destroy(): void {
     this.destroyed = true;
-    this.clearBroadcastScheduleTimer();
-    this.clearTimers();
+    this.stopMasterTimer();
     this.stopSlots();
     this.requestOfflineHeartbeat();
     this.heartbeatReporter = null;
@@ -680,14 +697,11 @@ export class NewHyOnPlayerApp {
   }
 
   private restorePlaybackTimersAfterFailedTransition(): void {
-    this.clearTimers();
     if (!this.broadcastOnAir || !this.playing || !this.hasActivePlaybackSurface()) {
       return;
     }
 
-    const page = this.pagePlans[this.pageIndex];
-    this.schedulePageTimerFromElapsed(page.durationSeconds, this.currentPageElapsedMilliseconds());
-    this.scheduleHudTimer();
+    this.startMasterTimer();
   }
 
   private setUpdateOverlayState(
@@ -785,7 +799,6 @@ export class NewHyOnPlayerApp {
     this.setMessage(`주간 스케줄 적용: ${rows.length}일`);
     this.logger.info('command', `${commandName} 적용 완료: rows=${rows.length}`);
     await this.applyBroadcastSchedule(commandName);
-    this.scheduleBroadcastScheduleCheck();
     return true;
   }
 
@@ -796,7 +809,67 @@ export class NewHyOnPlayerApp {
       'command',
       `updateschedule 적용 완료: special=${snapshot.specialScheduleCount}, playlists=${snapshot.playlistScheduleCount}, contentPeriods=${snapshot.contentPeriodCount}, generatedAt=${snapshot.generatedAt || '-'}`,
     );
+    await this.cacheRemoteSchedulePlaylistContent(snapshot);
+    await this.applyRemoteScheduleSnapshot(snapshot, Date.now());
     return true;
+  }
+
+  private async cacheRemoteSchedulePlaylistContent(snapshot: RemoteScheduleSnapshot): Promise<void> {
+    const manifests = buildManifestsFromRemoteSchedulePlaylists(
+      snapshot,
+      this.config.manifest.preserveAspectRatio,
+    );
+    if (manifests.length === 0) {
+      return;
+    }
+
+    const cacheOptions = this.buildRemoteContentOptions();
+    for (const manifest of manifests) {
+      const remoteContentCount = countRemoteManifestContentForOptions(manifest, cacheOptions);
+      if (remoteContentCount === 0) {
+        continue;
+      }
+
+      this.logger.info('schedule', `예약 playlist 캐시 시작: ${manifest.playlistName}, contents=${remoteContentCount}`);
+      const cachedManifest = await cacheRemoteManifestContent(manifest, {
+        ...cacheOptions,
+        cacheNamespace: `updateschedule-${manifest.playlistName}`,
+      });
+      this.replaceRemoteSchedulePlaylistPages(snapshot, cachedManifest);
+      this.logger.info('schedule', `예약 playlist 캐시 완료: ${manifest.playlistName}`);
+    }
+
+    saveRemoteScheduleSnapshot(snapshot);
+  }
+
+  private replaceRemoteSchedulePlaylistPages(snapshot: RemoteScheduleSnapshot, manifest: RuntimeConfig['manifest']): void {
+    if (!snapshot.schedule || typeof snapshot.schedule !== 'object') {
+      return;
+    }
+
+    const scheduleObject = snapshot.schedule as { Playlists?: unknown; playlists?: unknown };
+    const playlists = Array.isArray(scheduleObject.Playlists)
+      ? scheduleObject.Playlists
+      : Array.isArray(scheduleObject.playlists)
+        ? scheduleObject.playlists
+        : [];
+    const target = playlists.find((playlist) => {
+      if (!playlist || typeof playlist !== 'object') {
+        return false;
+      }
+
+      const candidate = playlist as {
+        PlaylistName?: string;
+        playlistName?: string;
+        PageList?: { PLI_PageListName?: string };
+        pageList?: { PLI_PageListName?: string };
+      };
+      const playlistName = candidate.PlaylistName || candidate.playlistName || candidate.PageList?.PLI_PageListName || candidate.pageList?.PLI_PageListName || '';
+      return playlistName.localeCompare(manifest.playlistName, undefined, { sensitivity: 'accent' }) === 0;
+    });
+    if (target && typeof target === 'object') {
+      (target as { Pages?: RuntimeConfig['manifest']['pages']; pages?: RuntimeConfig['manifest']['pages'] }).Pages = manifest.pages;
+    }
   }
 
   private async applyBroadcastSchedule(source: string): Promise<void> {
@@ -1040,6 +1113,17 @@ export class NewHyOnPlayerApp {
     }
 
     const page = targetPagePlans[targetPageIndex]!;
+    if (preservePrevious && targetPlaybackMode === 'content') {
+      await this.switchSurfacesToPage(
+        targetPagePlans,
+        targetPlaybackMode,
+        targetPageIndex,
+        page,
+        options.commitPageTimelineBeforeSurfaceSwap === true,
+      );
+      return;
+    }
+
     if (!preservePrevious && !preserveIntroTransition) {
       this.audioPolicy.applyForPage(page);
     }
@@ -1083,7 +1167,7 @@ export class NewHyOnPlayerApp {
         await this.playEmptyIntroVideo();
       }
       this.writeRuntimeHealth('page-started');
-      this.scheduleHudTimer();
+      this.startMasterTimer();
       return;
     }
 
@@ -1106,27 +1190,27 @@ export class NewHyOnPlayerApp {
 
       const leaseSlotIndex = preservePrevious ? slotIndex + TRANSITION_SLOT_INDEX_OFFSET : slotIndex;
       nextSlotElements.push(element);
-      nextSlotPlayers.push(
-        new SlotPlayer(
-          slotIndex,
-          element,
-          slot,
-          this.config.manifest.preserveAspectRatio,
-          this.config.settings.switchOnContentEnd,
-          () => avplayPool!.acquire(leaseSlotIndex),
-          this.logger,
-          (shownSlotIndex, item) => {
-            if (transitionCommitted) {
-              this.recordContentShown(shownSlotIndex, item);
-              return;
-            }
+      const slotPlayer = new SlotPlayer(
+        slotIndex,
+        element,
+        slot,
+        this.config.manifest.preserveAspectRatio,
+        this.config.settings.switchOnContentEnd,
+        () => avplayPool!.acquire(leaseSlotIndex),
+        this.logger,
+        (shownSlotIndex, item) => {
+          if (transitionCommitted) {
+            this.recordContentShown(shownSlotIndex, item);
+            return;
+          }
 
-            stagedContentShown.push({ slotIndex: shownSlotIndex, item });
-          },
-          preservePrevious,
-          (session) => avplayPool!.release(session),
-        ),
+          stagedContentShown.push({ slotIndex: shownSlotIndex, item });
+        },
+        preservePrevious,
+        (session) => avplayPool!.release(session),
       );
+      slotPlayer.setPageTimeline(0, Math.max(1, page.durationSeconds) * 1000, targetPagePlans.length <= 1);
+      nextSlotPlayers.push(slotPlayer);
     });
 
     if (!preservePrevious) {
@@ -1153,7 +1237,6 @@ export class NewHyOnPlayerApp {
       }
 
       transitionCommitted = true;
-      this.clearTimers();
       this.commitPlaybackPlan(targetPagePlans, targetPlaybackMode, targetPageIndex);
       this.audioPolicy.applyForPage(page);
       nextSlotElements.forEach((element) => {
@@ -1177,14 +1260,115 @@ export class NewHyOnPlayerApp {
       this.logger.info('page', `start ${page.pageName} (${page.durationSeconds}s, seamless)`);
     }
     this.writeRuntimeHealth('page-started');
-    this.schedulePageTimer(page.durationSeconds);
-    this.scheduleHudTimer();
+    this.startMasterTimer();
   }
 
   private recordContentShown(slotIndex: number, item: SeamlessContentItem): void {
     this.contentShowCount += 1;
     this.lastContent = `slot ${slotIndex + 1}: ${item.name}`;
     this.writeRuntimeHealth('content-shown');
+  }
+
+  private async switchSurfacesToPage(
+    targetPagePlans: readonly SeamlessPagePlan[],
+    targetPlaybackMode: PlaybackMode,
+    targetPageIndex: number,
+    page: SeamlessPagePlan,
+    commitPageTimelineBeforeSurfaceSwap: boolean,
+  ): Promise<void> {
+    const avplayPool = this.ensureAvplayPool();
+    const previousState = commitPageTimelineBeforeSurfaceSwap ? this.capturePlaybackState() : null;
+    this.logger.info('page', `prepare ${page.pageName} (${page.durationSeconds}s, surface-swap)`);
+    this.view.stage.style.setProperty('--canvas-width', String(page.canvasWidth));
+    this.view.stage.style.setProperty('--canvas-height', String(page.canvasHeight));
+    this.view.stage.style.aspectRatio = `${page.canvasWidth} / ${page.canvasHeight}`;
+
+    if (commitPageTimelineBeforeSurfaceSwap) {
+      this.commitPlaybackPlan(targetPagePlans, targetPlaybackMode, targetPageIndex);
+      this.audioPolicy.applyForPage(page);
+      this.playing = true;
+      this.pageStartCount += 1;
+      this.pageStartedAt = performance.now();
+      this.render();
+      this.writeRuntimeHealth('page-started');
+    }
+
+    const startResults = await Promise.all(page.slots.map((slot, slotIndex) => {
+      const existing = this.slotPlayers[slotIndex];
+      if (!existing && !this.slotNeedsSurface(slot)) {
+        return Promise.resolve(true);
+      }
+
+      const slotPlayer = existing ?? this.ensureSlotSurface(slotIndex, slot, page, avplayPool);
+      slotPlayer.setPageTimeline(0, Math.max(1, page.durationSeconds) * 1000, targetPagePlans.length <= 1);
+      return slotPlayer.switchToSlotPlan(slot, page.canvasWidth, page.canvasHeight);
+    }));
+    const failed = startResults.some((started) => !started);
+    if (failed) {
+      if (previousState) {
+        this.restorePlaybackState(previousState);
+        this.render();
+      }
+      throw new Error(`페이지 surface 전환 준비 실패: ${this.formatSlotTransitionFailure(this.slotPlayers)}`);
+    }
+
+    if (!commitPageTimelineBeforeSurfaceSwap) {
+      this.commitPlaybackPlan(targetPagePlans, targetPlaybackMode, targetPageIndex);
+      this.audioPolicy.applyForPage(page);
+    }
+    this.removeEmptyIntroVideo();
+    this.slotPlayers.forEach((slotPlayer) => slotPlayer.applyDisplayRect());
+    await this.waitForPaint();
+    if (!commitPageTimelineBeforeSurfaceSwap) {
+      this.playing = true;
+      this.pageStartCount += 1;
+      this.pageStartedAt = performance.now();
+    }
+    this.render();
+    this.setMessage(`페이지 재생: ${page.pageName}`);
+    this.logger.info('page', `start ${page.pageName} (${page.durationSeconds}s, surface-swap)`);
+    if (!commitPageTimelineBeforeSurfaceSwap) {
+      this.writeRuntimeHealth('page-started');
+    }
+    this.startMasterTimer();
+  }
+
+  private slotNeedsSurface(slot: SeamlessSlotPlan): boolean {
+    return slot.items.length > 0 && slot.width > 0 && slot.height > 0;
+  }
+
+  private ensureSlotSurface(
+    slotIndex: number,
+    slot: SeamlessSlotPlan,
+    page: SeamlessPagePlan,
+    avplayPool: AvplaySessionPool,
+  ): SlotPlayer {
+    const existing = this.slotPlayers[slotIndex];
+    if (existing) {
+      return existing;
+    }
+
+    const element = document.createElement('section');
+    element.className = 'slot';
+    this.view.stage.appendChild(element);
+    const slotPlayer = new SlotPlayer(
+      slotIndex,
+      element,
+      slot,
+      this.config.manifest.preserveAspectRatio,
+      this.config.settings.switchOnContentEnd,
+      () => avplayPool.acquire(slotIndex),
+      this.logger,
+      (shownSlotIndex, item) => {
+        this.recordContentShown(shownSlotIndex, item);
+      },
+      false,
+      (session) => avplayPool.release(session),
+    );
+    slotPlayer.applyLayout(page.canvasWidth, page.canvasHeight);
+    slotPlayer.setPageTimeline(0, Math.max(1, page.durationSeconds) * 1000, this.pagePlans.length <= 1);
+    this.slotPlayers[slotIndex] = slotPlayer;
+    return slotPlayer;
   }
 
   private formatSlotTransitionFailure(slotPlayers: readonly SlotPlayer[]): string {
@@ -1195,10 +1379,6 @@ export class NewHyOnPlayerApp {
     return failures.length > 0 ? failures.join(' | ') : '새 콘텐츠 슬롯이 시작되지 않았습니다.';
   }
 
-  private schedulePageTimer(durationSeconds: number): void {
-    this.schedulePageTimerFromElapsed(durationSeconds, this.pagePausedElapsedMs);
-  }
-
   private waitForPaint(): Promise<void> {
     return new Promise((resolve) => {
       window.requestAnimationFrame(() => {
@@ -1207,57 +1387,208 @@ export class NewHyOnPlayerApp {
     });
   }
 
-  private schedulePageTimerFromElapsed(durationSeconds: number, elapsedMs: number): void {
-    if (this.pagePlans.length <= 1) {
+  private startMasterTimer(): void {
+    if (this.masterTimerId !== null || this.destroyed) {
       return;
     }
 
-    const durationMs = Math.max(1, durationSeconds) * 1000;
-    const safeElapsedMs = Math.min(Math.max(0, elapsedMs), durationMs);
-    const remainingMs = Math.max(0, durationMs - safeElapsedMs);
-    this.pageTimerId = window.setTimeout(() => {
-      this.handlePageTimerElapsed();
-    }, remainingMs);
+    this.scheduleNextMasterTick();
   }
 
-  private handlePageTimerElapsed(): void {
-    this.pageTimerId = null;
-    if (this.contentReplacementInProgress) {
-      this.pageTimerId = window.setTimeout(() => {
-        this.handlePageTimerElapsed();
-      }, 250);
+  private stopMasterTimer(): void {
+    if (this.masterTimerId !== null) {
+      window.clearTimeout(this.masterTimerId);
+      this.masterTimerId = null;
+    }
+  }
+
+  private scheduleNextMasterTick(): void {
+    if (this.destroyed || this.masterTimerId !== null) {
       return;
     }
 
-    void this.playPage(this.pageIndex + 1, { preservePreviousUntilReady: true });
+    this.masterTimerId = window.setTimeout(() => {
+      this.masterTimerId = null;
+      this.runMasterTick();
+      this.scheduleNextMasterTick();
+    }, MASTER_TICK_INTERVAL_MS);
   }
 
-  private scheduleHudTimer(): void {
-    this.hudTimerId = window.setInterval(() => {
-      this.render();
-    }, 250);
-  }
-
-  private scheduleBroadcastScheduleCheck(): void {
-    this.clearBroadcastScheduleTimer();
+  private runMasterTick(): void {
     if (this.destroyed) {
       return;
     }
 
-    const now = new Date();
-    const msToNextMinute = ((60 - now.getSeconds()) * 1000) - now.getMilliseconds() + 100;
-    this.broadcastScheduleTimerId = window.setTimeout(() => {
-      this.broadcastScheduleTimerId = null;
-      void this.applyBroadcastSchedule('timer')
-        .finally(() => this.scheduleBroadcastScheduleCheck());
-    }, Math.max(1000, msToNextMinute));
+    const pageElapsedMs = this.currentPageElapsedMilliseconds();
+    const rawPageElapsedMs = this.currentPageRawElapsedMilliseconds();
+    this.render();
+    const pageTransitionStarted = this.checkPageTransition(rawPageElapsedMs);
+    if (!pageTransitionStarted && !this.pageTransitionInProgress && !this.isCurrentPageExpired(rawPageElapsedMs)) {
+      this.scheduleSlotTimelineSync(pageElapsedMs, this.currentPageDurationMilliseconds(), this.pagePlans.length <= 1);
+    }
+    this.checkSchedules();
   }
 
-  private clearBroadcastScheduleTimer(): void {
-    if (this.broadcastScheduleTimerId !== null) {
-      window.clearTimeout(this.broadcastScheduleTimerId);
-      this.broadcastScheduleTimerId = null;
+  private scheduleSlotTimelineSync(pageElapsedMs: number, pageDurationMs: number, loopCurrentPageAtPageEnd: boolean): void {
+    if (!this.playing || this.slotTimelineSyncInProgress || this.slotPlayers.length === 0) {
+      return;
     }
+
+    this.slotTimelineSyncInProgress = true;
+    void Promise.all(this.slotPlayers.map((slotPlayer) => (
+      slotPlayer.syncToPageElapsed(pageElapsedMs, pageDurationMs, loopCurrentPageAtPageEnd)
+    )))
+      .catch((error) => {
+        this.logger.warn('slot', `master tick 슬롯 동기화 실패: ${formatError(error)}`);
+      })
+      .finally(() => {
+        this.slotTimelineSyncInProgress = false;
+      });
+  }
+
+  private checkPageTransition(pageElapsedMs: number): boolean {
+    if (
+      !this.playing
+      || this.pagePlans.length <= 1
+      || this.pageTransitionInProgress
+      || this.contentReplacementInProgress
+    ) {
+      return false;
+    }
+
+    if (!this.isCurrentPageExpired(pageElapsedMs)) {
+      return false;
+    }
+
+    this.pageTransitionInProgress = true;
+    void this.playPage(this.pageIndex + 1, {
+      preservePreviousUntilReady: true,
+      commitPageTimelineBeforeSurfaceSwap: true,
+    })
+      .catch((error) => {
+        this.logger.error('page', `페이지 전환 실패: ${formatError(error)}`);
+        this.setMessage(`페이지 전환 실패: ${formatError(error)}`);
+      })
+      .finally(() => {
+        this.pageTransitionInProgress = false;
+      });
+    return true;
+  }
+
+  private checkSchedules(): void {
+    const nowMs = Date.now();
+    const currentSecond = Math.floor(nowMs / MASTER_TICK_INTERVAL_MS);
+    if (currentSecond !== this.lastScheduleCheckSecond) {
+      this.lastScheduleCheckSecond = currentSecond;
+      this.checkReservationScheduleLookahead(nowMs);
+    }
+
+    const currentMinute = Math.floor(nowMs / 60000);
+    if (currentMinute === this.lastBroadcastScheduleCheckMinute || this.scheduleCheckInProgress) {
+      return;
+    }
+
+    this.lastBroadcastScheduleCheckMinute = currentMinute;
+    this.scheduleCheckInProgress = true;
+    void this.applyBroadcastSchedule('master-tick')
+      .catch((error) => {
+        this.logger.warn('schedule', `master tick 방송 스케줄 체크 실패: ${formatError(error)}`);
+      })
+      .finally(() => {
+        this.scheduleCheckInProgress = false;
+      });
+  }
+
+  private checkReservationScheduleLookahead(nowMs: number): void {
+    const snapshot = loadRemoteSchedule();
+    if (!snapshot) {
+      return;
+    }
+
+    void this.applyRemoteScheduleSnapshot(snapshot, nowMs)
+      .catch((error) => {
+        this.logger.warn('schedule', `예약 스케줄 적용 실패: ${formatError(error)}`);
+      });
+  }
+
+  private async applyRemoteScheduleSnapshot(snapshot: RemoteScheduleSnapshot, nowMs: number): Promise<void> {
+    if (this.remoteScheduleSwitchInProgress || this.contentReplacementInProgress) {
+      return;
+    }
+
+    const fallbackPlaylistName = this.currentContentManifest.playlistName;
+    const decision = evaluateRemoteSchedule(snapshot, new Date(nowMs), fallbackPlaylistName);
+    const lookaheadDecision = evaluateRemoteSchedule(snapshot, new Date(nowMs + 3000), fallbackPlaylistName);
+    if (
+      lookaheadDecision.nextSwitchAtMs > 0
+      && lookaheadDecision.nextSwitchAtMs <= nowMs + 3000
+      && lookaheadDecision.nextPlaylistName
+    ) {
+      this.logger.debug(
+        'schedule',
+        `예약 스케줄 lookahead: ${new Date(lookaheadDecision.nextSwitchAtMs).toISOString()} -> ${lookaheadDecision.nextPlaylistName}`,
+      );
+    }
+
+    const activeKey = decision.isFromSchedule ? decision.playlistName : null;
+    if (this.activeRemoteSchedulePlaylistName === activeKey) {
+      return;
+    }
+
+    this.remoteScheduleSwitchInProgress = true;
+    try {
+      await this.applyRemoteScheduleDecision(snapshot, decision);
+    } finally {
+      this.remoteScheduleSwitchInProgress = false;
+    }
+  }
+
+  private async applyRemoteScheduleDecision(
+    snapshot: RemoteScheduleSnapshot,
+    decision: RemoteScheduleDecision,
+  ): Promise<void> {
+    if (this.destroyed || !this.broadcastOnAir) {
+      return;
+    }
+
+    if (!decision.isFromSchedule) {
+      if (this.activeRemoteSchedulePlaylistName === null) {
+        return;
+      }
+
+      const resolution = this.createEffectiveUpdatePagePlans(this.currentContentManifest);
+      await this.playPage(0, {
+        preservePreviousUntilReady: true,
+        commitPageTimelineBeforeSurfaceSwap: true,
+        pagePlans: resolution.pagePlans,
+        playbackMode: resolution.mode,
+      });
+      this.activeRemoteSchedulePlaylistName = null;
+      this.setMessage(`예약 스케줄 종료: ${this.currentContentManifest.playlistName}`);
+      this.logger.info('schedule', `예약 스케줄 종료, 기본 playlist=${this.currentContentManifest.playlistName}`);
+      return;
+    }
+
+    const manifest = buildManifestFromRemoteSchedulePlaylist(
+      snapshot,
+      decision.playlistName,
+      this.config.manifest.preserveAspectRatio,
+    );
+    if (!manifest) {
+      this.logger.warn('schedule', `예약 스케줄 playlist 데이터를 찾지 못했습니다: ${decision.playlistName}`);
+      return;
+    }
+
+    const resolution = this.createEffectiveUpdatePagePlans(manifest);
+    await this.playPage(0, {
+      preservePreviousUntilReady: true,
+      commitPageTimelineBeforeSurfaceSwap: true,
+      pagePlans: resolution.pagePlans,
+      playbackMode: resolution.mode,
+    });
+    this.activeRemoteSchedulePlaylistName = decision.playlistName;
+    this.setMessage(`예약 스케줄 적용: ${decision.playlistName}`);
+    this.logger.info('schedule', `예약 스케줄 적용: playlist=${decision.playlistName}, schedule=${decision.scheduleId || '-'}`);
   }
 
   private stopSlots(): void {
@@ -1278,7 +1609,7 @@ export class NewHyOnPlayerApp {
     if (options.hidden === true) {
       video.style.visibility = 'hidden';
     }
-    video.src = ANDROID_INTRO_VIDEO_FILE;
+    video.src = TIZEN_INTRO_VIDEO_FILE;
     video.autoplay = true;
     video.loop = true;
     video.muted = true;
@@ -1305,7 +1636,7 @@ export class NewHyOnPlayerApp {
     try {
       await video.play();
     } catch (error) {
-      const message = `Android 인트로 영상 재생 실패: ${formatError(error)}`;
+      const message = `Tizen 인트로 영상 재생 실패: ${formatError(error)}`;
       if (reportErrors) {
         this.reportEmptyIntroVideoError(message);
       } else {
@@ -1323,8 +1654,8 @@ export class NewHyOnPlayerApp {
 
   private recordEmptyIntroVideoStarted(): void {
     this.contentShowCount += 1;
-    this.lastContent = `empty-intro: ${ANDROID_INTRO_VIDEO_FILE}`;
-    this.logger.info('intro', `Android intro video started: ${ANDROID_INTRO_VIDEO_FILE}`);
+    this.lastContent = `empty-intro: ${TIZEN_INTRO_VIDEO_FILE}`;
+    this.logger.info('intro', `Tizen intro video started: ${TIZEN_INTRO_VIDEO_FILE}`);
     this.writeRuntimeHealth('content-shown');
   }
 
@@ -1339,7 +1670,7 @@ export class NewHyOnPlayerApp {
       video.removeAttribute('src');
       video.load();
     } catch (error) {
-      this.logger.warn('intro', `Android intro video 정리 실패: ${formatError(error)}`);
+      this.logger.warn('intro', `Tizen intro video 정리 실패: ${formatError(error)}`);
     }
 
     video.remove();
@@ -1349,7 +1680,7 @@ export class NewHyOnPlayerApp {
   private formatEmptyIntroVideoError(video: HTMLVideoElement): string {
     const code = video.error?.code ?? 0;
     const detail = video.error?.message || `media error code ${code}`;
-    return `Android 인트로 영상을 로드하지 못했습니다: ${ANDROID_INTRO_VIDEO_FILE} (${detail})`;
+    return `Tizen 인트로 영상을 로드하지 못했습니다: ${TIZEN_INTRO_VIDEO_FILE} (${detail})`;
   }
 
   private reportEmptyIntroVideoError(message: string): void {
@@ -1365,32 +1696,49 @@ export class NewHyOnPlayerApp {
   }
 
   private clearTimers(): void {
-    if (this.pageTimerId !== null) {
-      window.clearTimeout(this.pageTimerId);
-      this.pageTimerId = null;
-    }
-    if (this.hudTimerId !== null) {
-      window.clearInterval(this.hudTimerId);
-      this.hudTimerId = null;
-    }
+    this.pageTransitionInProgress = false;
+    this.slotTimelineSyncInProgress = false;
   }
 
   private currentPageElapsedMilliseconds(): number {
+    const durationMs = this.currentPageDurationMilliseconds();
+    if (!this.playing) {
+      return this.pagePlans.length <= 1
+        ? this.pagePausedElapsedMs % durationMs
+        : Math.min(this.pagePausedElapsedMs, durationMs);
+    }
+
+    const elapsedMs = this.currentPageRawElapsedMilliseconds();
+    if (this.pagePlans.length <= 1) {
+      return elapsedMs % durationMs;
+    }
+
+    return Math.min(elapsedMs, durationMs);
+  }
+
+  private currentPageRawElapsedMilliseconds(): number {
     if (!this.playing) {
       return this.pagePausedElapsedMs;
     }
 
-    const durationMs = Math.max(1, this.pagePlans[this.pageIndex].durationSeconds) * 1000;
-    return Math.min(Math.max(0, performance.now() - this.pageStartedAt), durationMs);
+    return Math.max(0, performance.now() - this.pageStartedAt);
+  }
+
+  private currentPageDurationMilliseconds(): number {
+    return Math.max(1, this.pagePlans[this.pageIndex].durationSeconds) * 1000;
+  }
+
+  private isCurrentPageExpired(pageElapsedMs: number): boolean {
+    return this.pagePlans.length > 1 && pageElapsedMs >= this.currentPageDurationMilliseconds();
   }
 
   private render(): void {
     const page = this.pagePlans[this.pageIndex];
-    const elapsedSeconds = this.currentPageElapsedMilliseconds() / 1000;
+    const pageElapsedMs = this.currentPageElapsedMilliseconds();
     this.view.state.textContent = this.broadcastOnAir ? this.playing ? 'playing' : 'paused' : 'off-air';
     this.view.playlist.textContent = page.playlistName;
     this.view.page.textContent = `${this.pageIndex + 1}/${this.pagePlans.length} ${page.pageName}`;
-    this.view.elapsed.textContent = `${elapsedSeconds.toFixed(1)}s / ${page.durationSeconds}s`;
+    this.view.elapsed.textContent = this.formatPageElapsedText(page, pageElapsedMs);
     this.view.lastKey.textContent = this.lastRemoteKey;
     this.view.lastAction.textContent = this.lastRemoteAction;
     this.view.platform.textContent = formatRuntimeDiagnostics(collectRuntimeDiagnostics());
@@ -1398,6 +1746,109 @@ export class NewHyOnPlayerApp {
     this.view.auth.textContent = `LicenseHub: ${this.authStatus} (${this.authStatusDetail})`;
     this.view.update.textContent = this.formatUpdateOverlayStatus();
     this.view.slots.textContent = this.slotPlayers.map((slotPlayer) => slotPlayer.snapshot()).join('\n') || '-';
+    this.view.timeline.innerHTML = this.formatPlaybackTimeline(page, pageElapsedMs);
+  }
+
+  private formatPageElapsedText(page: SeamlessPagePlan, elapsedMs: number): string {
+    const durationMs = Math.max(1, page.durationSeconds) * 1000;
+    const remainingMs = Math.max(0, durationMs - elapsedMs);
+    const nextPage = this.pagePlans.length > 1
+      ? this.pagePlans[(this.pageIndex + 1) % this.pagePlans.length]
+      : null;
+    const nextText = nextPage ? ` / 다음 페이지 ${this.formatSeconds(remainingMs)} 후` : '';
+    return `${this.formatSeconds(elapsedMs)} / ${this.formatSeconds(durationMs)}${nextText}`;
+  }
+
+  private formatPlaybackTimeline(page: SeamlessPagePlan, pageElapsedMs: number): string {
+    const pageDurationMs = Math.max(1, page.durationSeconds) * 1000;
+    const pageRemainingMs = Math.max(0, pageDurationMs - pageElapsedMs);
+    const pageProgress = pageDurationMs > 0 ? Math.min(1, Math.max(0, pageElapsedMs / pageDurationMs)) : 0;
+    const nextPage = this.pagePlans.length > 1
+      ? this.pagePlans[(this.pageIndex + 1) % this.pagePlans.length]
+      : null;
+    const pageSwitchText = nextPage
+      ? `${this.formatSeconds(pageRemainingMs)} 후 ${this.escapeHtml(nextPage.pageName || `page-${this.pageIndex + 2}`)}`
+      : '마지막/단일 페이지';
+    const slotSnapshots = this.slotPlayers.map((slotPlayer) => slotPlayer.timelineSnapshot());
+    const slotHtml = slotSnapshots.length > 0
+      ? slotSnapshots.map((snapshot) => this.formatSlotTimeline(snapshot)).join('')
+      : '<div class="timeline-empty">활성 슬롯 없음</div>';
+
+    return `
+      <section class="timeline-panel">
+        <div class="timeline-panel__header">
+          <strong>${this.escapeHtml(page.playlistName)}</strong>
+          <span>${this.escapeHtml(`${this.pageIndex + 1}/${this.pagePlans.length} ${page.pageName}`)}</span>
+        </div>
+        ${this.formatProgressRow({
+          label: 'PAGE',
+          name: '페이지 진행',
+          elapsedMs: pageElapsedMs,
+          durationMs: pageDurationMs,
+          progress: pageProgress,
+          detail: `전환 ${pageSwitchText}`,
+          level: 'page',
+        })}
+        <div class="timeline-panel__slots">${slotHtml}</div>
+      </section>
+    `;
+  }
+
+  private formatSlotTimeline(snapshot: SlotPlayerTimelineSnapshot): string {
+    const itemLabel = snapshot.itemIndex >= 0
+      ? `${snapshot.itemIndex + 1}/${snapshot.itemCount}`
+      : '-';
+    const detail = snapshot.failureMessage
+      ? `오류: ${snapshot.failureMessage}`
+      : `전환 ${snapshot.nextTransitionText}`;
+    return this.formatProgressRow({
+      label: `S${snapshot.slotIndex + 1}`,
+      name: `${snapshot.slotName} · ${itemLabel} · ${snapshot.contentType} · ${snapshot.itemName}`,
+      elapsedMs: snapshot.elapsedMs,
+      durationMs: snapshot.durationMs,
+      progress: snapshot.progress,
+      detail,
+      level: snapshot.failureMessage ? 'error' : 'slot',
+    });
+  }
+
+  private formatProgressRow(options: {
+    readonly label: string;
+    readonly name: string;
+    readonly elapsedMs: number;
+    readonly durationMs: number;
+    readonly progress: number;
+    readonly detail: string;
+    readonly level: 'page' | 'slot' | 'error';
+  }): string {
+    const widthPercent = Math.round(Math.min(1, Math.max(0, options.progress)) * 1000) / 10;
+    return `
+      <div class="timeline-row timeline-row--${options.level}">
+        <div class="timeline-row__top">
+          <span class="timeline-row__label">${this.escapeHtml(options.label)}</span>
+          <span class="timeline-row__name">${this.escapeHtml(options.name)}</span>
+          <span class="timeline-row__time">${this.formatSeconds(options.elapsedMs)} / ${this.formatSeconds(options.durationMs)}</span>
+        </div>
+        <div class="timeline-row__bar" style="background: linear-gradient(90deg, #a855f7 0%, #a855f7 ${widthPercent}%, rgba(255, 255, 255, 0.18) ${widthPercent}%, rgba(255, 255, 255, 0.18) 100%)" aria-hidden="true"></div>
+        <div class="timeline-row__bottom">
+          <span>${this.escapeHtml(options.detail)}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  private formatSeconds(milliseconds: number): string {
+    const seconds = Math.max(0, milliseconds) / 1000;
+    return `${seconds.toFixed(1)}s`;
+  }
+
+  private escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   private showLoading(title: string, message: string, error = false): void {
@@ -1443,7 +1894,7 @@ export class NewHyOnPlayerApp {
 
   private createEffectiveUpdatePagePlans(manifest: RuntimeConfig['manifest']): PagePlanResolution {
     if (!this.contentPlaybackAllowed) {
-      this.logger.info('auth', 'LicenseHub 미인증 상태라 콘텐츠 대신 Android intro 영상을 유지합니다.');
+      this.logger.info('auth', 'LicenseHub 미인증 상태라 콘텐츠 대신 Tizen intro 영상을 유지합니다.');
       return this.createEmptyIntroPagePlans(manifest);
     }
 
@@ -1535,8 +1986,8 @@ export class NewHyOnPlayerApp {
   }
 
   private createEmptyIntroPagePlans(manifest: RuntimeConfig['manifest']): PagePlanResolution {
-    this.logger.info('manifest', '재생 가능한 데이터가 없어 Android intro 영상을 사용합니다.');
-    const introManifest = createAndroidIntroManifest(manifest.preserveAspectRatio);
+    this.logger.info('manifest', '재생 가능한 데이터가 없어 Tizen intro 영상을 사용합니다.');
+    const introManifest = createTizenIntroManifest(manifest.preserveAspectRatio);
     return {
       pagePlans: introManifest.pages.map((page) => buildPagePlan(page, introManifest.playlistName)),
       mode: 'empty-intro',
@@ -1795,10 +2246,10 @@ export class NewHyOnPlayerApp {
     if (!this.playing) {
       if (this.emptyIntroVideoElement) {
         this.playing = true;
-        this.scheduleHudTimer();
+        this.startMasterTimer();
         this.pageStartedAt = performance.now() - this.pagePausedElapsedMs;
         void this.emptyIntroVideoElement.play().catch((error) => {
-          const message = `Android 인트로 영상 재개 실패: ${formatError(error)}`;
+          const message = `Tizen 인트로 영상 재개 실패: ${formatError(error)}`;
           this.reportEmptyIntroVideoError(message);
         });
         this.setMessage('재생 재개');
@@ -1813,15 +2264,14 @@ export class NewHyOnPlayerApp {
 
       this.playing = true;
       this.slotPlayers.forEach((slotPlayer) => slotPlayer.resume());
-      this.scheduleHudTimer();
+      this.startMasterTimer();
       this.pageStartedAt = performance.now() - this.pagePausedElapsedMs;
-      this.schedulePageTimerFromElapsed(this.pagePlans[this.pageIndex].durationSeconds, this.pagePausedElapsedMs);
       this.setMessage('재생 재개');
       this.render();
       return;
     }
 
-    this.pagePausedElapsedMs = this.currentPageElapsedMilliseconds();
+    this.pagePausedElapsedMs = this.currentPageRawElapsedMilliseconds();
     this.playing = false;
     this.clearTimers();
     if (this.emptyIntroVideoElement) {

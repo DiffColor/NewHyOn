@@ -9,6 +9,8 @@ export interface RuntimeDiagnostics {
   readonly tizen: boolean;
   readonly download: boolean;
   readonly filesystem: boolean;
+  readonly application: boolean;
+  readonly applicationControl: boolean;
   readonly tvinputdevice: boolean;
   readonly tvaudiocontrol: boolean;
 }
@@ -29,6 +31,8 @@ export function collectRuntimeDiagnostics(): RuntimeDiagnostics {
     tizen: Boolean(window.tizen),
     download: Boolean(window.tizen?.download),
     filesystem: Boolean(window.tizen?.filesystem),
+    application: Boolean(window.tizen?.application?.launchAppControl),
+    applicationControl: Boolean(window.tizen?.ApplicationControl && window.tizen?.ApplicationControlData),
     tvinputdevice: Boolean(window.tizen?.tvinputdevice),
     tvaudiocontrol: Boolean(window.tizen?.tvaudiocontrol),
   };
@@ -46,6 +50,8 @@ export function formatRuntimeDiagnostics(diagnostics: RuntimeDiagnostics): strin
     `tizen=${mark(diagnostics.tizen)}`,
     `download=${mark(diagnostics.download)}`,
     `filesystem=${mark(diagnostics.filesystem)}`,
+    `app=${mark(diagnostics.application)}`,
+    `appctrl=${mark(diagnostics.applicationControl)}`,
     `input=${mark(diagnostics.tvinputdevice)}`,
     `audio=${mark(diagnostics.tvaudiocontrol)}`,
   ].join(' ');

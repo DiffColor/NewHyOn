@@ -160,6 +160,100 @@ describe('SlotPlayer', () => {
     expect(play).toHaveBeenCalledTimes(1);
   });
 
+  it('단일 이미지 타임라인은 한 바퀴가 지나면 0초부터 다시 표시한다', async () => {
+    vi.useFakeTimers();
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      configurable: true,
+      get() {
+        return this.getAttribute('src') ?? '';
+      },
+      set(value: string) {
+        this.setAttribute('src', value);
+        queueMicrotask(() => this.onload?.(new Event('load')));
+      },
+    });
+
+    try {
+      const slot = new SlotPlayer(
+        0,
+        document.createElement('section'),
+        {
+          ...createTwoImageSlot(),
+          items: [{ ...createImageItem('single.png'), durationSeconds: 1, actualDurationSeconds: 1 }],
+        },
+        false,
+        false,
+        () => {
+          throw new Error('이미지 슬롯은 AVPlay 세션을 사용하지 않습니다.');
+        },
+        new RingLogger(5),
+      );
+
+      const startPromise = slot.start();
+      await vi.runAllTicks();
+      await vi.advanceTimersByTimeAsync(32);
+      await startPromise;
+
+      await vi.advanceTimersByTimeAsync(1200);
+      const snapshot = slot.timelineSnapshot();
+
+      expect(snapshot.itemName).toBe('single.png');
+      expect(snapshot.elapsedMs).toBeGreaterThanOrEqual(200);
+      expect(snapshot.elapsedMs).toBeLessThan(300);
+      expect(snapshot.remainingMs).toBeGreaterThan(700);
+      expect(snapshot.nextTransitionText).toContain('표시 타이머 반복');
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
+      }
+    }
+  });
+
+  it('페이지 종료가 콘텐츠 전환보다 빠르면 다음 콘텐츠 이미지를 준비하지 않는다', async () => {
+    vi.useFakeTimers();
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      configurable: true,
+      get() {
+        return this.getAttribute('src') ?? '';
+      },
+      set(value: string) {
+        this.setAttribute('src', value);
+        queueMicrotask(() => this.onload?.(new Event('load')));
+      },
+    });
+
+    try {
+      const element = document.createElement('section');
+      const slot = new SlotPlayer(
+        0,
+        element,
+        createTwoImageSlot(),
+        false,
+        false,
+        () => {
+          throw new Error('이미지 슬롯은 AVPlay 세션을 사용하지 않습니다.');
+        },
+        new RingLogger(5),
+      );
+      slot.setPageTimeline(0, 9000, false);
+
+      const startPromise = slot.start();
+      await vi.runAllTicks();
+      await vi.advanceTimersByTimeAsync(32);
+      await startPromise;
+
+      const imageSources = Array.from(element.querySelectorAll<HTMLImageElement>('img')).map((image) => image.getAttribute('src'));
+      expect(imageSources).toContain('first.png');
+      expect(imageSources).not.toContain('second.png');
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
+      }
+    }
+  });
+
   it('일시정지 후 재개하면 다중 콘텐츠의 전체 시간이 아니라 남은 시간만 재생한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn(async (..._args: unknown[]) => undefined);
@@ -176,15 +270,15 @@ describe('SlotPlayer', () => {
     await slot.start();
     expect(play).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(4000);
+    await slot.syncToPageElapsed(4000);
     slot.pause();
     await vi.advanceTimersByTimeAsync(10000);
     expect(play).toHaveBeenCalledTimes(1);
 
     slot.resume();
-    await vi.advanceTimersByTimeAsync(5999);
+    await slot.syncToPageElapsed(9999);
     expect(play).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(1);
+    await slot.syncToPageElapsed(10000);
     expect(play).toHaveBeenCalledTimes(2);
   });
 
@@ -209,7 +303,7 @@ describe('SlotPlayer', () => {
     expect(play).toHaveBeenCalledTimes(1);
     expect(prepare).not.toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(10000);
+    await slot.syncToPageElapsed(10000);
     expect(prepare).not.toHaveBeenCalled();
     expect(play).toHaveBeenCalledTimes(2);
     expect(play.mock.calls[0]?.[5]).toMatchObject({ waitForFirstFrame: true });
@@ -376,7 +470,7 @@ describe('SlotPlayer', () => {
         }
       });
 
-      await vi.advanceTimersByTimeAsync(10000);
+      await slot.syncToPageElapsed(10000);
       await vi.runAllTicks();
       await vi.advanceTimersByTimeAsync(32);
       expect(slot.snapshot()).toContain('second.png');
@@ -469,7 +563,7 @@ describe('SlotPlayer', () => {
       await slot.start();
       expect(release).not.toHaveBeenCalled();
 
-      await vi.advanceTimersByTimeAsync(10000);
+      await slot.syncToPageElapsed(10000);
       await vi.runAllTicks();
 
       expect(session.stop).toHaveBeenCalledTimes(1);
