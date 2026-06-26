@@ -27,14 +27,15 @@ namespace AndoW_Manager
                 return false;
             }
 
-            int rows = page.PIC_Rows > 0 ? page.PIC_Rows : 1;
-            int columns = page.PIC_Columns > 0 ? page.PIC_Columns : 1;
-            if (rows == 1 && columns == 1)
+            int canvasObjectCount = CountCanvasObjects(page);
+            if (canvasObjectCount > 0)
             {
-                return true;
+                return canvasObjectCount == 1;
             }
 
-            return HasExactlyOneCanvasObject(page);
+            int rows = page.PIC_Rows > 0 ? page.PIC_Rows : 1;
+            int columns = page.PIC_Columns > 0 ? page.PIC_Columns : 1;
+            return rows == 1 && columns == 1;
         }
 
         public static bool IsSingleScreenPlaylist(string playlistName)
@@ -195,14 +196,14 @@ namespace AndoW_Manager
             return invalidPageNames.Count == 0;
         }
 
-        private static bool HasExactlyOneCanvasObject(PageInfoClass page)
+        private static int CountCanvasObjects(PageInfoClass page)
         {
             if (page == null || page.PIC_Elements == null)
             {
-                return false;
+                return 0;
             }
 
-            return page.PIC_Elements.Count(IsValidCanvasObject) == 1;
+            return page.PIC_Elements.Count(IsValidCanvasObject);
         }
 
         private static bool IsValidCanvasObject(ElementInfoClass element)
