@@ -4,6 +4,8 @@ import type { AvplaySession } from './avplay-session';
 import { resolveImageSourceUrl } from './source-resolver';
 
 type ContentShownHandler = (slotIndex: number, item: SeamlessContentItem) => void;
+type VideoTransitionMode = 'timer' | 'event';
+const VIDEO_DURATION_MATCH_TOLERANCE_MS = 250;
 
 export interface SlotPlayerTimelineSnapshot {
   readonly slotIndex: number;
@@ -43,6 +45,9 @@ export class SlotPlayer {
   private pageDurationMs = Number.POSITIVE_INFINITY;
   private loopCurrentPageAtPageEnd = false;
   private contentEndReachedAtPageBoundary = false;
+  private readonly videoDurationMsByItemId = new Map<string, number>();
+  private currentVideoLoopState: boolean | null = null;
+  private currentVideoCompletionCount = 0;
 
   constructor(
     private readonly slotIndex: number,
@@ -95,9 +100,9 @@ export class SlotPlayer {
     const previousItemPausedElapsedMs = this.itemPausedElapsedMs;
     const previousCanvasWidth = this.layoutCanvasWidth;
     const previousCanvasHeight = this.layoutCanvasHeight;
+    this.clearPreparedContent();
     this.slot = slot;
     this.applyLayout(canvasWidth, canvasHeight);
-    this.clearPreparedItem();
     this.itemIndex = 0;
     this.failureMessage = null;
     if (slot.items.length === 0 || slot.width <= 0 || slot.height <= 0) {
@@ -155,7 +160,7 @@ export class SlotPlayer {
   stop(): void {
     this.active = false;
     this.resetItemClock();
-    this.clearPreparedItem();
+    this.clearPreparedContent();
     this.releaseCurrentVideoSession();
     this.currentImage.removeAttribute('src');
     this.standbyImage.removeAttribute('src');
@@ -184,7 +189,7 @@ export class SlotPlayer {
     if (item) {
       this.startPassiveItemClock(item, this.itemPausedElapsedMs);
     }
-    void this.prepareNextItem();
+    void this.prepareNextContent();
   }
 
   async restartFromBeginning(): Promise<void> {
@@ -193,7 +198,7 @@ export class SlotPlayer {
     }
 
     this.resetItemClock();
-    this.clearPreparedItem();
+    this.clearPreparedContent();
     if (!this.canAdvanceContent()) {
       return;
     }
@@ -304,7 +309,11 @@ export class SlotPlayer {
 
   async syncToPageElapsed(pageElapsedMs: number, pageDurationMs = Number.POSITIVE_INFINITY, loopCurrentPageAtPageEnd = false): Promise<void> {
     this.setPageTimeline(pageElapsedMs, pageDurationMs, loopCurrentPageAtPageEnd);
-    if (!this.active || this.slot.items.length <= 1 || this.switchingItem || !this.usesTimerTimeline()) {
+    const item = this.currentItem();
+    if (item?.contentType === 'Video') {
+      this.updateCurrentVideoLoopState(item);
+    }
+    if (!this.active || this.slot.items.length <= 1 || this.switchingItem || (item && this.shouldWaitForVideoEnd(item))) {
       return;
     }
 
@@ -334,6 +343,8 @@ export class SlotPlayer {
     this.switchingItem = true;
     this.resetItemClock();
     this.contentEndReachedAtPageBoundary = false;
+    this.currentVideoLoopState = null;
+    this.currentVideoCompletionCount = 0;
     try {
       if (item.contentType === 'Image') {
         await this.showImage(item);
@@ -342,20 +353,21 @@ export class SlotPlayer {
       } else {
         this.element.classList.add('slot--video-active');
         const shouldWaitForFirstFrame = this.waitForVideoFirstFrame || this.canAdvanceContent();
-        const nextVideoSession = this.getVideoSession();
-        await nextVideoSession.play(item, this.slot, this.element, this.preserveAspectRatio, () => {
-          void this.handleVideoEnded();
-        }, {
+        const nextVideoSession = this.videoSession ?? this.getVideoSession();
+        const playbackInfo = await nextVideoSession.play(item, this.slot, this.element, this.preserveAspectRatio, () => this.handleVideoEnded(), {
           waitForFirstFrame: shouldWaitForFirstFrame,
         });
+        this.recordVideoDuration(item, playbackInfo?.durationMs ?? null);
         this.videoSession = nextVideoSession;
+        this.currentVideoLoopState = null;
+        this.updateCurrentVideoLoopState(item, true);
         this.hideImages();
         if (this.preparedItemIndex === this.itemIndex) {
-          this.clearPreparedItem();
+          this.clearPreparedContent();
         }
       }
       this.onContentShown(this.slotIndex, item);
-      void this.prepareNextItem();
+      void this.prepareNextContent();
     } catch (error) {
       if (options.preserveCurrentOnFailure) {
         this.failureMessage = error instanceof Error ? error.message : String(error);
@@ -375,31 +387,38 @@ export class SlotPlayer {
   private shouldWaitForVideoEnd(item: SeamlessContentItem): boolean {
     return item.contentType === 'Video'
       && this.canAdvanceContent()
-      && (this.switchOnContentEnd || !item.transitionByTimer);
+      && this.videoTransitionMode(item) === 'event';
   }
 
   private shouldScheduleTimer(item: SeamlessContentItem): boolean {
     return this.canAdvanceContent() && !this.shouldWaitForVideoEnd(item);
   }
 
-  private async handleVideoEnded(): Promise<void> {
+  private async handleVideoEnded(): Promise<boolean> {
     const item = this.currentItem();
     if (!this.active || !item || !this.shouldWaitForVideoEnd(item)) {
-      return;
+      return true;
+    }
+
+    this.currentVideoCompletionCount += 1;
+    if (!this.isVideoCompletionEligibleForTransition(item)) {
+      this.updateCurrentVideoLoopState(item, true);
+      return false;
     }
 
     if (this.isPageTimelineExpired() && !this.loopCurrentPageAtPageEnd) {
       this.contentEndReachedAtPageBoundary = true;
-      return;
+      return true;
     }
 
     await this.advance();
+    return true;
   }
 
   private suspendAfterFailure(error: unknown): void {
     this.active = false;
     this.resetItemClock();
-    this.clearPreparedItem();
+    this.clearPreparedContent();
     this.releaseCurrentVideoSession();
     this.hideImages();
     this.element.classList.remove('slot--video-active');
@@ -426,7 +445,7 @@ export class SlotPlayer {
     previousImage.style.zIndex = '0';
     image.style.zIndex = '1';
     [this.currentImage, this.standbyImage] = [this.standbyImage, this.currentImage];
-    this.clearPreparedItem();
+    this.clearPreparedContent();
     this.logger.info('slot', `slot ${this.slotIndex + 1} image: ${item.name}`);
   }
 
@@ -472,14 +491,14 @@ export class SlotPlayer {
     await this.showCurrentItemAtElapsed(0);
   }
 
-  private async prepareNextItem(): Promise<void> {
+  private async prepareNextContent(): Promise<void> {
     if (!this.active || !this.canAdvanceContent()) {
       return;
     }
 
     const nextIndex = this.resolvePreparedItemIndex();
     if (nextIndex === null) {
-      this.clearPreparedItem();
+      this.clearPreparedContent();
       return;
     }
 
@@ -488,13 +507,13 @@ export class SlotPlayer {
     }
 
     const nextItem = this.slot.items[nextIndex];
-    if (!nextItem || nextItem.contentType !== 'Image') {
+    if (!nextItem) {
       return;
     }
 
     this.preparedItemIndex = nextIndex;
-    this.preparePromise = this.prepareImageElement(this.standbyImage, nextItem).catch((error) => {
-      this.clearPreparedItem();
+    this.preparePromise = this.prepareContent(nextItem).catch((error) => {
+      this.clearPreparedContent();
       this.logger.warn('slot', `slot ${this.slotIndex + 1} 다음 콘텐츠 준비 실패: ${String(error)}`);
       throw error;
     });
@@ -506,9 +525,125 @@ export class SlotPlayer {
     }
   }
 
-  private clearPreparedItem(): void {
+  private async prepareContent(item: SeamlessContentItem): Promise<void> {
+    if (item.contentType === 'Image') {
+      await this.prepareImageElement(this.standbyImage, item);
+      return;
+    }
+
+    const existingSession = this.videoSession;
+    const session = existingSession ?? this.getVideoSession();
+    this.videoSession = session;
+    try {
+      const playbackInfo = await session.prepare(item, this.slot, this.element, this.preserveAspectRatio);
+      this.recordVideoDuration(item, playbackInfo?.durationMs ?? null);
+    } catch (error) {
+      if (!existingSession && this.videoSession === session) {
+        this.releaseCurrentVideoSession();
+      }
+      throw error;
+    }
+  }
+
+  private recordVideoDuration(item: SeamlessContentItem, durationMs: number | null): void {
+    if (durationMs === null || !Number.isFinite(durationMs) || durationMs <= 0) {
+      return;
+    }
+
+    this.videoDurationMsByItemId.set(item.id, Math.round(durationMs));
+  }
+
+  private videoTransitionMode(item: SeamlessContentItem): VideoTransitionMode {
+    const durationMs = this.videoDurationMsByItemId.get(item.id);
+    if (durationMs === undefined) {
+      return this.switchOnContentEnd || !item.transitionByTimer ? 'event' : 'timer';
+    }
+
+    const displayMs = Math.max(1, item.durationSeconds) * 1000;
+    if (displayMs < durationMs - VIDEO_DURATION_MATCH_TOLERANCE_MS) {
+      return 'timer';
+    }
+
+    const remainderMs = displayMs % durationMs;
+    return remainderMs <= VIDEO_DURATION_MATCH_TOLERANCE_MS || durationMs - remainderMs <= VIDEO_DURATION_MATCH_TOLERANCE_MS
+      ? 'event'
+      : 'timer';
+  }
+
+  private updateCurrentVideoLoopState(item: SeamlessContentItem, force = false): void {
+    if (item.contentType !== 'Video' || !this.videoSession) {
+      return;
+    }
+
+    const shouldLoop = this.shouldLoopCurrentVideo(item);
+    if (!force && this.currentVideoLoopState === shouldLoop) {
+      return;
+    }
+
+    this.videoSession.setLooping?.(shouldLoop);
+    this.currentVideoLoopState = shouldLoop;
+  }
+
+  private shouldLoopCurrentVideo(item: SeamlessContentItem): boolean {
+    const durationMs = this.videoDurationMsByItemId.get(item.id);
+    if (durationMs === undefined) {
+      return item.shouldLoop;
+    }
+
+    const displayMs = Math.max(1, item.durationSeconds) * 1000;
+    if (displayMs <= durationMs + VIDEO_DURATION_MATCH_TOLERANCE_MS) {
+      return false;
+    }
+
+    if (this.videoTransitionMode(item) === 'timer') {
+      return true;
+    }
+
+    const elapsedMs = this.currentItemTimelineElapsedMilliseconds(item);
+    const remainingMs = Math.max(0, displayMs - elapsedMs);
+    return remainingMs > durationMs + VIDEO_DURATION_MATCH_TOLERANCE_MS;
+  }
+
+  private isVideoCompletionEligibleForTransition(item: SeamlessContentItem): boolean {
+    const durationMs = this.videoDurationMsByItemId.get(item.id);
+    if (durationMs === undefined) {
+      return true;
+    }
+
+    const displayMs = Math.max(1, item.durationSeconds) * 1000;
+    if (displayMs <= durationMs + VIDEO_DURATION_MATCH_TOLERANCE_MS) {
+      return true;
+    }
+
+    const expectedCompletionCount = this.expectedVideoCompletionCount(item, durationMs);
+    if (expectedCompletionCount > 0 && this.currentVideoCompletionCount >= expectedCompletionCount) {
+      return true;
+    }
+
+    return this.currentItemTimelineElapsedMilliseconds(item) >= displayMs - VIDEO_DURATION_MATCH_TOLERANCE_MS;
+  }
+
+  private expectedVideoCompletionCount(item: SeamlessContentItem, durationMs: number): number {
+    if (this.videoTransitionMode(item) !== 'event') {
+      return 0;
+    }
+
+    const displayMs = Math.max(1, item.durationSeconds) * 1000;
+    return Math.max(1, Math.round(displayMs / durationMs));
+  }
+
+  private clearPreparedContent(): void {
+    const preparedItem = this.preparedItemIndex !== null ? this.slot.items[this.preparedItemIndex] : null;
     this.preparedItemIndex = null;
     this.preparePromise = null;
+    if (preparedItem?.contentType !== 'Video') {
+      return;
+    }
+
+    this.videoSession?.clearPrepared();
+    if (this.currentItem()?.contentType !== 'Video') {
+      this.releaseCurrentVideoSession();
+    }
   }
 
   private releaseCurrentVideoSession(): void {
@@ -519,6 +654,7 @@ export class SlotPlayer {
     const session = this.videoSession;
     session.stop();
     this.videoSession = null;
+    this.currentVideoLoopState = null;
     this.releaseVideoSession(session);
   }
 
@@ -576,10 +712,6 @@ export class SlotPlayer {
     }
 
     return (this.itemIndex + 1) % this.slot.items.length;
-  }
-
-  private usesTimerTimeline(): boolean {
-    return this.slot.items.every((item) => !this.shouldWaitForVideoEnd(item));
   }
 
   private resolveTimelineItem(pageElapsedMs: number): { itemIndex: number; itemElapsedMs: number } | null {

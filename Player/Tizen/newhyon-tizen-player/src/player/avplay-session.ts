@@ -10,11 +10,14 @@ const MAX_AVPLAYSTORE_PLAYERS = 4;
 const PLAYERS_PER_SEAMLESS_SESSION = 2;
 const FIRST_FRAME_READY_TIMEOUT_MS = 5000;
 const STOPPABLE_STATES = new Set(['READY', 'PLAYING', 'PAUSED']);
+const VIDEO_DURATION_MATCH_TOLERANCE_MS = 250;
 
 export interface VideoSessionEvents {
   readonly onEnded: () => void;
   readonly onError: (message: string) => void;
 }
+
+type StreamEndedHandler = () => boolean | Promise<boolean> | void | Promise<void>;
 
 interface AvplayLane {
   readonly player: AVPlayApi;
@@ -26,8 +29,18 @@ interface DisplayContext {
   readonly slotElement: HTMLElement;
 }
 
+interface PreparedLane {
+  readonly laneIndex: number;
+  readonly itemId: string;
+  readonly durationMs: number | null;
+}
+
 export interface AvplayPlayOptions {
   readonly waitForFirstFrame?: boolean;
+}
+
+export interface AvplayPlaybackInfo {
+  readonly durationMs: number | null;
 }
 
 interface FirstFrameReadyGate {
@@ -47,10 +60,11 @@ function getPlayerState(player: AVPlayApi): string {
 
 export class AvplaySession {
   private currentItem: SeamlessContentItem | null = null;
-  private currentEndedHandler: (() => void) | null = null;
+  private currentEndedHandler: StreamEndedHandler | null = null;
   private currentLaneIndex: number | null = null;
   private heldLaneIndex: number | null = null;
   private displayContext: DisplayContext | null = null;
+  private preparedLane: PreparedLane | null = null;
 
   constructor(
     readonly index: number,
@@ -73,23 +87,40 @@ export class AvplaySession {
     slot: SeamlessSlotPlan,
     slotElement: HTMLElement,
     preserveAspectRatio: boolean,
-    onStreamEnded: () => void,
+    onStreamEnded: StreamEndedHandler,
     options: AvplayPlayOptions = {},
-  ): Promise<void> {
+  ): Promise<AvplayPlaybackInfo> {
     this.displayContext = { slot, slotElement };
-    const nextLaneIndex = this.currentLaneIndex === 0 ? 1 : 0;
+    const preparedLaneIndex = this.preparedLane?.itemId === item.id ? this.preparedLane.laneIndex : null;
+    const nextLaneIndex = preparedLaneIndex ?? (this.currentLaneIndex === 0 ? 1 : 0);
     const lane = this.lanes[nextLaneIndex];
     const sourceUrl = resolveAvplaySourceUrl(item.sourceUrl);
     const firstFrameReady = options.waitForFirstFrame
       ? this.createFirstFrameReadyGate(nextLaneIndex, item.name)
       : null;
-    this.logger.info('avplay', `slot ${this.index} lane ${nextLaneIndex + 1} open: ${item.name}`);
+    this.logger.info(
+      'avplay',
+      preparedLaneIndex === null
+        ? `slot ${this.index} lane ${nextLaneIndex + 1} open: ${item.name}`
+        : `slot ${this.index} lane ${nextLaneIndex + 1} play prepared: ${item.name}`,
+    );
     try {
       const previousLaneIndex = this.currentLaneIndex;
       this.holdCurrentFrameForTransition();
-      this.resetLaneForPlayback(nextLaneIndex);
-      this.configureLaneForItem(nextLaneIndex, item, sourceUrl, slot, slotElement, preserveAspectRatio, firstFrameReady);
-      await this.prepareLaneAsync(nextLaneIndex, item.name);
+      let durationMs = this.preparedLane?.itemId === item.id ? this.preparedLane.durationMs : null;
+      if (preparedLaneIndex === null) {
+        this.clearPreparedLane();
+        this.resetLaneForPlayback(nextLaneIndex);
+        this.configureLaneForItem(nextLaneIndex, item, sourceUrl, slot, slotElement, preserveAspectRatio, firstFrameReady);
+        await this.prepareLaneAsync(nextLaneIndex, item.name);
+        durationMs = this.readDurationMs(nextLaneIndex, item.name);
+      } else {
+        lane.player.setListener(this.createLaneListener(nextLaneIndex, firstFrameReady));
+        this.applyDisplayRectToLane(nextLaneIndex, slot, slotElement);
+        lane.player.setDisplayMethod?.(preserveAspectRatio ? DISPLAY_METHOD_CONTAIN : DISPLAY_METHOD_FILL);
+      }
+      lane.player.setLooping?.(this.shouldLoopForDuration(item, durationMs));
+      this.preparedLane = null;
       lane.player.setVideoStillMode?.('false');
       lane.player.play();
 
@@ -100,10 +131,41 @@ export class AvplaySession {
       this.updateObjectVisibility();
       await firstFrameReady?.promise;
       this.freezeAndStopHeldLane();
+      return { durationMs };
     } catch (error) {
       firstFrameReady?.cancel();
       throw error;
     }
+  }
+
+  async prepare(
+    item: SeamlessContentItem,
+    slot: SeamlessSlotPlan,
+    slotElement: HTMLElement,
+    preserveAspectRatio: boolean,
+  ): Promise<AvplayPlaybackInfo> {
+    this.displayContext = { slot, slotElement };
+    if (this.preparedLane?.itemId === item.id) {
+      this.applyDisplayRectToLane(this.preparedLane.laneIndex, slot, slotElement);
+      return { durationMs: this.preparedLane.durationMs };
+    }
+
+    const laneIndex = this.currentLaneIndex === 0 ? 1 : 0;
+    const sourceUrl = resolveAvplaySourceUrl(item.sourceUrl);
+    this.clearPreparedLane();
+    this.resetLaneForPlayback(laneIndex);
+    this.configureLaneForItem(laneIndex, item, sourceUrl, slot, slotElement, preserveAspectRatio, null);
+    await this.prepareLaneAsync(laneIndex, item.name);
+    const durationMs = this.readDurationMs(laneIndex, item.name);
+    this.lanes[laneIndex].player.setLooping?.(this.shouldLoopForDuration(item, durationMs));
+    this.preparedLane = { laneIndex, itemId: item.id, durationMs };
+    this.updateObjectVisibility();
+    this.logger.info('avplay', `slot ${this.index} lane ${laneIndex + 1} prepared next: ${item.name}`);
+    return { durationMs };
+  }
+
+  clearPrepared(): void {
+    this.clearPreparedLane();
   }
 
   applyDisplayRect(slot: SeamlessSlotPlan, slotElement: HTMLElement): void {
@@ -128,6 +190,19 @@ export class AvplaySession {
     });
   }
 
+  setLooping(shouldLoop: boolean): void {
+    const lane = this.currentLane();
+    if (!lane) {
+      return;
+    }
+
+    try {
+      lane.player.setLooping?.(shouldLoop);
+    } catch (error) {
+      this.logger.warn('avplay', `slot ${this.index} loop 상태 적용 실패: ${String(error)}`);
+    }
+  }
+
   pause(): void {
     const lane = this.currentLane();
     if (lane && getPlayerState(lane.player) === 'PLAYING') {
@@ -150,6 +225,7 @@ export class AvplaySession {
     this.currentEndedHandler = null;
     this.currentLaneIndex = null;
     this.heldLaneIndex = null;
+    this.preparedLane = null;
     this.updateObjectVisibility();
   }
 
@@ -171,12 +247,7 @@ export class AvplaySession {
         firstFrameReady?.markReady(`currentplaytime=${currentTime}`);
       },
       onstreamcompleted: () => {
-        this.logger.info('avplay', `slot ${this.index} lane ${laneIndex + 1} stream completed: ${this.currentItem?.name ?? '-'}`);
-        this.freezeAndStopLane(laneIndex);
-        this.heldLaneIndex = laneIndex;
-        this.updateObjectVisibility();
-        this.currentEndedHandler?.();
-        this.events.onEnded();
+        void this.handleStreamCompleted(laneIndex);
       },
       onerror: (error) => {
         const message = `slot ${this.index} lane ${laneIndex + 1} AVPlay 오류: ${formatAvplayError(error, '')}`;
@@ -189,6 +260,19 @@ export class AvplaySession {
         this.events.onError(errorMessage);
       },
     };
+  }
+
+  private async handleStreamCompleted(laneIndex: number): Promise<void> {
+    this.logger.info('avplay', `slot ${this.index} lane ${laneIndex + 1} stream completed: ${this.currentItem?.name ?? '-'}`);
+    const shouldComplete = await this.currentEndedHandler?.();
+    if (shouldComplete === false) {
+      return;
+    }
+
+    this.freezeAndStopLane(laneIndex);
+    this.heldLaneIndex = laneIndex;
+    this.updateObjectVisibility();
+    this.events.onEnded();
   }
 
   private createFirstFrameReadyGate(laneIndex: number, itemName: string): FirstFrameReadyGate {
@@ -259,6 +343,21 @@ export class AvplaySession {
     if (this.heldLaneIndex === laneIndex) {
       this.heldLaneIndex = null;
     }
+    if (this.preparedLane?.laneIndex === laneIndex) {
+      this.preparedLane = null;
+    }
+  }
+
+  private clearPreparedLane(): void {
+    if (!this.preparedLane) {
+      return;
+    }
+
+    const laneIndex = this.preparedLane.laneIndex;
+    this.preparedLane = null;
+    if (laneIndex !== this.currentLaneIndex && laneIndex !== this.heldLaneIndex) {
+      this.stopLane(laneIndex);
+    }
   }
 
   private prepareLaneAsync(laneIndex: number, itemName: string): Promise<void> {
@@ -305,6 +404,27 @@ export class AvplaySession {
     lane.player.setDisplayMethod?.(preserveAspectRatio ? DISPLAY_METHOD_CONTAIN : DISPLAY_METHOD_FILL);
     lane.player.setTimeoutForBuffering?.(30);
     lane.player.setLooping?.(item.shouldLoop);
+  }
+
+  private readDurationMs(laneIndex: number, itemName: string): number | null {
+    const duration = this.lanes[laneIndex].player.getDuration?.();
+    if (typeof duration !== 'number' || !Number.isFinite(duration) || duration <= 0) {
+      this.logger.warn('avplay', `slot ${this.index} lane ${laneIndex + 1} duration 확인 실패: ${itemName}`);
+      return null;
+    }
+
+    const durationMs = Math.round(duration);
+    this.logger.info('avplay', `slot ${this.index} lane ${laneIndex + 1} duration ${durationMs}ms: ${itemName}`);
+    return durationMs;
+  }
+
+  private shouldLoopForDuration(item: SeamlessContentItem, durationMs: number | null): boolean {
+    if (durationMs === null) {
+      return item.shouldLoop;
+    }
+
+    const displayMs = Math.max(1, item.durationSeconds) * 1000;
+    return item.shouldLoop || displayMs > durationMs + VIDEO_DURATION_MATCH_TOLERANCE_MS;
   }
 
   private holdCurrentFrameForTransition(): void {
