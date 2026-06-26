@@ -506,6 +506,99 @@ describe('SlotPlayer', () => {
     expect(slot.blocksPageTransitionForContentEnd()).toBe(false);
   });
 
+  it('이미지는 표시 시간이 끝나기 전까지 컨텐츠 종료 전환으로 페이지 전환을 막는다', async () => {
+    vi.useFakeTimers();
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      configurable: true,
+      get() {
+        return this.getAttribute('src') ?? '';
+      },
+      set(value: string) {
+        this.setAttribute('src', value);
+        queueMicrotask(() => this.onload?.(new Event('load')));
+      },
+    });
+
+    try {
+      const slot = new SlotPlayer(
+        0,
+        document.createElement('section'),
+        {
+          ...createTwoImageSlot(),
+          items: [createImageItem('first.png')],
+        },
+        false,
+        true,
+        () => {
+          throw new Error('이미지 슬롯은 AVPlay 세션을 사용하지 않습니다.');
+        },
+        new RingLogger(5),
+      );
+
+      const startPromise = slot.start();
+      await vi.runAllTicks();
+      await vi.advanceTimersByTimeAsync(32);
+      await startPromise;
+
+      await vi.advanceTimersByTimeAsync(5000);
+      slot.setPageTimeline(5000, 5000, false);
+      expect(slot.blocksPageTransitionForContentEnd()).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(5000);
+      slot.setPageTimeline(10000, 5000, false);
+      expect(slot.blocksPageTransitionForContentEnd()).toBe(false);
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
+      }
+    }
+  });
+
+  it('이미지는 컨텐츠 종료시 전환 설정이 켜져도 표시 시간 만료로 다음 이미지로 전환한다', async () => {
+    vi.useFakeTimers();
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      configurable: true,
+      get() {
+        return this.getAttribute('src') ?? '';
+      },
+      set(value: string) {
+        this.setAttribute('src', value);
+        queueMicrotask(() => this.onload?.(new Event('load')));
+      },
+    });
+
+    try {
+      const slot = new SlotPlayer(
+        0,
+        document.createElement('section'),
+        createTwoImageSlot(),
+        false,
+        true,
+        () => {
+          throw new Error('이미지 슬롯은 AVPlay 세션을 사용하지 않습니다.');
+        },
+        new RingLogger(5),
+      );
+
+      const startPromise = slot.start();
+      await vi.runAllTicks();
+      await vi.advanceTimersByTimeAsync(32);
+      await startPromise;
+
+      await slot.syncToPageElapsed(10000);
+      await vi.runAllTicks();
+      await vi.advanceTimersByTimeAsync(32);
+
+      expect(slot.snapshot()).toContain('second.png');
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
+      }
+    }
+  });
+
   it('런타임 비율 설정 변경을 이미지와 영상 세션에 즉시 반영한다', async () => {
     const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
     Object.defineProperty(HTMLImageElement.prototype, 'src', {

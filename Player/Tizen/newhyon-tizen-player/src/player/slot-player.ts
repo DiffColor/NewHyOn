@@ -211,12 +211,15 @@ export class SlotPlayer {
 
   blocksPageTransitionForContentEnd(): boolean {
     const item = this.currentItem();
-    return Boolean(
-      this.active
-      && item
-      && this.shouldWaitForVideoEnd(item)
-      && !this.contentEndReachedAtPageBoundary,
-    );
+    if (!this.active || !item || !this.switchOnContentEnd) {
+      return false;
+    }
+
+    if (item.contentType === 'Image') {
+      return !this.hasCurrentItemDurationEnded(item);
+    }
+
+    return this.shouldWaitForVideoEnd(item) && !this.contentEndReachedAtPageBoundary;
   }
 
   private applySlotVisibility(): void {
@@ -521,16 +524,25 @@ export class SlotPlayer {
 
   private currentItemTimelineElapsedMilliseconds(item: SeamlessContentItem): number {
     const durationMs = Math.max(1, item.durationSeconds) * 1000;
-    if (this.itemStartedAt < 0) {
-      return Math.min(this.itemPausedElapsedMs, durationMs);
-    }
-
-    const elapsedMs = Math.max(0, performance.now() - this.itemStartedAt);
+    const elapsedMs = this.currentItemRawElapsedMilliseconds();
     if (!this.canAdvanceContent()) {
       return elapsedMs % durationMs;
     }
 
     return Math.min(elapsedMs, durationMs);
+  }
+
+  private currentItemRawElapsedMilliseconds(): number {
+    if (this.itemStartedAt < 0) {
+      return Math.max(0, this.itemPausedElapsedMs);
+    }
+
+    return Math.max(0, performance.now() - this.itemStartedAt);
+  }
+
+  private hasCurrentItemDurationEnded(item: SeamlessContentItem): boolean {
+    const durationMs = Math.max(1, item.durationSeconds) * 1000;
+    return this.currentItemRawElapsedMilliseconds() >= durationMs;
   }
 
   private isPageTimelineExpired(): boolean {
