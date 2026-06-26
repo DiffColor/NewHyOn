@@ -1,4 +1,5 @@
 import type { RuntimeConfig } from './runtime-config';
+import type { PlayerSettings } from './player-settings';
 import { RingLogger } from '../core/logger';
 import { buildPagePlan, type SeamlessContentItem, type SeamlessPagePlan, type SeamlessSlotPlan } from '../domain/page-plan';
 import {
@@ -215,7 +216,7 @@ export class NewHyOnPlayerApp {
     updatedAt: '-',
   };
 
-  constructor(private readonly config: RuntimeConfig) {
+  constructor(private config: RuntimeConfig) {
     this.view = {
       stage: getRequiredElement('#stage'),
       broadcastStandby: getRequiredElement('#broadcast-standby'),
@@ -259,9 +260,8 @@ export class NewHyOnPlayerApp {
       this.bindUi();
       this.registerInputKeys();
       this.settingsOverlay = new SettingsOverlay({
-        onApply: () => {
-          this.setMessage('설정을 적용합니다.');
-          window.location.reload();
+        onApply: (settings) => {
+          this.applyPlayerSettings(settings);
         },
         onAuthenticate: () => {
           void this.openAuthenticationOverlay('인증 상태를 다시 확인합니다.');
@@ -325,6 +325,44 @@ export class NewHyOnPlayerApp {
       },
     }));
     return this.avplayPool;
+  }
+
+  private applyPlayerSettings(settings: PlayerSettings): void {
+    const preserveChanged = this.config.settings.preserveAspectRatio !== settings.preserveAspectRatio;
+    const switchOnEndChanged = this.config.settings.switchOnContentEnd !== settings.switchOnContentEnd;
+
+    this.config = {
+      ...this.config,
+      settings,
+      hudInitiallyVisible: settings.hudInitiallyVisible,
+      manifest: {
+        ...this.config.manifest,
+        preserveAspectRatio: settings.preserveAspectRatio,
+      },
+    };
+    this.currentContentManifest = {
+      ...this.currentContentManifest,
+      preserveAspectRatio: settings.preserveAspectRatio,
+    };
+    this.slotPlayers.forEach((slotPlayer) => {
+      slotPlayer.updatePlaybackSettings(settings.preserveAspectRatio, settings.switchOnContentEnd);
+      slotPlayer.applyDisplayRect();
+    });
+    this.applyEmptyIntroDisplayMode();
+    this.setHudVisible(settings.hudInitiallyVisible);
+    this.setMessage([
+      '설정 적용 완료',
+      `비율대로표출=${settings.preserveAspectRatio ? 'ON' : 'OFF'}`,
+      `컨텐츠 종료시 전환=${settings.switchOnContentEnd ? 'ON' : 'OFF'}`,
+    ].join(' / '));
+    if (preserveChanged || switchOnEndChanged) {
+      this.logger.info(
+        'settings',
+        `playback settings applied: preserveAspectRatio=${settings.preserveAspectRatio}, switchOnContentEnd=${settings.switchOnContentEnd}`,
+      );
+    }
+    this.render();
+    this.writeRuntimeHealth('settings-applied');
   }
 
   private bindUi(): void {
@@ -1461,6 +1499,13 @@ export class NewHyOnPlayerApp {
       return false;
     }
 
+    if (
+      this.config.settings.switchOnContentEnd
+      && this.slotPlayers.some((slotPlayer) => slotPlayer.blocksPageTransitionForContentEnd())
+    ) {
+      return false;
+    }
+
     this.pageTransitionInProgress = true;
     void this.playPage(this.pageIndex + 1, {
       preservePreviousUntilReady: true,
@@ -1628,6 +1673,7 @@ export class NewHyOnPlayerApp {
     video.defaultMuted = true;
     video.playsInline = true;
     video.preload = 'auto';
+    video.style.objectFit = this.config.manifest.preserveAspectRatio ? 'contain' : 'fill';
     video.setAttribute('aria-hidden', 'true');
     video.setAttribute('playsinline', '');
     video.setAttribute('webkit-playsinline', '');
@@ -1687,6 +1733,14 @@ export class NewHyOnPlayerApp {
 
     video.remove();
     this.emptyIntroVideoElement = null;
+  }
+
+  private applyEmptyIntroDisplayMode(): void {
+    if (!this.emptyIntroVideoElement) {
+      return;
+    }
+
+    this.emptyIntroVideoElement.style.objectFit = this.config.manifest.preserveAspectRatio ? 'contain' : 'fill';
   }
 
   private formatEmptyIntroVideoError(video: HTMLVideoElement): string {

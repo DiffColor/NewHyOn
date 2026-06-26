@@ -114,6 +114,18 @@ export class AvplaySession {
     this.updateObjectVisibility();
   }
 
+  applyDisplayMethod(preserveAspectRatio: boolean): void {
+    const displayMethod = preserveAspectRatio ? DISPLAY_METHOD_CONTAIN : DISPLAY_METHOD_FILL;
+    this.lanes.forEach((lane) => {
+      const state = getPlayerState(lane.player);
+      if (state === 'IDLE') {
+        return;
+      }
+
+      lane.player.setDisplayMethod?.(displayMethod);
+    });
+  }
+
   pause(): void {
     const lane = this.currentLane();
     if (lane && getPlayerState(lane.player) === 'PLAYING') {

@@ -42,13 +42,14 @@ export class SlotPlayer {
   private pageElapsedMs = 0;
   private pageDurationMs = Number.POSITIVE_INFINITY;
   private loopCurrentPageAtPageEnd = false;
+  private contentEndReachedAtPageBoundary = false;
 
   constructor(
     private readonly slotIndex: number,
     private readonly element: HTMLElement,
     private slot: SeamlessSlotPlan,
-    private readonly preserveAspectRatio: boolean,
-    private readonly switchOnContentEnd: boolean,
+    private preserveAspectRatio: boolean,
+    private switchOnContentEnd: boolean,
     private readonly getVideoSession: () => AvplaySession,
     private readonly logger: RingLogger,
     private readonly onContentShown: ContentShownHandler = () => undefined,
@@ -61,6 +62,13 @@ export class SlotPlayer {
     this.imageB.className = 'slot-image';
     this.videoMask.className = 'slot-video-mask';
     this.element.append(this.videoMask, this.imageA, this.imageB);
+  }
+
+  updatePlaybackSettings(preserveAspectRatio: boolean, switchOnContentEnd: boolean): void {
+    this.preserveAspectRatio = preserveAspectRatio;
+    this.switchOnContentEnd = switchOnContentEnd;
+    this.applyImageDisplayMode();
+    this.videoSession?.applyDisplayMethod(preserveAspectRatio);
   }
 
   async start(): Promise<boolean> {
@@ -201,6 +209,16 @@ export class SlotPlayer {
     }
   }
 
+  blocksPageTransitionForContentEnd(): boolean {
+    const item = this.currentItem();
+    return Boolean(
+      this.active
+      && item
+      && this.shouldWaitForVideoEnd(item)
+      && !this.contentEndReachedAtPageBoundary,
+    );
+  }
+
   private applySlotVisibility(): void {
     this.element.classList.toggle('slot--empty', this.slot.items.length === 0 || this.slot.width <= 0 || this.slot.height <= 0);
   }
@@ -312,6 +330,7 @@ export class SlotPlayer {
 
     this.switchingItem = true;
     this.resetItemClock();
+    this.contentEndReachedAtPageBoundary = false;
     try {
       if (item.contentType === 'Image') {
         await this.showImage(item);
@@ -366,6 +385,11 @@ export class SlotPlayer {
       return;
     }
 
+    if (this.isPageTimelineExpired() && !this.loopCurrentPageAtPageEnd) {
+      this.contentEndReachedAtPageBoundary = true;
+      return;
+    }
+
     await this.advance();
   }
 
@@ -384,7 +408,7 @@ export class SlotPlayer {
   private async showImage(item: SeamlessContentItem): Promise<void> {
     const image = this.standbyImage;
     const previousImage = this.currentImage;
-    image.style.objectFit = this.preserveAspectRatio ? 'contain' : 'fill';
+    this.applyImageDisplayMode();
 
     if (this.preparedItemIndex === this.itemIndex && this.preparePromise) {
       await this.preparePromise;
@@ -405,7 +429,7 @@ export class SlotPlayer {
 
   private async prepareImageElement(image: HTMLImageElement, item: SeamlessContentItem): Promise<void> {
     const sourceUrl = resolveImageSourceUrl(item.sourceUrl);
-    image.style.objectFit = this.preserveAspectRatio ? 'contain' : 'fill';
+    this.applyImageDisplayMode();
 
     if (image.getAttribute('src') !== sourceUrl || !image.complete) {
       await new Promise<void>((resolve, reject) => {
@@ -415,6 +439,12 @@ export class SlotPlayer {
       });
     }
     await image.decode?.();
+  }
+
+  private applyImageDisplayMode(): void {
+    const objectFit = this.preserveAspectRatio ? 'contain' : 'fill';
+    this.imageA.style.objectFit = objectFit;
+    this.imageB.style.objectFit = objectFit;
   }
 
   private hideImages(): void {
@@ -501,6 +531,10 @@ export class SlotPlayer {
     }
 
     return Math.min(elapsedMs, durationMs);
+  }
+
+  private isPageTimelineExpired(): boolean {
+    return Number.isFinite(this.pageDurationMs) && this.pageElapsedMs >= this.pageDurationMs;
   }
 
   private formatSeconds(milliseconds: number): string {

@@ -424,6 +424,142 @@ describe('SlotPlayer', () => {
     expect(play).toHaveBeenCalledTimes(1);
   });
 
+  it('런타임 설정 변경 후 컨텐츠 종료시 전환을 즉시 적용한다', async () => {
+    vi.useFakeTimers();
+    const ended = {
+      handler: null as (() => void) | null,
+    };
+    const play = vi.fn(async (
+      _item: SeamlessContentItem,
+      _slot: SeamlessSlotPlan,
+      _element: HTMLElement,
+      _preserveAspectRatio: boolean,
+      onStreamEnded: () => void,
+    ) => {
+      ended.handler = onStreamEnded;
+    });
+    const session = {
+      play,
+      pause: vi.fn(),
+      resume: vi.fn(),
+      stop: vi.fn(),
+      state: vi.fn(() => 'PLAYING'),
+      applyDisplayRect: vi.fn(),
+      applyDisplayMethod: vi.fn(),
+    } as unknown as AvplaySession;
+    const slot = new SlotPlayer(0, document.createElement('section'), createTwoVideoSlot(), false, false, () => session, new RingLogger(5));
+
+    await slot.start();
+    expect(play).toHaveBeenCalledTimes(1);
+
+    slot.updatePlaybackSettings(false, true);
+    await slot.syncToPageElapsed(10000);
+    expect(play).toHaveBeenCalledTimes(1);
+
+    if (!ended.handler) {
+      throw new Error('영상 종료 핸들러가 등록되지 않았습니다.');
+    }
+    ended.handler();
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(play).toHaveBeenCalledTimes(2);
+    expect((play.mock.calls[1]?.[0] as SeamlessContentItem).name).toBe('second.mp4');
+  });
+
+  it('컨텐츠 종료 전환 대기 중이면 페이지 전환을 막고 종료 이벤트 후 해제한다', async () => {
+    vi.useFakeTimers();
+    const ended = {
+      handler: null as (() => void) | null,
+    };
+    const play = vi.fn(async (
+      _item: SeamlessContentItem,
+      _slot: SeamlessSlotPlan,
+      _element: HTMLElement,
+      _preserveAspectRatio: boolean,
+      onStreamEnded: () => void,
+    ) => {
+      ended.handler = onStreamEnded;
+    });
+    const session = {
+      play,
+      pause: vi.fn(),
+      resume: vi.fn(),
+      stop: vi.fn(),
+      state: vi.fn(() => 'PLAYING'),
+      applyDisplayRect: vi.fn(),
+      applyDisplayMethod: vi.fn(),
+    } as unknown as AvplaySession;
+    const slot = new SlotPlayer(0, document.createElement('section'), createTwoVideoSlot(), false, true, () => session, new RingLogger(5));
+
+    await slot.start();
+    slot.setPageTimeline(10000, 10000, false);
+
+    expect(slot.blocksPageTransitionForContentEnd()).toBe(true);
+
+    if (!ended.handler) {
+      throw new Error('영상 종료 핸들러가 등록되지 않았습니다.');
+    }
+    ended.handler();
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(slot.blocksPageTransitionForContentEnd()).toBe(false);
+  });
+
+  it('런타임 비율 설정 변경을 이미지와 영상 세션에 즉시 반영한다', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      configurable: true,
+      get() {
+        return this.getAttribute('src') ?? '';
+      },
+      set(value: string) {
+        this.setAttribute('src', value);
+        queueMicrotask(() => this.onload?.(new Event('load')));
+      },
+    });
+
+    try {
+      const imageElement = document.createElement('section');
+      const imageSlot = new SlotPlayer(
+        0,
+        imageElement,
+        createTwoImageSlot(),
+        false,
+        false,
+        () => {
+          throw new Error('이미지 슬롯은 AVPlay 세션을 사용하지 않습니다.');
+        },
+        new RingLogger(5),
+      );
+      await imageSlot.start();
+
+      imageSlot.updatePlaybackSettings(true, false);
+      imageElement.querySelectorAll<HTMLImageElement>('.slot-image').forEach((image) => {
+        expect(image.style.objectFit).toBe('contain');
+      });
+
+      const session = {
+        play: vi.fn(async () => undefined),
+        pause: vi.fn(),
+        resume: vi.fn(),
+        stop: vi.fn(),
+        state: vi.fn(() => 'PLAYING'),
+        applyDisplayRect: vi.fn(),
+        applyDisplayMethod: vi.fn(),
+      } as unknown as AvplaySession;
+      const videoSlot = new SlotPlayer(0, document.createElement('section'), createVideoSlot(), false, false, () => session, new RingLogger(5));
+      await videoSlot.start();
+      videoSlot.updatePlaybackSettings(true, false);
+
+      expect(session.applyDisplayMethod).toHaveBeenCalledWith(true);
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
+      }
+    }
+  });
+
   it('다중 이미지 슬롯은 페이지 수와 무관하게 시간이 지나면 다음 이미지로 전환한다', async () => {
     vi.useFakeTimers();
     const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
