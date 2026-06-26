@@ -538,6 +538,10 @@ describe('SlotPlayer', () => {
       imageElement.querySelectorAll<HTMLImageElement>('.slot-image').forEach((image) => {
         expect(image.style.objectFit).toBe('contain');
       });
+      imageSlot.updatePlaybackSettings(false, false);
+      imageElement.querySelectorAll<HTMLImageElement>('.slot-image').forEach((image) => {
+        expect(image.style.objectFit).toBe('fill');
+      });
 
       const session = {
         play: vi.fn(async () => undefined),
@@ -551,8 +555,10 @@ describe('SlotPlayer', () => {
       const videoSlot = new SlotPlayer(0, document.createElement('section'), createVideoSlot(), false, false, () => session, new RingLogger(5));
       await videoSlot.start();
       videoSlot.updatePlaybackSettings(true, false);
+      videoSlot.updatePlaybackSettings(false, false);
 
       expect(session.applyDisplayMethod).toHaveBeenCalledWith(true);
+      expect(session.applyDisplayMethod).toHaveBeenLastCalledWith(false);
     } finally {
       if (descriptor) {
         Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);

@@ -116,13 +116,15 @@ export class AvplaySession {
 
   applyDisplayMethod(preserveAspectRatio: boolean): void {
     const displayMethod = preserveAspectRatio ? DISPLAY_METHOD_CONTAIN : DISPLAY_METHOD_FILL;
-    this.lanes.forEach((lane) => {
-      const state = getPlayerState(lane.player);
-      if (state === 'IDLE') {
-        return;
+    this.lanes.forEach((lane, laneIndex) => {
+      try {
+        if (this.displayContext) {
+          this.applyDisplayRectToLane(laneIndex, this.displayContext.slot, this.displayContext.slotElement);
+        }
+        lane.player.setDisplayMethod?.(displayMethod);
+      } catch (error) {
+        this.logger.warn('avplay', `slot ${this.index} lane ${laneIndex + 1} display method 적용 실패: ${String(error)}`);
       }
-
-      lane.player.setDisplayMethod?.(displayMethod);
     });
   }
 

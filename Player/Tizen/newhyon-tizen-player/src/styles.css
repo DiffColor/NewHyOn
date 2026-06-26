@@ -322,6 +322,7 @@ body {
 .slot-image {
   display: block;
   visibility: hidden;
+  object-fit: fill;
   z-index: 0;
 }
 

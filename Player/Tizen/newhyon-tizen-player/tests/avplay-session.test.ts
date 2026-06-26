@@ -152,6 +152,47 @@ describe('AvplaySession', () => {
     expect(playerB.setDisplayMethod).toHaveBeenLastCalledWith('PLAYER_DISPLAY_MODE_FULL_SCREEN');
   });
 
+  it('런타임 화면 비율 유지 OFF는 IDLE 상태 응답이어도 FULL_SCREEN을 재적용한다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+    const slotElement = document.createElement('section');
+    document.body.appendChild(slotElement);
+
+    await session.play(createVideoItem(), createSlotPlan(), slotElement, true, vi.fn());
+    session.applyDisplayMethod(false);
+
+    expect(playerA.setDisplayRect).toHaveBeenCalled();
+    expect(playerA.setDisplayMethod).toHaveBeenLastCalledWith('PLAYER_DISPLAY_MODE_FULL_SCREEN');
+    expect(playerB.setDisplayMethod).toHaveBeenLastCalledWith('PLAYER_DISPLAY_MODE_FULL_SCREEN');
+  });
+
+  it('런타임 화면 비율 유지 ON은 LETTER_BOX를 재적용한다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+    const slotElement = document.createElement('section');
+    document.body.appendChild(slotElement);
+
+    await session.play(createVideoItem(), createSlotPlan(), slotElement, false, vi.fn());
+    session.applyDisplayMethod(true);
+
+    expect(playerA.setDisplayMethod).toHaveBeenLastCalledWith('PLAYER_DISPLAY_MODE_LETTER_BOX');
+    expect(playerB.setDisplayMethod).toHaveBeenLastCalledWith('PLAYER_DISPLAY_MODE_LETTER_BOX');
+  });
+
   it('AVPlay object는 슬롯 표시 상태와 z-index를 따라간다', async () => {
     const host = document.createElement('div');
     const slotElement = document.createElement('section');
