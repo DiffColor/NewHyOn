@@ -210,9 +210,16 @@ namespace AndoW_Manager
         {
             try
             {
-                SaveFileForUpdateAtBatchUpdate(g_SelectedPlayerInfoList, ListCombo.SelectedItem.ToString());
+                BatchUpdateResult result = SaveFileForUpdateAtBatchUpdate(g_SelectedPlayerInfoList, ListCombo.SelectedItem.ToString());
                 ReleaseAllSelectedPlayer();
-                MessageTools.ShowMessageBox("일괄 업데이트를 요청하였습니다.", "확인");
+                string message = string.Format("{0}대 플레이어에 일괄 업데이트를 요청하였습니다.", result.SuccessCount);
+                string blockedMessage = TizenPlaylistUpdatePolicy.BuildBlockedMessage(result.BlockedTizenPlayers);
+                if (string.IsNullOrWhiteSpace(blockedMessage) == false)
+                {
+                    message = message + Environment.NewLine + blockedMessage;
+                }
+
+                MessageTools.ShowMessageBox(message, "확인");
             }
             catch (Exception ex)
             {
@@ -342,10 +349,23 @@ namespace AndoW_Manager
 
         public List<string> g_FileListIncludedPages = new List<string>();
 
-        public void SaveFileForUpdateAtBatchUpdate(List<PlayerInfoClass> players, string listname)
+        public BatchUpdateResult SaveFileForUpdateAtBatchUpdate(List<PlayerInfoClass> players, string listname)
         {
-            foreach (PlayerInfoClass pic in players)
+            BatchUpdateResult result = new BatchUpdateResult();
+
+            foreach (PlayerInfoClass pic in players ?? new List<PlayerInfoClass>())
             {
+                TizenPlaylistBlockResult blockResult;
+                if (TizenPlaylistUpdatePolicy.TryValidatePlayerPlaylist(pic, listname, out blockResult) == false)
+                {
+                    if (blockResult != null)
+                    {
+                        result.BlockedTizenPlayers.Add(blockResult);
+                    }
+
+                    continue;
+                }
+
                 pic.PIF_CurrentPlayList = listname;
                 string pname = pic.PIF_PlayerName;
                 DataShop.Instance.g_PlayerInfoManager.EditPlayerCurrentPlayList(pic);
@@ -354,9 +374,20 @@ namespace AndoW_Manager
                 if (playerInfo != null)
                 {
                     string payloadBase64 = DataShop.Instance.g_UpdatePayloadBuilder.BuildPayloadBase64(playerInfo);
-                    MainWindow.Instance.EnqueueCommandForPlayer(playerInfo, RP_ORDER.updatelist.ToString(), payloadBase64, pushSignalR: true);
+                    if (MainWindow.Instance.EnqueueCommandForPlayer(playerInfo, RP_ORDER.updatelist.ToString(), payloadBase64, pushSignalR: true))
+                    {
+                        result.SuccessCount++;
+                    }
                 }
             }
+
+            return result;
+        }
+
+        public sealed class BatchUpdateResult
+        {
+            public int SuccessCount { get; set; }
+            public List<TizenPlaylistBlockResult> BlockedTizenPlayers { get; } = new List<TizenPlaylistBlockResult>();
         }
 
         public ElementInfoControlClass g_ElementInfoControlClass = new ElementInfoControlClass();

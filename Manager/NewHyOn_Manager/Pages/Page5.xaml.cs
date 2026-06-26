@@ -110,6 +110,7 @@ namespace AndoW_Manager
                 .Select(x => x.PIF_PlayerName)
                 .ToList();
 
+            List<TizenPlaylistBlockResult> blockedResults = new List<TizenPlaylistBlockResult>();
             foreach (string player in _players)
             {
                 var playerInfo = DataShop.Instance.g_PlayerInfoManager.GetPlayerInfoByName(player);
@@ -118,8 +119,25 @@ namespace AndoW_Manager
                     continue;
                 }
 
+                TizenPlaylistBlockResult blockResult;
+                if (TizenPlaylistUpdatePolicy.TryValidatePlayerPlaylist(playerInfo, playerInfo.PIF_CurrentPlayList, out blockResult) == false)
+                {
+                    if (blockResult != null)
+                    {
+                        blockedResults.Add(blockResult);
+                    }
+
+                    continue;
+                }
+
                 string payloadBase64 = DataShop.Instance.g_UpdatePayloadBuilder.BuildPayloadBase64(playerInfo);
                 MainWindow.Instance.EnqueueCommandForPlayer(playerInfo, RP_ORDER.updatelist.ToString(), payloadBase64, pushSignalR: true);
+            }
+
+            string blockedMessage = TizenPlaylistUpdatePolicy.BuildBlockedMessage(blockedResults);
+            if (string.IsNullOrWhiteSpace(blockedMessage) == false)
+            {
+                MessageTools.ShowMessageBox(blockedMessage, "확인");
             }
         }
 
@@ -193,10 +211,28 @@ namespace AndoW_Manager
 
         private void ChangeDefaultSchedule(List<string> players, string playlist)
         {
+            List<TizenPlaylistBlockResult> blockedResults = new List<TizenPlaylistBlockResult>();
             foreach (string player in players)
             {
-                DataShop.Instance.g_PlayerInfoManager.EditPlayerCurrentPlayList(player, playlist);
                 var playerInfo = DataShop.Instance.g_PlayerInfoManager.GetPlayerInfoByName(player);
+                if (playerInfo == null)
+                {
+                    continue;
+                }
+
+                TizenPlaylistBlockResult blockResult;
+                if (TizenPlaylistUpdatePolicy.TryValidatePlayerPlaylist(playerInfo, playlist, out blockResult) == false)
+                {
+                    if (blockResult != null)
+                    {
+                        blockedResults.Add(blockResult);
+                    }
+
+                    continue;
+                }
+
+                DataShop.Instance.g_PlayerInfoManager.EditPlayerCurrentPlayList(player, playlist);
+                playerInfo = DataShop.Instance.g_PlayerInfoManager.GetPlayerInfoByName(player);
                 if (playerInfo == null)
                 {
                     continue;
@@ -204,6 +240,12 @@ namespace AndoW_Manager
 
                 string payloadBase64 = DataShop.Instance.g_UpdatePayloadBuilder.BuildPayloadBase64(playerInfo);
                 MainWindow.Instance.EnqueueCommandForPlayer(playerInfo, RP_ORDER.updatelist.ToString(), payloadBase64, pushSignalR: true);
+            }
+
+            string blockedMessage = TizenPlaylistUpdatePolicy.BuildBlockedMessage(blockedResults);
+            if (string.IsNullOrWhiteSpace(blockedMessage) == false)
+            {
+                MessageTools.ShowMessageBox(blockedMessage, "확인");
             }
         }
 
@@ -885,6 +927,7 @@ namespace AndoW_Manager
             if (players == null)
                 return;
 
+            List<TizenPlaylistBlockResult> blockedResults = new List<TizenPlaylistBlockResult>();
             foreach (string player in players.Distinct(StringComparer.CurrentCultureIgnoreCase))
             {
                 if (string.IsNullOrWhiteSpace(player))
@@ -896,7 +939,24 @@ namespace AndoW_Manager
                     continue;
                 }
 
+                TizenPlaylistBlockResult blockResult;
+                if (TizenPlaylistUpdatePolicy.TryValidatePlayerSchedule(playerInfo, out blockResult) == false)
+                {
+                    if (blockResult != null)
+                    {
+                        blockedResults.Add(blockResult);
+                    }
+
+                    continue;
+                }
+
                 MainWindow.Instance.EnqueueCommandForPlayer(playerInfo, RP_ORDER.updateschedule.ToString(), pushSignalR: true);
+            }
+
+            string blockedMessage = TizenPlaylistUpdatePolicy.BuildBlockedMessage(blockedResults);
+            if (string.IsNullOrWhiteSpace(blockedMessage) == false)
+            {
+                MessageTools.ShowMessageBox(blockedMessage, "확인");
             }
         }
 

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using TurtleTools;
 
 namespace AndoW_Manager.SubWindow
 {
@@ -374,6 +375,7 @@ namespace AndoW_Manager.SubWindow
             if (players == null)
                 return;
 
+            List<TizenPlaylistBlockResult> blockedResults = new List<TizenPlaylistBlockResult>();
             foreach (string player in players.Distinct(StringComparer.CurrentCultureIgnoreCase))
             {
                 if (string.IsNullOrWhiteSpace(player))
@@ -382,8 +384,25 @@ namespace AndoW_Manager.SubWindow
                 var playerInfo = DataShop.Instance.g_PlayerInfoManager.GetPlayerInfoByName(player);
                 if (playerInfo != null)
                 {
+                    TizenPlaylistBlockResult blockResult;
+                    if (TizenPlaylistUpdatePolicy.TryValidatePlayerSchedule(playerInfo, out blockResult) == false)
+                    {
+                        if (blockResult != null)
+                        {
+                            blockedResults.Add(blockResult);
+                        }
+
+                        continue;
+                    }
+
                     MainWindow.Instance.EnqueueCommandForPlayer(playerInfo, RP_ORDER.updateschedule.ToString(), pushSignalR: true);
                 }
+            }
+
+            string blockedMessage = TizenPlaylistUpdatePolicy.BuildBlockedMessage(blockedResults);
+            if (string.IsNullOrWhiteSpace(blockedMessage) == false)
+            {
+                MessageTools.ShowMessageBox(blockedMessage, "확인");
             }
         }
 

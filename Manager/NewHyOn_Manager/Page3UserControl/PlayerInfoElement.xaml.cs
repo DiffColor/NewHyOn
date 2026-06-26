@@ -491,11 +491,22 @@ namespace AndoW_Manager
                 if (PlaylistCombo.SelectedItem == null)
                     return;
 
-                DataShop.Instance.g_PageInfoManager.LoadPagesForList(PlaylistCombo.SelectedItem.ToString());
+                string selectedPlaylist = PlaylistCombo.SelectedItem.ToString();
+                TizenPlaylistBlockResult blockResult;
+                if (TizenPlaylistUpdatePolicy.TryValidatePlayerPlaylist(g_PlayerInfoClass, selectedPlaylist, out blockResult) == false)
+                {
+                    MessageTools.ShowMessageBox(
+                        TizenPlaylistUpdatePolicy.BuildBlockedMessage(new[] { blockResult }),
+                        "확인");
+                    PlaylistCombo.SelectedItem = g_PlayerInfoClass.PIF_CurrentPlayList;
+                    return;
+                }
+
+                DataShop.Instance.g_PageInfoManager.LoadPagesForList(selectedPlaylist);
 
                 if (DataShop.Instance.g_PageInfoManager.g_PageInfoClassList.Count > 0)
                 {
-                    g_PlayerInfoClass.PIF_CurrentPlayList = PlaylistCombo.SelectedItem.ToString();
+                    g_PlayerInfoClass.PIF_CurrentPlayList = selectedPlaylist;
                     DataShop.Instance.g_PlayerInfoManager.EditPlayerCurrentPlayList(g_PlayerInfoClass);
                     Page3.Instance.ChanagePageListName(this.g_PlayerInfoClass);
 
@@ -674,8 +685,10 @@ namespace AndoW_Manager
             string direction = g_PlayerInfoClass.PIF_IsLandScape ? DeviceOrientation.Landscape.ToString() : DeviceOrientation.Portrait.ToString();
 
             var pagelist = from page in paramPageList
-                            where page.PLI_PageDirection == direction
-                            select page;
+                           where page.PLI_PageDirection == direction
+                           where TizenPlaylistUpdatePolicy.IsTizenPlayer(g_PlayerInfoClass) == false
+                                 || TizenPlaylistUpdatePolicy.IsSingleScreenPlaylist(page.PLI_PageListName)
+                           select page;
 
             foreach (PageListInfoClass item in pagelist)
             {
@@ -694,6 +707,8 @@ namespace AndoW_Manager
 
             var pagelist = from page in DataShop.Instance.g_PageListInfoManager.g_PageListInfoClassList
                            where page.PLI_PageDirection == direction
+                           where TizenPlaylistUpdatePolicy.IsTizenPlayer(g_PlayerInfoClass) == false
+                                 || TizenPlaylistUpdatePolicy.IsSingleScreenPlaylist(page.PLI_PageListName)
                            select page;
 
             foreach (PageListInfoClass item in pagelist)

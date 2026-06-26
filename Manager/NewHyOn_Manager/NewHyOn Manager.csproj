@@ -411,6 +411,7 @@
     <Compile Include="DataManager\ServerSettingsManager.cs" />
     <Compile Include="DataManager\WeeklyInfoManagerClass.cs" />
     <Compile Include="DataManager\SpecialScheduleInfoManager.cs" />
+    <Compile Include="DataManager\TizenPlaylistUpdatePolicy.cs" />
     <Compile Include="DataManager\TextInfoManager.cs" />
     <Compile Include="Page1UserControl\ContentInfoElement.xaml.cs">
       <DependentUpon>ContentInfoElement.xaml</DependentUpon>

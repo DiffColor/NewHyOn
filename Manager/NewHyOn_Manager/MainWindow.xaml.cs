@@ -324,6 +324,11 @@ namespace AndoW_Manager
             }
             string playerId = player.PIF_GUID.Trim();
             string normalizedCommand = command.Trim();
+            if (IsTizenUpdateCommandBlocked(player, normalizedCommand, string.IsNullOrWhiteSpace(payloadBase64), true))
+            {
+                return false;
+            }
+
             if (RequiresAuthenticatedPlayer(normalizedCommand)
                 && !DataShop.Instance.g_PlayerInfoManager.HasValidAuthKey(player))
             {
@@ -379,6 +384,28 @@ namespace AndoW_Manager
                 || string.Equals(command, RP_ORDER.updateweekly.ToString(), StringComparison.OrdinalIgnoreCase);
         }
 
+        private static bool IsTizenUpdateCommandBlocked(PlayerInfoClass player, string command, bool validateCurrentPlaylist, bool showPopup)
+        {
+            TizenPlaylistBlockResult blockResult = null;
+            bool blocked = false;
+
+            if (string.Equals(command, RP_ORDER.updatelist.ToString(), StringComparison.OrdinalIgnoreCase) && validateCurrentPlaylist)
+            {
+                blocked = TizenPlaylistUpdatePolicy.TryValidatePlayerPlaylist(player, player?.PIF_CurrentPlayList, out blockResult) == false;
+            }
+            else if (string.Equals(command, RP_ORDER.updateschedule.ToString(), StringComparison.OrdinalIgnoreCase))
+            {
+                blocked = TizenPlaylistUpdatePolicy.TryValidatePlayerSchedule(player, out blockResult) == false;
+            }
+
+            if (blocked && showPopup)
+            {
+                MessageTools.ShowMessageBox(TizenPlaylistUpdatePolicy.BuildBlockedMessage(new[] { blockResult }), "확인");
+            }
+
+            return blocked;
+        }
+
         public bool SendUrgentUpdateList(PlayerInfoClass player)
         {
             if (player == null || string.IsNullOrWhiteSpace(player.PIF_GUID))
@@ -389,6 +416,13 @@ namespace AndoW_Manager
             if (!DataShop.Instance.g_PlayerInfoManager.HasValidAuthKey(player))
             {
                 NotifyUnauthenticatedCommandBlocked(player, RP_ORDER.updatelist.ToString());
+                return false;
+            }
+
+            TizenPlaylistBlockResult blockResult;
+            if (TizenPlaylistUpdatePolicy.TryValidatePlayerPlaylist(player, player.PIF_CurrentPlayList, out blockResult) == false)
+            {
+                MessageTools.ShowMessageBox(TizenPlaylistUpdatePolicy.BuildBlockedMessage(new[] { blockResult }), "확인");
                 return false;
             }
 

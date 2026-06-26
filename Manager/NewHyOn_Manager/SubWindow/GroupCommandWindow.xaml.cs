@@ -154,6 +154,29 @@ namespace AndoW_Manager
             return names;
         }
 
+        private List<string> GetPlaylistNamesForPlayer(PlayerInfoClass player)
+        {
+            List<string> names = new List<string>();
+
+            foreach (PageListInfoClass pageList in DataShop.Instance.g_PageListInfoManager.g_PageListInfoClassList)
+            {
+                if (pageList == null || string.IsNullOrWhiteSpace(pageList.PLI_PageListName))
+                {
+                    continue;
+                }
+
+                if (TizenPlaylistUpdatePolicy.IsTizenPlayer(player)
+                    && TizenPlaylistUpdatePolicy.IsSingleScreenPlaylist(pageList.PLI_PageListName) == false)
+                {
+                    continue;
+                }
+
+                names.Add(pageList.PLI_PageListName);
+            }
+
+            return names;
+        }
+
         private void UpdatePlayerPlaylistVisibility(bool isEnabled)
         {
             foreach (UIElement child in SelectedPlayersListBox.Children)
@@ -172,7 +195,6 @@ namespace AndoW_Manager
 
             int orderNumber = 1;
             bool hasAllowedPlayers = _allowedPlayerNames.Count > 0;
-            List<string> playlistNames = GetPlaylistNames();
 
             foreach (PlayerInfoClass player in DataShop.Instance.g_PlayerInfoManager.g_PlayerInfoClassList)
             {
@@ -190,7 +212,7 @@ namespace AndoW_Manager
                 element.UpdateDataInfo(player);
                 element.SetOrderingNumber(orderNumber);
                 orderNumber++;
-                element.UpdatePlaylistOptions(playlistNames, player.PIF_CurrentPlayList);
+                element.UpdatePlaylistOptions(GetPlaylistNamesForPlayer(player), player.PIF_CurrentPlayList);
                 element.SetPlaylistSelectionEnabled(_usePerPlayerPlaylist);
 
                 bool isInitiallySelected = _initialSelectedPlayerNames.Contains(player.PIF_PlayerName);
@@ -335,6 +357,14 @@ namespace AndoW_Manager
         private void ChangePlaylist(string playlistName)
         {
             int successCount = 0;
+            List<TizenPlaylistBlockResult> blockedResults =
+                TizenPlaylistUpdatePolicy.FindBlockedPlaylistUpdates(_selectedPlayers, playlistName);
+            HashSet<string> blockedPlayerNames = new HashSet<string>(
+                blockedResults
+                    .Where(x => x?.Player != null)
+                    .Select(x => x.Player.PIF_PlayerName)
+                    .Where(x => string.IsNullOrWhiteSpace(x) == false),
+                StringComparer.CurrentCultureIgnoreCase);
 
             DataShop.Instance.g_PageInfoManager.LoadPagesForList(playlistName);
             if (DataShop.Instance.g_PageInfoManager.g_PageInfoClassList.Count == 0)
@@ -345,6 +375,11 @@ namespace AndoW_Manager
             
             foreach (PlayerInfoClass player in _selectedPlayers)
             {
+                if (player == null || blockedPlayerNames.Contains(player.PIF_PlayerName))
+                {
+                    continue;
+                }
+
                 try
                 {
                     PlayerInfoClass commandPlayer = BuildPlayerForPlaylistCommand(player, playlistName);
@@ -362,9 +397,14 @@ namespace AndoW_Manager
                 }
             }
 
-            MessageTools.ShowMessageBox(
-                string.Format("{0}대 플레이어의 플레이리스트를 '{1}'로 변경하고 업데이트 명령을 보냈습니다.", successCount, playlistName),
-                "확인");
+            string message = string.Format("{0}대 플레이어의 플레이리스트를 '{1}'로 변경하고 업데이트 명령을 보냈습니다.", successCount, playlistName);
+            string blockedMessage = TizenPlaylistUpdatePolicy.BuildBlockedMessage(blockedResults);
+            if (string.IsNullOrWhiteSpace(blockedMessage) == false)
+            {
+                message = message + Environment.NewLine + blockedMessage;
+            }
+
+            MessageTools.ShowMessageBox(message, "확인");
         }
 
         private PlayerInfoClass BuildPlayerForPlaylistCommand(PlayerInfoClass player, string playlistName)
@@ -381,6 +421,7 @@ namespace AndoW_Manager
             int successCount = 0;
             int emptyPlaylistCount = 0;
             int missingSelectionCount = 0;
+            List<TizenPlaylistBlockResult> blockedTizenResults = new List<TizenPlaylistBlockResult>();
             Dictionary<string, bool> playlistHasPages = new Dictionary<string, bool>(StringComparer.CurrentCultureIgnoreCase);
 
             foreach (UIElement child in SelectedPlayersListBox.Children)
@@ -406,6 +447,17 @@ namespace AndoW_Manager
                 if (string.IsNullOrWhiteSpace(playlistName))
                 {
                     missingSelectionCount++;
+                    continue;
+                }
+
+                TizenPlaylistBlockResult blockResult;
+                if (TizenPlaylistUpdatePolicy.TryValidatePlayerPlaylist(player, playlistName, out blockResult) == false)
+                {
+                    if (blockResult != null)
+                    {
+                        blockedTizenResults.Add(blockResult);
+                    }
+
                     continue;
                 }
 
@@ -460,6 +512,11 @@ namespace AndoW_Manager
             {
                 message = string.Format("{0}{1}선택되지 않은 항목 {2}건, 비어있는 플레이리스트 {3}건은 제외했습니다.",
                     message, Environment.NewLine, missingSelectionCount, emptyPlaylistCount);
+            }
+            string blockedMessage = TizenPlaylistUpdatePolicy.BuildBlockedMessage(blockedTizenResults);
+            if (string.IsNullOrWhiteSpace(blockedMessage) == false)
+            {
+                message = message + Environment.NewLine + blockedMessage;
             }
 
             MessageTools.ShowMessageBox(message, "확인");
