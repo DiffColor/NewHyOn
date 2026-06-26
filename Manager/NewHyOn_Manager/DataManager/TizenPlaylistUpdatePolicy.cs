@@ -156,12 +156,26 @@ namespace AndoW_Manager
             invalidPageNames = new List<string>();
             if (string.IsNullOrWhiteSpace(playlistName))
             {
-                return true;
+                invalidPageNames.Add("플레이리스트 없음");
+                return false;
+            }
+
+            PageListInfoClass pageList = DataShop.Instance.g_PageListInfoManager.GetPageListByName(playlistName);
+            if (pageList == null || pageList.PLI_Pages == null || pageList.PLI_Pages.Count < 1)
+            {
+                invalidPageNames.Add(playlistName);
+                return false;
             }
 
             DataShop.Instance.g_PageInfoManager.LoadPagesForList(playlistName);
             List<PageInfoClass> pages = DataShop.Instance.g_PageInfoManager.g_PageInfoClassList?.ToList()
                 ?? new List<PageInfoClass>();
+
+            if (pages.Count < 1 || pages.Count != pageList.PLI_Pages.Count)
+            {
+                invalidPageNames.Add(playlistName);
+                return false;
+            }
 
             foreach (PageInfoClass page in pages)
             {

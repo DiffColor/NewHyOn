@@ -744,6 +744,7 @@ namespace AndoW_Manager
         {
             SyncPlayerInfoFromManager();
             TextBlockOrderingNumber_Copy.Text = g_PlayerInfoClass.PIF_PlayerName;
+            RefreshPlayListComboBox();
             RefreshAuthenticationOverlay();
         }
 
