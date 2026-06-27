@@ -235,6 +235,8 @@ describe('AvplaySession', () => {
   it('루프 영상은 검은 프레임 방지를 위해 still mode를 켠다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
+    playerA.getState = vi.fn(() => 'PLAYING');
+    playerB.getState = vi.fn(() => 'READY');
     const session = new AvplaySession(0, [
       { player: playerA, objectElement: document.createElement('object') },
       { player: playerB, objectElement: document.createElement('object') },
@@ -285,16 +287,20 @@ describe('AvplaySession', () => {
     expect(laneB.style.zIndex).toBe('21');
   });
 
-  it('다음 영상 전환 prepare 전에 현재 lane still mode를 먼저 켠다', async () => {
+  it('다음 영상 prepare 중에는 현재 lane을 still mode로 멈추지 않는다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
     const callOrder: string[] = [];
+    playerA.getState = vi.fn(() => 'PLAYING');
     playerA.setVideoStillMode = vi.fn((mode) => {
       callOrder.push(`a.still:${mode}`);
     });
     playerB.prepareAsync = vi.fn((successCallback: () => void) => {
       callOrder.push('b.prepareAsync');
       successCallback();
+    });
+    playerB.play = vi.fn(() => {
+      callOrder.push('b.play');
     });
     const session = new AvplaySession(0, [
       { player: playerA, objectElement: document.createElement('object') },
@@ -313,9 +319,138 @@ describe('AvplaySession', () => {
 
     await session.play(second, slot, slotElement, false, vi.fn());
 
-    expect(callOrder[0]).toBe('a.still:true');
-    expect(callOrder[1]).toBe('b.prepareAsync');
+    expect(callOrder[0]).toBe('b.prepareAsync');
+    expect(callOrder[1]).toBe('b.play');
+    expect(callOrder[2]).toBe('a.still:true');
     expect(playerB.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('종료 이벤트 핸들러가 완료를 보류하면 현재 lane을 stop하지 않는다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    const listenerRef: { current: AVPlayListener | null } = { current: null };
+    const onEnded = vi.fn();
+    playerA.getState = vi.fn(() => 'PLAYING');
+    playerA.setListener = vi.fn((nextListener) => {
+      listenerRef.current = nextListener;
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded,
+      onError: vi.fn(),
+    });
+
+    await session.play(createVideoItem('boundary.mp4'), createSlotPlan(), document.createElement('section'), false, () => false);
+    playerA.setVideoStillMode = vi.fn();
+    playerA.stop = vi.fn();
+
+    listenerRef.current?.onstreamcompleted?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(playerA.setVideoStillMode).not.toHaveBeenCalledWith('true');
+    expect(playerA.stop).not.toHaveBeenCalled();
+    expect(onEnded).not.toHaveBeenCalled();
+  });
+
+  it('종료 이벤트 핸들러가 이미 다음 콘텐츠로 전환했으면 같은 lane을 다시 stop하지 않는다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    const listenerRef: { current: AVPlayListener | null } = { current: null };
+    playerA.getState = vi.fn(() => 'PLAYING');
+    playerA.setListener = vi.fn((nextListener) => {
+      listenerRef.current = nextListener;
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    await session.play(createVideoItem('video-before-image.mp4'), createSlotPlan(), document.createElement('section'), false, () => {
+      session.hide();
+      return true;
+    });
+    playerA.setVideoStillMode = vi.fn();
+    playerA.stop = vi.fn();
+
+    listenerRef.current?.onstreamcompleted?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(playerA.setVideoStillMode).not.toHaveBeenCalledWith('true');
+    expect(playerA.stop).not.toHaveBeenCalled();
+  });
+
+  it('stream completed 이후 완료 상태 lane에는 stop을 호출하지 않는다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    const listenerRef: { current: AVPlayListener | null } = { current: null };
+    playerA.setListener = vi.fn((nextListener) => {
+      listenerRef.current = nextListener;
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    await session.play(createVideoItem('ended.mp4'), createSlotPlan(), document.createElement('section'), false, () => true);
+    playerA.getState = vi.fn(() => 'FINISHED');
+    playerA.stop = vi.fn();
+
+    listenerRef.current?.onstreamcompleted?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(playerA.stop).not.toHaveBeenCalled();
+  });
+
+  it('정지된 lane을 새 영상으로 재사용하기 전 close로 IDLE 전환을 보장한다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    const callOrder: string[] = [];
+    let playerAState = 'IDLE';
+    playerA.getState = vi.fn(() => playerAState);
+    playerA.open = vi.fn(() => {
+      callOrder.push('a.open');
+      playerAState = 'READY';
+    });
+    playerA.play = vi.fn(() => {
+      callOrder.push('a.play');
+      playerAState = 'PLAYING';
+    });
+    playerA.stop = vi.fn(() => {
+      callOrder.push('a.stop');
+      playerAState = 'READY';
+    });
+    playerA.close = vi.fn(() => {
+      callOrder.push('a.close');
+      playerAState = 'IDLE';
+    });
+
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    await session.play(createVideoItem('first.mp4'), createSlotPlan(), document.createElement('section'), false, vi.fn());
+    await session.play(createVideoItem('second.mp4'), createSlotPlan(), document.createElement('section'), false, vi.fn());
+    callOrder.length = 0;
+
+    await session.play(createVideoItem('third.mp4'), createSlotPlan(), document.createElement('section'), false, vi.fn());
+
+    expect(callOrder.slice(0, 3)).toEqual(['a.stop', 'a.close', 'a.open']);
+    expect(playerA.play).toHaveBeenCalledTimes(2);
   });
 
   it('첫 프레임 대기 옵션은 재생 시간 이벤트 전까지 play 완료를 보류한다', async () => {
@@ -351,6 +486,33 @@ describe('AvplaySession', () => {
     await playPromise;
 
     expect(resolved).toBe(true);
+  });
+
+  it('폐기된 prepareAsync 완료는 play까지 진행하지 않는다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    const prepareGate = {
+      resolve: null as (() => void) | null,
+    };
+    playerA.prepareAsync = vi.fn((successCallback: () => void) => {
+      prepareGate.resolve = successCallback;
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    const playPromise = session.play(createVideoItem('stale.mp4'), createSlotPlan(), document.createElement('section'), false, vi.fn());
+    await Promise.resolve();
+
+    session.stop();
+    prepareGate.resolve?.();
+
+    await expect(playPromise).rejects.toThrow('AVPlay 작업이 폐기되었습니다');
+    expect(playerA.play).not.toHaveBeenCalled();
   });
 
 });

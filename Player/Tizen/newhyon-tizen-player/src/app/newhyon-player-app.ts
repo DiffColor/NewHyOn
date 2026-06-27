@@ -132,7 +132,11 @@ interface UpdateOverlayState {
 type LoadingStepState = 'pending' | 'active' | 'complete' | 'error' | 'skipped';
 
 const TRANSITION_SLOT_INDEX_OFFSET = 100;
-const MASTER_TICK_INTERVAL_MS = 1000;
+const MASTER_TICK_INTERVAL_MS = 200;
+const MASTER_TICK_LAG_WARN_MS = 500;
+const SCHEDULE_CHECK_INTERVAL_MS = 1000;
+const RUNTIME_HEALTH_RECENT_LOG_LIMIT = 200;
+const RUNTIME_HEALTH_LOG_FLUSH_DELAY_MS = 250;
 
 function getRequiredElement<T extends HTMLElement>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -152,7 +156,7 @@ function formatError(error: unknown): string {
 }
 
 export class NewHyOnPlayerApp {
-  private readonly logger = new RingLogger(120);
+  private readonly logger = new RingLogger(400);
   private readonly view: ViewRefs;
   private readonly pagePlans: SeamlessPagePlan[];
   private readonly slotPlayers: SlotPlayer[] = [];
@@ -163,6 +167,13 @@ export class NewHyOnPlayerApp {
   private pageStartedAt = 0;
   private pagePausedElapsedMs = 0;
   private masterTimerId: number | null = null;
+  private masterTickNextAt = 0;
+  private lastMasterTickAt = 0;
+  private lastMasterTickDelayMs = 0;
+  private lastMasterTickIntervalMs = 0;
+  private lastRenderAt = 0;
+  private lastRenderIntervalMs = 0;
+  private runtimeHealthLogFlushTimerId: number | null = null;
   private pageTransitionInProgress = false;
   private slotTimelineSyncInProgress = false;
   private scheduleCheckInProgress = false;
@@ -371,6 +382,10 @@ export class NewHyOnPlayerApp {
         .reverse()
         .map((entry) => `${entry.timestamp} | ${entry.level.toUpperCase()} | ${entry.scope} | ${entry.message}`)
         .join('\n');
+      const latest = entries[entries.length - 1];
+      if (latest?.scope === 'avplay' || latest?.scope === 'avplay-trace') {
+        this.scheduleRuntimeHealthLogFlush(latest.level === 'error' ? 0 : RUNTIME_HEALTH_LOG_FLUSH_DELAY_MS);
+      }
     });
     window.addEventListener('resize', this.handleResize);
     window.addEventListener('keydown', this.handleKeyDown);
@@ -707,7 +722,11 @@ export class NewHyOnPlayerApp {
     }
   }
 
-  private commitPlaybackPlan(pagePlans: readonly SeamlessPagePlan[], playbackMode: PlaybackMode, pageIndex: number): void {
+  private commitPlaybackPlan(
+    pagePlans: readonly SeamlessPagePlan[],
+    playbackMode: PlaybackMode,
+    pageIndex: number,
+  ): void {
     this.pagePlans.splice(0, this.pagePlans.length, ...pagePlans);
     this.playbackMode = playbackMode;
     this.pageIndex = (pageIndex + this.pagePlans.length) % this.pagePlans.length;
@@ -1247,6 +1266,10 @@ export class NewHyOnPlayerApp {
         },
         preservePrevious,
         (session) => avplayPool!.release(session),
+        (endedSlotIndex, item) => {
+          this.handlePageBoundaryContentEnded(endedSlotIndex, item);
+        },
+        () => this.isPageTransitionPending(),
       );
       slotPlayer.setPageTimeline(0, Math.max(1, page.durationSeconds) * 1000, targetPagePlans.length <= 1);
       nextSlotPlayers.push(slotPlayer);
@@ -1300,6 +1323,7 @@ export class NewHyOnPlayerApp {
     }
     this.writeRuntimeHealth('page-started');
     this.startMasterTimer();
+    this.prepareUpcomingPageFirstImages('page-started');
   }
 
   private recordContentShown(slotIndex: number, item: SeamlessContentItem): void {
@@ -1370,6 +1394,43 @@ export class NewHyOnPlayerApp {
       this.writeRuntimeHealth('page-started');
     }
     this.startMasterTimer();
+    this.prepareUpcomingPageFirstImages('page-started');
+  }
+
+  private prepareUpcomingPageFirstImages(reason: string): void {
+    if (this.playbackMode !== 'content' || this.pagePlans.length === 0) {
+      return;
+    }
+
+    const nextPageIndex = this.pagePlans.length <= 1
+      ? this.pageIndex
+      : (this.pageIndex + 1) % this.pagePlans.length;
+    const nextPage = this.pagePlans[nextPageIndex];
+    if (!nextPage) {
+      return;
+    }
+
+    nextPage.slots.forEach((slot, slotIndex) => {
+      const item = slot.items[0] ?? null;
+      if (item?.contentType === 'Image') {
+        const slotPlayer = this.slotPlayers[slotIndex];
+        if (!slotPlayer) {
+          this.logger.warn('image', `standby prepare skipped(${reason}): slot ${slotIndex + 1} surface 없음, ${item.name}`);
+          return;
+        }
+
+        const preparePromise = slotPlayer.prepareFirstContentForSlotPlan(slot);
+        if (preparePromise) {
+          void preparePromise
+            .then(() => {
+              this.logger.debug('image', `standby prepared(${reason}): slot ${slotIndex + 1} ${item.name}`);
+            })
+            .catch((error) => {
+              this.logger.warn('image', `standby prepare failed(${reason}): slot ${slotIndex + 1} ${item.name}: ${formatError(error)}`);
+            });
+        }
+      }
+    });
   }
 
   private slotNeedsSurface(slot: SeamlessSlotPlan): boolean {
@@ -1403,6 +1464,10 @@ export class NewHyOnPlayerApp {
       },
       false,
       (session) => avplayPool.release(session),
+      (endedSlotIndex, item) => {
+        this.handlePageBoundaryContentEnded(endedSlotIndex, item);
+      },
+      () => this.isPageTransitionPending(),
     );
     slotPlayer.applyLayout(page.canvasWidth, page.canvasHeight);
     slotPlayer.setPageTimeline(0, Math.max(1, page.durationSeconds) * 1000, this.pagePlans.length <= 1);
@@ -1431,6 +1496,10 @@ export class NewHyOnPlayerApp {
       return;
     }
 
+    this.masterTickNextAt = performance.now() + MASTER_TICK_INTERVAL_MS;
+    this.lastMasterTickAt = 0;
+    this.lastMasterTickDelayMs = 0;
+    this.lastMasterTickIntervalMs = 0;
     this.scheduleNextMasterTick();
   }
 
@@ -1439,6 +1508,10 @@ export class NewHyOnPlayerApp {
       window.clearTimeout(this.masterTimerId);
       this.masterTimerId = null;
     }
+    this.masterTickNextAt = 0;
+    this.lastMasterTickAt = 0;
+    this.lastMasterTickDelayMs = 0;
+    this.lastMasterTickIntervalMs = 0;
   }
 
   private scheduleNextMasterTick(): void {
@@ -1446,11 +1519,34 @@ export class NewHyOnPlayerApp {
       return;
     }
 
+    if (this.masterTickNextAt <= 0) {
+      this.masterTickNextAt = performance.now() + MASTER_TICK_INTERVAL_MS;
+    }
+
+    const expectedTickAt = this.masterTickNextAt;
+    const delayMs = Math.max(0, expectedTickAt - performance.now());
     this.masterTimerId = window.setTimeout(() => {
       this.masterTimerId = null;
+      const firedAt = performance.now();
+      this.lastMasterTickDelayMs = Math.max(0, firedAt - expectedTickAt);
+      this.lastMasterTickIntervalMs = this.lastMasterTickAt > 0
+        ? Math.max(0, firedAt - this.lastMasterTickAt)
+        : MASTER_TICK_INTERVAL_MS;
+      this.lastMasterTickAt = firedAt;
+      if (this.lastMasterTickDelayMs >= MASTER_TICK_LAG_WARN_MS) {
+        this.logger.warn(
+          'timer',
+          `master tick 지연 ${Math.round(this.lastMasterTickDelayMs)}ms interval=${Math.round(this.lastMasterTickIntervalMs)}ms page=${this.pageIndex + 1}/${this.pagePlans.length} elapsed=${this.formatSeconds(this.currentPageRawElapsedMilliseconds())}`,
+        );
+        this.writeRuntimeHealth('timer-lag');
+      }
       this.runMasterTick();
+      const nowMs = performance.now();
+      do {
+        this.masterTickNextAt += MASTER_TICK_INTERVAL_MS;
+      } while (this.masterTickNextAt <= nowMs);
       this.scheduleNextMasterTick();
-    }, MASTER_TICK_INTERVAL_MS);
+    }, delayMs);
   }
 
   private runMasterTick(): void {
@@ -1499,11 +1595,41 @@ export class NewHyOnPlayerApp {
       return false;
     }
 
-    if (
-      this.config.settings.switchOnContentEnd
-      && this.slotPlayers.some((slotPlayer) => slotPlayer.blocksPageTransitionForContentEnd())
-    ) {
+    const pageDurationMs = this.currentPageDurationMilliseconds();
+    this.slotPlayers.forEach((slotPlayer) => {
+      slotPlayer.setPageTimeline(pageElapsedMs, pageDurationMs, this.pagePlans.length <= 1);
+    });
+
+    if (this.slotPlayers.some((slotPlayer) => slotPlayer.blocksPageTransitionForContentEnd())) {
       return false;
+    }
+
+    this.startScheduledPageTransition('timer');
+    return true;
+  }
+
+  private handlePageBoundaryContentEnded(slotIndex: number, item: SeamlessContentItem): void {
+    if (
+      !this.playing
+      || this.pagePlans.length <= 1
+      || this.pageTransitionInProgress
+      || this.contentReplacementInProgress
+      || !this.isCurrentPageExpired(this.currentPageRawElapsedMilliseconds())
+    ) {
+      return;
+    }
+
+    this.logger.info('page', `slot ${slotIndex + 1} 종료 이벤트로 예약 페이지 전환: ${item.name}`);
+    this.startScheduledPageTransition('content-end');
+  }
+
+  private isPageTransitionPending(): boolean {
+    return this.pageTransitionInProgress || this.isCurrentPageExpired(this.currentPageRawElapsedMilliseconds());
+  }
+
+  private startScheduledPageTransition(source: 'timer' | 'content-end'): void {
+    if (this.pageTransitionInProgress) {
+      return;
     }
 
     this.pageTransitionInProgress = true;
@@ -1512,18 +1638,17 @@ export class NewHyOnPlayerApp {
       commitPageTimelineBeforeSurfaceSwap: true,
     })
       .catch((error) => {
-        this.logger.error('page', `페이지 전환 실패: ${formatError(error)}`);
+        this.logger.error('page', `페이지 전환 실패(${source}): ${formatError(error)}`);
         this.setMessage(`페이지 전환 실패: ${formatError(error)}`);
       })
       .finally(() => {
         this.pageTransitionInProgress = false;
       });
-    return true;
   }
 
   private checkSchedules(): void {
     const nowMs = Date.now();
-    const currentSecond = Math.floor(nowMs / MASTER_TICK_INTERVAL_MS);
+    const currentSecond = Math.floor(nowMs / SCHEDULE_CHECK_INTERVAL_MS);
     if (currentSecond !== this.lastScheduleCheckSecond) {
       this.lastScheduleCheckSecond = currentSecond;
       this.checkReservationScheduleLookahead(nowMs);
@@ -1799,6 +1924,11 @@ export class NewHyOnPlayerApp {
   }
 
   private render(): void {
+    const renderAt = performance.now();
+    this.lastRenderIntervalMs = this.lastRenderAt > 0
+      ? Math.max(0, renderAt - this.lastRenderAt)
+      : 0;
+    this.lastRenderAt = renderAt;
     const page = this.pagePlans[this.pageIndex];
     const pageElapsedMs = this.currentPageElapsedMilliseconds();
     this.view.state.textContent = this.broadcastOnAir ? this.playing ? 'playing' : 'paused' : 'off-air';
@@ -1839,6 +1969,15 @@ export class NewHyOnPlayerApp {
     const slotHtml = slotSnapshots.length > 0
       ? slotSnapshots.map((snapshot) => this.formatSlotTimeline(snapshot)).join('')
       : '<div class="timeline-empty">활성 슬롯 없음</div>';
+    const tickHtml = this.formatProgressRow({
+      label: 'TICK',
+      name: 'UI thread / master timer',
+      elapsedMs: this.lastMasterTickIntervalMs,
+      durationMs: MASTER_TICK_INTERVAL_MS,
+      progress: Math.min(1, this.lastMasterTickIntervalMs / MASTER_TICK_INTERVAL_MS),
+      detail: `지연 ${this.formatMilliseconds(this.lastMasterTickDelayMs)} · tick ${this.formatMilliseconds(this.lastMasterTickIntervalMs)} · render ${this.formatMilliseconds(this.lastRenderIntervalMs)}`,
+      level: this.lastMasterTickDelayMs > MASTER_TICK_INTERVAL_MS ? 'error' : 'tick',
+    });
 
     return `
       <section class="timeline-panel">
@@ -1855,6 +1994,7 @@ export class NewHyOnPlayerApp {
           detail: `전환 ${pageSwitchText}`,
           level: 'page',
         })}
+        ${tickHtml}
         <div class="timeline-panel__slots">${slotHtml}</div>
       </section>
     `;
@@ -1885,7 +2025,7 @@ export class NewHyOnPlayerApp {
     readonly durationMs: number;
     readonly progress: number;
     readonly detail: string;
-    readonly level: 'page' | 'slot' | 'error';
+    readonly level: 'page' | 'slot' | 'tick' | 'error';
   }): string {
     const widthPercent = Math.round(Math.min(1, Math.max(0, options.progress)) * 1000) / 10;
     return `
@@ -1906,6 +2046,10 @@ export class NewHyOnPlayerApp {
   private formatSeconds(milliseconds: number): string {
     const seconds = Math.max(0, milliseconds) / 1000;
     return `${seconds.toFixed(1)}s`;
+  }
+
+  private formatMilliseconds(milliseconds: number): string {
+    return `${Math.round(Math.max(0, milliseconds))}ms`;
   }
 
   private escapeHtml(value: string): string {
@@ -2251,10 +2395,14 @@ export class NewHyOnPlayerApp {
       platform,
       slots: slotSnapshots,
       message: this.view.message.textContent ?? '',
+      recentLogs: this.logger.snapshot(RUNTIME_HEALTH_RECENT_LOG_LIMIT).map((entry) => ({ ...entry })),
       diagnostics: {
         pageStartCount: this.pageStartCount,
         contentShowCount: this.contentShowCount,
         lastContent: this.lastContent,
+        masterTickDelayMs: Math.round(this.lastMasterTickDelayMs),
+        masterTickIntervalMs: Math.round(this.lastMasterTickIntervalMs),
+        renderIntervalMs: Math.round(this.lastRenderIntervalMs),
         communicationStatus: this.communicationStatus,
         dbStatus: this.dbStatus,
         dbStatusDetail: this.dbStatusDetail,
@@ -2292,6 +2440,18 @@ export class NewHyOnPlayerApp {
     void this.healthReporter.write(snapshot).catch((error) => {
       this.logger.warn('runtime', `헬스 스냅샷 기록 실패: ${formatError(error)}`);
     });
+  }
+
+  private scheduleRuntimeHealthLogFlush(delayMs: number): void {
+    if (this.runtimeHealthLogFlushTimerId !== null) {
+      window.clearTimeout(this.runtimeHealthLogFlushTimerId);
+      this.runtimeHealthLogFlushTimerId = null;
+    }
+
+    this.runtimeHealthLogFlushTimerId = window.setTimeout(() => {
+      this.runtimeHealthLogFlushTimerId = null;
+      this.writeRuntimeHealth('avplay-log');
+    }, delayMs);
   }
 
   private toggleHud(): void {

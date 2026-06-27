@@ -57,6 +57,40 @@ npm test
 npm run build
 ```
 
+## QM32C 배포 절차
+
+현재 실장비 배포는 Tizen SDK의 `tz`와 `sdb`를 직접 사용합니다. 같은 시행착오를 반복하지 않도록 아래 순서를 기준으로 합니다.
+
+```bash
+cd Player/Tizen/newhyon-tizen-player
+
+export TIZEN_CLI=/Users/jazzlife/.tizen-extension-platform/server/sdktools/data/tools/tizen-core/tz
+export NEWHYON_TIZEN_PROFILE=turtlelab-partner
+export TIZEN_SERIAL=192.168.50.180:26101
+
+npm run verify
+TIZEN_CLI="$TIZEN_CLI" NEWHYON_TIZEN_PROFILE="$NEWHYON_TIZEN_PROFILE" npm run package:wgt
+"$TIZEN_CLI" install -p Build/NewHyOnTizenPlayer.wgt -e "$TIZEN_SERIAL"
+"$TIZEN_CLI" run -p NewHyOnT01 -e "$TIZEN_SERIAL"
+```
+
+배포 전 장비 연결과 설치된 AppID는 다음 명령으로 확인합니다.
+
+```bash
+sdb devices
+sdb -s "$TIZEN_SERIAL" shell "0 applist" | grep "NewHyOn Tizen Player"
+```
+
+주의할 점:
+
+- 이 환경의 CLI는 일반 `tizen` 명령이 아니라 `/Users/jazzlife/.tizen-extension-platform/server/sdktools/data/tools/tizen-core/tz`입니다.
+- 현재 활성/사용 서명 프로필은 `turtlelab-partner`입니다.
+- 장비 serial은 현재 `192.168.50.180:26101`, 모델은 `QM32C`입니다.
+- 실제 AppID는 `NewHyOnT01.Player`이고 package id는 `NewHyOnT01`입니다.
+- `tz run -p`는 AppID가 아니라 package id를 받으므로 `NewHyOnT01.Player`가 아니라 `NewHyOnT01`로 실행해야 합니다.
+- 설치 로그에 `NewHyOnT01.NewHyOnTizenPlayer`가 보여도 실행에는 이 값을 쓰지 않습니다.
+- `tz install`은 내부적으로 기존 앱을 uninstall 후 install하는 로그를 출력합니다. 앱 데이터 유지 검증이 필요할 때는 설치 후 설정/manifest 복원 상태를 반드시 확인합니다.
+
 ## Tizen 하드웨어 제약
 
 다음 제약은 코드 작성 시 반드시 지켜야 합니다.

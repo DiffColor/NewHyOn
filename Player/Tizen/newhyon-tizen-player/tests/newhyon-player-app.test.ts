@@ -37,7 +37,7 @@ function renderAppShell(): void {
   `;
 }
 
-function createPlayer(play: () => void): AVPlayApi {
+function createPlayer(play: () => void, onListener?: (listener: AVPlayListener) => void): AVPlayApi {
   let listener: AVPlayListener | null = null;
   return {
     open: vi.fn(),
@@ -52,6 +52,7 @@ function createPlayer(play: () => void): AVPlayApi {
     close: vi.fn(),
     setListener: vi.fn((nextListener) => {
       listener = nextListener;
+      onListener?.(nextListener);
     }),
     setDisplayRect: vi.fn(),
     setDisplayMethod: vi.fn(),
@@ -156,6 +157,34 @@ function createTwoPageManifest(): PlayerManifest {
       },
     ],
   };
+}
+
+function createTwoPageNextImageManifest(): PlayerManifest {
+  const manifest = createTwoPageManifest();
+  manifest.pages[1] = {
+    ...manifest.pages[1]!,
+    PIC_Elements: [
+      {
+        EIF_Name: 'second-image',
+        EIF_Type: 'Media',
+        EIF_Width: 1920,
+        EIF_Height: 1080,
+        EIF_PosLeft: 0,
+        EIF_PosTop: 0,
+        EIF_IsMuted: true,
+        EIF_ContentsInfoClassList: [
+          {
+            CIF_FileName: 'second.png',
+            CIF_FileFullPath: 'https://example.com/second.png',
+            CIF_ContentType: 'Image',
+            CIF_PlayMinute: '00',
+            CIF_PlaySec: '10',
+          },
+        ],
+      },
+    ],
+  };
+  return manifest;
 }
 
 function createPagePriorityManifest(): PlayerManifest {
@@ -561,17 +590,22 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelector('#status-elapsed')?.textContent).toBe('0.0s / 10.0s');
 
     await vi.advanceTimersByTimeAsync(1200);
-    expect(document.querySelector('#status-elapsed')?.textContent).toBe('1.0s / 10.0s');
+    expect(document.querySelector('#status-elapsed')?.textContent).toBe('1.2s / 10.0s');
     app.destroy();
   });
 
   it('페이지 만료 전에는 다음 페이지 AVPlay를 미리 건드리지 않고 만료 후 전환한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn();
-    const getPlayer = vi.fn(() => ({
-      ...createPlayer(play),
-      getState: vi.fn(() => 'PLAYING'),
-    }));
+    const players: AVPlayApi[] = [];
+    const getPlayer = vi.fn(() => {
+      const player = {
+        ...createPlayer(play),
+        getState: vi.fn(() => 'PLAYING'),
+      };
+      players.push(player);
+      return player;
+    });
     window.webapis = createWebApis(createPlayer(play), vi.fn(), { getPlayer });
 
     const app = new NewHyOnPlayerApp({
@@ -592,6 +626,8 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelector('#status-page')?.textContent).toContain('first-page');
     expect(play).toHaveBeenCalledTimes(1);
     expect(getPlayer).toHaveBeenCalledTimes(2);
+    expect(players[0]?.prepareAsync).toHaveBeenCalledTimes(1);
+    expect(players[1]?.prepareAsync).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(6499);
     await Promise.resolve();
@@ -599,6 +635,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelectorAll('.slot')).toHaveLength(1);
     expect(play).toHaveBeenCalledTimes(1);
     expect(getPlayer).toHaveBeenCalledTimes(2);
+    expect(players[1]?.prepareAsync).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(3501);
     await vi.advanceTimersByTimeAsync(64);
@@ -612,11 +649,94 @@ describe('NewHyOnPlayerApp', () => {
     app.destroy();
   });
 
-  it('페이지 종료 tick에서는 콘텐츠 전환보다 페이지 전환을 우선한다', async () => {
+  it('페이지 시작 직후 다음 페이지 첫 이미지를 standby DOM에 opacity 0으로 준비한다', async () => {
+    vi.useFakeTimers();
+    const loadedSources: string[] = [];
+    const srcDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    const decodeDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'decode');
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      configurable: true,
+      get() {
+        return this.getAttribute('src') ?? '';
+      },
+      set(value: string) {
+        loadedSources.push(value);
+        this.setAttribute('src', value);
+        queueMicrotask(() => this.onload?.(new Event('load')));
+      },
+    });
+    Object.defineProperty(HTMLImageElement.prototype, 'decode', {
+      configurable: true,
+      value: vi.fn(() => Promise.resolve()),
+    });
+
+    try {
+      const play = vi.fn();
+      window.webapis = createWebApis(createPlayer(play), vi.fn(), {
+        getPlayer: vi.fn(() => ({
+          ...createPlayer(play),
+          getState: vi.fn(() => 'PLAYING'),
+        })),
+      });
+
+      const app = new NewHyOnPlayerApp({
+        manifest: createTwoPageNextImageManifest(),
+        settings: {
+          ...DEFAULT_PLAYER_SETTINGS,
+          playerId: '',
+          managerAddress: '',
+          manifestUrl: '',
+          preserveAspectRatio: false,
+          switchOnContentEnd: false,
+          hudInitiallyVisible: false,
+        },
+        hudInitiallyVisible: false,
+      });
+
+      await app.start();
+      expect(document.querySelector('#status-page')?.textContent).toContain('first-page');
+      expect(loadedSources.some((source) => source.includes('second.png'))).toBe(true);
+      expect(Array.from(document.querySelectorAll<HTMLImageElement>('.slot-image'))
+        .some((image) => image.getAttribute('src')?.includes('second.png'))).toBe(true);
+      expect(Array.from(document.querySelectorAll<HTMLImageElement>('.slot-image--visible'))
+        .some((image) => image.getAttribute('src')?.includes('second.png'))).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(9999);
+      await vi.runAllTicks();
+
+      expect(document.querySelector('#status-page')?.textContent).toContain('first-page');
+      expect(Array.from(document.querySelectorAll<HTMLImageElement>('.slot-image'))
+        .some((image) => image.getAttribute('src')?.includes('second.png'))).toBe(true);
+      expect(Array.from(document.querySelectorAll<HTMLImageElement>('.slot-image--visible'))
+        .some((image) => image.getAttribute('src')?.includes('second.png'))).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(96);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(document.querySelector('#status-page')?.textContent).toContain('second-page');
+      app.destroy();
+    } finally {
+      if (srcDescriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'src', srcDescriptor);
+      }
+      if (decodeDescriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'decode', decodeDescriptor);
+      } else {
+        delete (HTMLImageElement.prototype as Partial<HTMLImageElement>).decode;
+      }
+    }
+  });
+
+  it('페이지 종료 tick이 먼저 와도 영상 종료 이벤트와 함께 다음 페이지로 전환한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn();
+    const listeners: AVPlayListener[] = [];
     const getPlayer = vi.fn(() => ({
-      ...createPlayer(play),
+      ...createPlayer(play, (listener) => {
+        listeners.push(listener);
+      }),
       getState: vi.fn(() => 'PLAYING'),
     }));
     window.webapis = createWebApis(createPlayer(play), vi.fn(), { getPlayer });
@@ -640,7 +760,10 @@ describe('NewHyOnPlayerApp', () => {
     expect(play).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(10000);
-    expect(document.querySelector('#status-page')?.textContent).toContain('second-page');
+    expect(document.querySelector('#status-page')?.textContent).toContain('first-page');
+    expect(play).toHaveBeenCalledTimes(1);
+
+    listeners[0]?.onstreamcompleted?.();
     await vi.advanceTimersByTimeAsync(32);
     await Promise.resolve();
     await Promise.resolve();

@@ -24,6 +24,13 @@ declare global {
     filesystem?: {
       toURI(path: string): string;
       pathExists?(path: string): boolean;
+      openFile?(
+        path: string,
+        mode: 'r' | 'rw' | 'w' | 'a',
+        onsuccess: (file: TizenFileHandle) => void,
+        onerror?: (error: unknown) => void,
+        makeParents?: boolean,
+      ): void;
       resolve?(
         location: string,
         onsuccess: (file: TizenFile) => void,
@@ -107,10 +114,19 @@ declare global {
     platform: string;
     slots: string[];
     message: string;
+    recentLogs: Array<{
+      readonly timestamp: string;
+      readonly level: string;
+      readonly scope: string;
+      readonly message: string;
+    }>;
     diagnostics: {
       pageStartCount: number;
       contentShowCount: number;
       lastContent: string;
+      masterTickDelayMs: number;
+      masterTickIntervalMs: number;
+      renderIntervalMs: number;
       communicationStatus: string;
       dbStatus: string;
       dbStatusDetail: string;
@@ -161,6 +177,13 @@ declare global {
     read?(count: number): string;
     write(text: string): void;
     close(): void;
+  }
+
+  interface TizenFileHandle {
+    writeBlob?(blob: Blob): void;
+    writeBlobNonBlocking?(blob: Blob, onsuccess?: () => void, onerror?: (error: unknown) => void): void;
+    close?(): void;
+    closeNonBlocking?(onsuccess?: () => void, onerror?: (error: unknown) => void): void;
   }
 
   interface InputDeviceKey {

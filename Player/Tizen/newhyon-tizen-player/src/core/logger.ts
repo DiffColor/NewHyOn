@@ -21,6 +21,10 @@ export class RingLogger {
     };
   }
 
+  snapshot(limit = this.capacity): readonly LogEntry[] {
+    return this.entries.slice(Math.max(0, this.entries.length - limit));
+  }
+
   debug(scope: string, message: string): void {
     this.push('debug', scope, message);
   }

@@ -322,12 +322,24 @@ body {
 .slot-image {
   display: block;
   visibility: hidden;
+  opacity: 0;
   object-fit: fill;
   z-index: 0;
 }
 
+.slot-image--prepared,
+.slot-image--under-video,
 .slot-image--visible {
   visibility: visible;
+}
+
+.slot-image--prepared,
+.slot-image--under-video {
+  opacity: 0;
+}
+
+.slot-image--visible {
+  opacity: 1;
 }
 
 .slot-video-mask {
@@ -452,6 +464,11 @@ body {
 .timeline-row--page {
   border-color: rgba(111, 211, 255, 0.28);
   background: rgba(51, 139, 190, 0.16);
+}
+
+.timeline-row--tick {
+  border-color: rgba(168, 85, 247, 0.24);
+  background: rgba(84, 35, 130, 0.18);
 }
 
 .timeline-row--error {
