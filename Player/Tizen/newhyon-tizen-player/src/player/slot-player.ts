@@ -951,6 +951,10 @@ export class SlotPlayer {
   }
 
   private shouldLoopCurrentVideo(item: SeamlessContentItem): boolean {
+    if (this.loopCurrentPageAtPageEnd && !this.canAdvanceContent()) {
+      return true;
+    }
+
     const durationMs = this.videoDurationMsByItemId.get(item.id);
     if (durationMs === undefined) {
       return item.shouldLoop;
