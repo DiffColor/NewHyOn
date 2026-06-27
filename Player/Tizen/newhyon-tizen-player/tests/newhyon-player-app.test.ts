@@ -1505,8 +1505,19 @@ describe('NewHyOnPlayerApp', () => {
     const srcDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
     const completeDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'complete');
     const decodeDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'decode');
+    const originalCreateElement = document.createElement.bind(document);
+    const createdImages: HTMLImageElement[] = [];
+    const createElementSpy = vi.spyOn(document, 'createElement');
+    createElementSpy.mockImplementation(((tagName: string, options?: ElementCreationOptions) => {
+      const element = originalCreateElement(tagName, options);
+      if (tagName.toLowerCase() === 'img') {
+        createdImages.push(element as HTMLImageElement);
+      }
+      return element;
+    }) as typeof document.createElement);
     const loadedImages = new WeakSet<HTMLImageElement>();
     let pendingImage: HTMLImageElement | null = null;
+    const decodeResolvers: Array<() => void> = [];
     Object.defineProperty(HTMLImageElement.prototype, 'src', {
       configurable: true,
       get() {
@@ -1525,7 +1536,9 @@ describe('NewHyOnPlayerApp', () => {
     });
     Object.defineProperty(HTMLImageElement.prototype, 'decode', {
       configurable: true,
-      value: vi.fn().mockResolvedValue(undefined),
+      value: vi.fn(() => new Promise<void>((resolve) => {
+        decodeResolvers.push(resolve);
+      })),
     });
 
     try {
@@ -1586,7 +1599,12 @@ describe('NewHyOnPlayerApp', () => {
       }).applyUpdateListCommand(updatePayload, false, 'cmd-image');
       await Promise.resolve();
       await Promise.resolve();
+      await vi.runAllTicks();
+      await Promise.resolve();
 
+      pendingImage ??= Array.from(document.querySelectorAll<HTMLImageElement>('img'))
+        .find((image) => image.getAttribute('src')?.includes('updated.png') || image.src.includes('updated.png')) ?? null;
+      pendingImage ??= createdImages.find((image) => image.onload !== null || image.src.includes('updated.png')) ?? null;
       expect(pendingImage).not.toBeNull();
       expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
       expect(document.querySelector('#status-page')?.textContent).toContain('page');
@@ -1595,6 +1613,8 @@ describe('NewHyOnPlayerApp', () => {
 
       loadedImages.add(pendingImage!);
       pendingImage!.onload?.(new Event('load'));
+      await Promise.resolve();
+      decodeResolvers.forEach((resolve) => resolve());
       await vi.advanceTimersByTimeAsync(32);
       await Promise.resolve();
       await vi.advanceTimersByTimeAsync(32);
@@ -1616,6 +1636,7 @@ describe('NewHyOnPlayerApp', () => {
       } else {
         delete (HTMLImageElement.prototype as Partial<HTMLImageElement>).decode;
       }
+      createElementSpy.mockRestore();
     }
   });
 

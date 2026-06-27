@@ -47,9 +47,11 @@ import {
 import {
   hasContentPeriod,
   isContentPeriodAllowed,
+  saveContentPeriodSnapshot,
   saveContentPeriodsFromSchedule,
   saveContentPeriodsFromUpdatePayload,
 } from './content-period';
+import { ContentPeriodSyncClient } from './content-period-sync';
 import { buildManifestFromUpdatePayload, saveRemoteManifest, type UpdatePayload } from './update-payload';
 import { evaluateWeeklySchedule, loadWeeklySchedule, saveWeeklyScheduleFromUpdatePayload } from './weekly-schedule';
 import { TIZEN_INTRO_VIDEO_FILE, createTizenIntroManifest } from './default-manifest';
@@ -291,6 +293,9 @@ export class NewHyOnPlayerApp {
       this.configureSsspSignageControl();
       this.writeRuntimeHealth('app-started');
       await this.bootstrapCommunication();
+      await this.syncContentPeriodsForManifests([this.currentContentManifest], 'startup', false);
+      const startupResolution = this.createStartupPagePlans(this.currentContentManifest);
+      this.commitPlaybackPlan(startupResolution.pagePlans, startupResolution.mode, 0);
       await this.ensureAuthentication();
       this.showLoading('플레이어 준비 중', '콘텐츠 재생을 준비합니다.');
       this.configureRemoteCommands();
@@ -636,6 +641,7 @@ export class NewHyOnPlayerApp {
         'command',
         `updatelist 적용 준비 완료: playlist=${cachedManifest.playlistName}, pages=${cachedManifest.pages.length}, remoteContents=${remoteContentCount}, cachedContents=${cachedContentCount}, urgent=${urgent}, commandId=${commandId ?? '-'}`,
       );
+      await this.syncContentPeriodsForManifests([cachedManifest], `updatelist:${commandId ?? '-'}`, false);
       this.setUpdateOverlayState({
         phase: 'applying',
         playlistName: cachedManifest.playlistName,
@@ -858,6 +864,60 @@ export class NewHyOnPlayerApp {
     return `updatelist-${seed}`;
   }
 
+  private async syncContentPeriodsForManifests(
+    manifests: readonly RuntimeConfig['manifest'][],
+    source: string,
+    refreshPlayback: boolean,
+  ): Promise<void> {
+    const contentGuids = this.collectManifestContentGuids(manifests);
+    const result = await this.syncContentPeriodsByGuids(contentGuids, source);
+    if (result && refreshPlayback) {
+      await this.refreshPlaybackForContentPeriodChange();
+    }
+  }
+
+  private async syncContentPeriodsByGuids(
+    contentGuids: readonly string[],
+    source: string,
+  ): Promise<ReturnType<typeof saveContentPeriodSnapshot> | null> {
+    const requestedGuids = [...new Set(contentGuids.map((guid) => guid.trim()).filter((guid) => guid.length > 0))];
+    if (requestedGuids.length === 0 || !this.communication) {
+      return null;
+    }
+
+    const client = new ContentPeriodSyncClient(this.config.settings.managerAddress);
+    try {
+      const periods = await client.fetchByContentGuids(requestedGuids);
+      const result = saveContentPeriodSnapshot(requestedGuids, periods);
+      this.logger.info(
+        'content-period',
+        `${source} 동기화 완료: requested=${result.requested}, fetched=${periods.length}, upserted=${result.upserted}, removed=${result.removed}, total=${result.total}`,
+      );
+      return result;
+    } catch (error) {
+      this.logger.warn('content-period', `${source} 동기화 실패: ${formatError(error)}`);
+      return null;
+    } finally {
+      client.dispose();
+    }
+  }
+
+  private collectManifestContentGuids(manifests: readonly RuntimeConfig['manifest'][]): string[] {
+    const contentGuids = new Set<string>();
+    manifests.forEach((manifest) => {
+      manifest.pages
+        .flatMap((page) => page.PIC_Elements ?? [])
+        .flatMap((element) => element.EIF_ContentsInfoClassList ?? [])
+        .forEach((content) => {
+          const guid = content.CIF_StrGUID?.trim();
+          if (guid) {
+            contentGuids.add(guid);
+          }
+        });
+    });
+    return [...contentGuids];
+  }
+
   private async applyUpdateWeeklyCommand(payload: UpdatePayload, commandName: string): Promise<boolean> {
     const rows = saveWeeklyScheduleFromUpdatePayload(payload);
     this.setMessage(`주간 스케줄 적용: ${rows.length}일`);
@@ -875,12 +935,24 @@ export class NewHyOnPlayerApp {
       `updateschedule 적용 완료: special=${snapshot.specialScheduleCount}, playlists=${snapshot.playlistScheduleCount}, contentPeriods=${snapshot.contentPeriodCount}, contentPeriodCache=${contentPeriodResult.total}, generatedAt=${snapshot.generatedAt || '-'}`,
     );
     await this.cacheRemoteSchedulePlaylistContent(snapshot);
+    await this.syncContentPeriodsForManifests(
+      [
+        this.currentContentManifest,
+        ...buildManifestsFromRemoteSchedulePlaylists(snapshot, this.config.manifest.preserveAspectRatio),
+      ],
+      'updateschedule',
+      false,
+    );
     await this.applyRemoteScheduleSnapshot(snapshot, Date.now());
     return true;
   }
 
   private async applyUpdateContentPeriodCommand(payload: UpdatePayload | null): Promise<boolean> {
-    const result = saveContentPeriodsFromUpdatePayload(payload ?? ({} as UpdatePayload));
+    let result = saveContentPeriodsFromUpdatePayload(payload ?? ({} as UpdatePayload));
+    const requestedGuids = payload?.ContentPeriodUpdateGuids ?? [];
+    if (requestedGuids.length > 0) {
+      result = await this.syncContentPeriodsByGuids(requestedGuids, 'updatecontentperiod') ?? result;
+    }
     this.setMessage(`기간별 콘텐츠 스케줄 적용: ${result.upserted}건`);
     this.logger.info(
       'command',

@@ -3,6 +3,8 @@ import type { UpdatePayload } from './update-payload';
 const CONTENT_PERIOD_STORAGE_KEY = 'newhyon-tizen-player.content-periods.v1';
 
 export interface ContentPeriodPayload {
+  readonly id?: string;
+  readonly Id?: string;
   readonly ContentGuid?: string;
   readonly contentGuid?: string;
   readonly StartDate?: string;
@@ -36,13 +38,25 @@ export function saveContentPeriodsFromUpdatePayload(
   payload: UpdatePayload,
   storage: Storage = window.localStorage,
 ): ContentPeriodUpdateResult {
-  const current = loadContentPeriodStore(storage);
   const requestedGuids = normalizeGuidList(payload.ContentPeriodUpdateGuids);
   const periods = extractContentPeriodsFromUpdatePayload(payload);
+  return saveContentPeriodSnapshot(requestedGuids, periods, storage);
+}
+
+export function saveContentPeriodSnapshot(
+  requestedGuids: readonly string[],
+  periods: readonly ContentPeriodPayload[] | readonly NormalizedContentPeriod[],
+  storage: Storage = window.localStorage,
+): ContentPeriodUpdateResult {
+  const current = loadContentPeriodStore(storage);
+  const requested = normalizeGuidList(requestedGuids);
+  const normalizedPeriods = periods
+    .map(normalizeContentPeriod)
+    .filter((period): period is NormalizedContentPeriod => period !== null);
   const touchedKeys = new Set<string>();
   let upserted = 0;
 
-  periods.forEach((period) => {
+  normalizedPeriods.forEach((period) => {
     const key = period.contentGuid.toLowerCase();
     current[key] = period;
     touchedKeys.add(key);
@@ -50,7 +64,7 @@ export function saveContentPeriodsFromUpdatePayload(
   });
 
   let removed = 0;
-  requestedGuids.forEach((guid) => {
+  requested.forEach((guid) => {
     const key = guid.toLowerCase();
     if (touchedKeys.has(key)) {
       return;
@@ -64,7 +78,7 @@ export function saveContentPeriodsFromUpdatePayload(
 
   persistContentPeriodStore(current, storage);
   return {
-    requested: requestedGuids.length,
+    requested: requested.length,
     upserted,
     removed,
     total: Object.keys(current).length,
@@ -171,7 +185,7 @@ function normalizeContentPeriod(value: unknown): NormalizedContentPeriod | null 
   }
 
   const payload = value as ContentPeriodPayload;
-  const contentGuid = (payload.ContentGuid ?? payload.contentGuid ?? '').trim();
+  const contentGuid = (payload.ContentGuid ?? payload.contentGuid ?? payload.Id ?? payload.id ?? '').trim();
   if (!contentGuid) {
     return null;
   }
