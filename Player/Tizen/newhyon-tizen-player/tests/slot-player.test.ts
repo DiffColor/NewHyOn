@@ -1599,4 +1599,90 @@ describe('SlotPlayer', () => {
     }
   });
 
+  it('현재 컨텐츠 전환이 페이지 경계보다 빠르면 경계 준비를 미룬다', async () => {
+    vi.useFakeTimers();
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      configurable: true,
+      get() {
+        return this.getAttribute('src') ?? '';
+      },
+      set(value: string) {
+        this.setAttribute('src', value);
+        queueMicrotask(() => this.onload?.(new Event('load')));
+      },
+    });
+
+    try {
+      const element = document.createElement('section');
+      const session = {
+        play: vi.fn(async () => undefined),
+        prepare: vi.fn(async () => undefined),
+        clearPrepared: vi.fn(),
+        hide: vi.fn(),
+        pause: vi.fn(),
+        resume: vi.fn(),
+        stop: vi.fn(),
+        state: vi.fn(() => 'IDLE'),
+        applyDisplayRect: vi.fn(),
+      } as unknown as AvplaySession;
+      const slot = new SlotPlayer(0, element, createTwoImageSlot(), false, false, () => session, new RingLogger(5));
+
+      slot.setPageTimeline(0, 30000, false);
+      await slot.start();
+      await vi.runAllTicks();
+      await vi.advanceTimersByTimeAsync(32);
+
+      expect(slot.shouldPrepareBoundaryFirstContent(30000)).toBe(false);
+      expect(Array.from(element.querySelectorAll<HTMLImageElement>('.slot-image--prepared'))
+        .some((image) => image.getAttribute('src')?.includes('second.png'))).toBe(true);
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
+      }
+    }
+  });
+
+  it('페이지 경계가 현재 컨텐츠 전환보다 빠르면 경계 준비를 허용한다', async () => {
+    vi.useFakeTimers();
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      configurable: true,
+      get() {
+        return this.getAttribute('src') ?? '';
+      },
+      set(value: string) {
+        this.setAttribute('src', value);
+        queueMicrotask(() => this.onload?.(new Event('load')));
+      },
+    });
+
+    try {
+      const element = document.createElement('section');
+      const session = {
+        play: vi.fn(async () => undefined),
+        prepare: vi.fn(async () => undefined),
+        clearPrepared: vi.fn(),
+        hide: vi.fn(),
+        pause: vi.fn(),
+        resume: vi.fn(),
+        stop: vi.fn(),
+        state: vi.fn(() => 'IDLE'),
+        applyDisplayRect: vi.fn(),
+      } as unknown as AvplaySession;
+      const slot = new SlotPlayer(0, element, createTwoImageSlot(), false, false, () => session, new RingLogger(5));
+
+      slot.setPageTimeline(9500, 10000, false);
+      await slot.start();
+      await vi.runAllTicks();
+      await vi.advanceTimersByTimeAsync(32);
+
+      expect(slot.shouldPrepareBoundaryFirstContent(500)).toBe(true);
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
+      }
+    }
+  });
+
 });

@@ -10,6 +10,7 @@ type VideoTransitionMode = 'timer' | 'event';
 const VIDEO_DURATION_MATCH_TOLERANCE_MS = 250;
 const PAGE_END_VIDEO_COMPLETION_GRACE_MS = 2000;
 const IMAGE_MAIN_THREAD_GAP_WARN_MS = 250;
+const PREPARATION_PRIORITY_TOLERANCE_MS = 250;
 
 export interface SlotPlayerTimelineSnapshot {
   readonly slotIndex: number;
@@ -265,6 +266,10 @@ export class SlotPlayer {
       return null;
     }
 
+    if (item.id === this.currentItem()?.id) {
+      return null;
+    }
+
     if (this.preparedItemId === item.id && this.preparePromise) {
       return this.preparePromise;
     }
@@ -304,6 +309,27 @@ export class SlotPlayer {
       });
 
     return pageBoundaryPreparePromise;
+  }
+
+  shouldPrepareBoundaryFirstContent(boundaryRemainingMs = this.pageDurationMs - this.pageElapsedMs): boolean {
+    if (!this.active) {
+      return false;
+    }
+
+    const item = this.currentItem();
+    if (!item) {
+      return true;
+    }
+
+    const safeBoundaryRemainingMs = Number.isFinite(boundaryRemainingMs)
+      ? Math.max(0, boundaryRemainingMs)
+      : Number.POSITIVE_INFINITY;
+    const contentRemainingMs = this.currentContentTransitionRemainingMs(item);
+    if (contentRemainingMs === null) {
+      return true;
+    }
+
+    return safeBoundaryRemainingMs <= contentRemainingMs + PREPARATION_PRIORITY_TOLERANCE_MS;
   }
 
   blocksPageTransitionForContentEnd(): boolean {
@@ -1241,20 +1267,46 @@ export class SlotPlayer {
       return null;
     }
 
-    const nextItem = this.slot.items[nextIndex] ?? null;
-    const shouldPrepareNextImageForEventVideo = item.contentType === 'Video'
-      && nextItem?.contentType === 'Image'
-      && this.shouldWaitForVideoEnd(item);
-    if (!shouldPrepareNextImageForEventVideo) {
-      const pageRemainingMs = this.pageDurationMs - this.pageElapsedMs;
-      const itemDurationMs = Math.max(1, item.durationSeconds) * 1000;
-      const itemRemainingMs = itemDurationMs - this.currentItemTimelineElapsedMilliseconds(item);
-      if (Number.isFinite(pageRemainingMs) && pageRemainingMs <= itemRemainingMs) {
-        return this.loopCurrentPageAtPageEnd ? 0 : null;
-      }
+    const pageRemainingMs = this.pageDurationMs - this.pageElapsedMs;
+    const contentRemainingMs = this.currentContentTransitionRemainingMs(item);
+    if (
+      Number.isFinite(pageRemainingMs)
+      && contentRemainingMs !== null
+      && pageRemainingMs <= contentRemainingMs + PREPARATION_PRIORITY_TOLERANCE_MS
+    ) {
+      return this.loopCurrentPageAtPageEnd ? 0 : null;
     }
 
     return nextIndex;
+  }
+
+  private currentContentTransitionRemainingMs(item: SeamlessContentItem): number | null {
+    if (!this.canAdvanceContent()) {
+      return null;
+    }
+
+    if (item.contentType === 'Video' && this.shouldWaitForVideoEnd(item)) {
+      return this.currentVideoStreamRemainingMs(item);
+    }
+
+    const itemDurationMs = Math.max(1, item.durationSeconds) * 1000;
+    return Math.max(0, itemDurationMs - this.currentItemTimelineElapsedMilliseconds(item));
+  }
+
+  private currentVideoStreamRemainingMs(item: SeamlessContentItem): number {
+    const durationMs = this.videoDurationMsByItemId.get(item.id);
+    if (durationMs === undefined) {
+      const itemDurationMs = Math.max(1, item.durationSeconds) * 1000;
+      return Math.max(0, itemDurationMs - this.currentItemTimelineElapsedMilliseconds(item));
+    }
+
+    const elapsedMs = this.currentItemRawElapsedMilliseconds();
+    const elapsedWithinPlaybackMs = elapsedMs > durationMs
+      ? elapsedMs % durationMs
+      : elapsedMs;
+    return elapsedWithinPlaybackMs === 0 && elapsedMs > 0
+      ? 0
+      : Math.max(0, durationMs - elapsedWithinPlaybackMs);
   }
 
   private resolveTimelineItem(pageElapsedMs: number): { itemIndex: number; itemElapsedMs: number } | null {

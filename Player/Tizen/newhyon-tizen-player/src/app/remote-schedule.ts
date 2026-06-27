@@ -79,6 +79,12 @@ export function saveRemoteScheduleFromUpdatePayload(
   payload: UpdatePayload,
   storage: Storage = window.localStorage,
 ): RemoteScheduleSnapshot {
+  const snapshot = createRemoteScheduleSnapshotFromUpdatePayload(payload);
+  storage.setItem(REMOTE_SCHEDULE_STORAGE_KEY, JSON.stringify(snapshot));
+  return snapshot;
+}
+
+export function createRemoteScheduleSnapshotFromUpdatePayload(payload: UpdatePayload): RemoteScheduleSnapshot {
   const schedule = payload.Schedule;
   if (!schedule || typeof schedule !== 'object') {
     throw new Error('updateschedule payload에 Schedule이 없습니다.');
@@ -95,8 +101,6 @@ export function saveRemoteScheduleFromUpdatePayload(
     contentPeriodCount: countCollection(scheduleObject.ContentPeriods ?? scheduleObject.contentPeriods),
     schedule,
   };
-
-  storage.setItem(REMOTE_SCHEDULE_STORAGE_KEY, JSON.stringify(snapshot));
   return snapshot;
 }
 

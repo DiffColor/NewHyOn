@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NewHyOnPlayerApp } from '../src/app/newhyon-player-app';
-import { saveContentPeriodsFromSchedule } from '../src/app/content-period';
+import { hasContentPeriod, saveContentPeriodsFromSchedule } from '../src/app/content-period';
 import { DEFAULT_PLAYER_SETTINGS } from '../src/app/player-settings';
 import { loadRemoteManifest, type UpdatePayload } from '../src/app/update-payload';
+import { loadRemoteSchedule, saveRemoteScheduleFromUpdatePayload } from '../src/app/remote-schedule';
 import { getDefaultWeeklySchedule, saveWeeklySchedule } from '../src/app/weekly-schedule';
 import type { LicenseAuthState, LicenseHubAuthService } from '../src/app/licensehub-auth';
 import type { PlayerManifest } from '../src/domain/models';
@@ -1107,6 +1108,116 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelector('#status-playlist')?.textContent).toBe('scheduled-list');
     expect(document.querySelector('#status-page')?.textContent).toContain('scheduled-page');
     expect(document.querySelector('#status-slots')?.textContent).toContain('scheduled.mp4');
+    app.destroy();
+  });
+
+  it('updateschedule 콘텐츠 캐시가 실패하면 새 예약 스케줄과 기간 데이터를 저장하지 않는다', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 22, 9, 1, 0));
+    saveRemoteScheduleFromUpdatePayload({
+      Schedule: {
+        GeneratedAt: '2026-06-22 08:00:00',
+        SpecialSchedules: [],
+        Playlists: [],
+        ContentPeriods: [],
+      },
+    });
+
+    const play = vi.fn();
+    window.webapis = createWebApis(createPlayer(play));
+    window.tizen = undefined;
+
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
+
+    await expect((app as unknown as {
+      applyUpdateScheduleCommand(payload: UpdatePayload): Promise<boolean>;
+    }).applyUpdateScheduleCommand({
+      Schedule: {
+        GeneratedAt: '2026-06-22 09:00:00',
+        ContentPeriods: [
+          {
+            ContentGuid: 'new-schedule-content',
+            StartDate: '2026-06-22',
+            EndDate: '2026-06-22',
+            StartTime: '00:00',
+            EndTime: '23:59',
+          },
+        ],
+        SpecialSchedules: [
+          {
+            Id: 'schedule-cache-fail',
+            PageListName: 'failed-scheduled-list',
+            DayOfWeek1: false,
+            DayOfWeek2: true,
+            DayOfWeek3: false,
+            DayOfWeek4: false,
+            DayOfWeek5: false,
+            DayOfWeek6: false,
+            DayOfWeek7: false,
+            IsPeriodEnable: false,
+            DisplayStartH: 9,
+            DisplayStartM: 0,
+            DisplayEndH: 18,
+            DisplayEndM: 0,
+          },
+        ],
+        Playlists: [
+          {
+            PlaylistName: 'failed-scheduled-list',
+            PageList: { PLI_PageListName: 'failed-scheduled-list' },
+            Pages: [
+              {
+                PIC_PageName: 'failed-scheduled-page',
+                PIC_PlaytimeSecond: 10,
+                PIC_CanvasWidth: 1920,
+                PIC_CanvasHeight: 1080,
+                PIC_Elements: [
+                  {
+                    EIF_Name: 'failed-video',
+                    EIF_Type: 'Media',
+                    EIF_Width: 1920,
+                    EIF_Height: 1080,
+                    EIF_PosLeft: 0,
+                    EIF_PosTop: 0,
+                    EIF_IsMuted: true,
+                    EIF_ContentsInfoClassList: [
+                      {
+                        CIF_StrGUID: 'new-schedule-content',
+                        CIF_FileName: 'failed.mp4',
+                        CIF_FileFullPath: 'https://cdn.example.com/failed.mp4',
+                        CIF_ContentType: 'Video',
+                        CIF_PlayMinute: '00',
+                        CIF_PlaySec: '10',
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    })).rejects.toThrow('Tizen Download API');
+
+    expect(loadRemoteSchedule()?.generatedAt).toBe('2026-06-22 08:00:00');
+    expect(hasContentPeriod('new-schedule-content')).toBe(false);
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
+    expect(play).toHaveBeenCalledTimes(1);
     app.destroy();
   });
 

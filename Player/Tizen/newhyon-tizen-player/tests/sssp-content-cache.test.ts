@@ -332,6 +332,32 @@ describe('cacheRemoteManifestContent', () => {
     })).toBe(1);
   });
 
+  it('Windows 절대 CIF_FileFullPath만 있으면 FTP 업데이트는 CIF_FileName을 사용한다', async () => {
+    const manifest = createManifest();
+    const content = manifest.pages[0]?.PIC_Elements?.[0]?.EIF_ContentsInfoClassList?.[0];
+    if (!content) {
+      throw new Error('테스트 콘텐츠가 없습니다.');
+    }
+    content.CIF_FileName = 'server-image.jpg';
+    content.CIF_FileFullPath = 'C:\\Users\\Turtle-MSI\\Documents\\Turtle Lab\\NewHyOn Manager\\Contents\\server-image.jpg';
+    content.CIF_RelativePath = '';
+
+    await cacheRemoteManifestContent(manifest, {
+      ftp: {
+        host: '192.168.50.10',
+        port: 21,
+        basePath: '/NewHyOn',
+        userName: 'asdf',
+        password: 'Emfndhk!',
+      },
+    });
+
+    const launch = vi.mocked(window.tizen!.application!.launchAppControl!);
+    const request = launch.mock.calls[0]?.[0];
+    expect(request?.data?.find((item) => item.key === 'remotePath')?.value[0])
+      .toBe('/NewHyOn/server-image.jpg');
+  });
+
   it('FTP 콘텐츠 상대경로가 서버 기본 디렉터리를 이미 포함하면 중복으로 붙이지 않는다', async () => {
     const manifest = createManifest();
     const content = manifest.pages[0]?.PIC_Elements?.[0]?.EIF_ContentsInfoClassList?.[0];

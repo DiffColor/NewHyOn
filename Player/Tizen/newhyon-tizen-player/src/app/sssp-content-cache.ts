@@ -4,6 +4,8 @@ const DOWNLOAD_ROOT = 'downloads';
 const FTP_DOWNLOADER_APP_ID = 'NewHyOnFtpD01.Downloader';
 const FTP_DOWNLOAD_OPERATION = 'http://turtlelab.co.kr/appcontrol/newhyon/ftp-download';
 const IMAGE_OPTIMIZATION_QUALITY = 0.86;
+const FTP_DOWNLOAD_TIMEOUT_MS = 60000;
+const IMAGE_OPTIMIZATION_LOAD_TIMEOUT_MS = 8000;
 
 export interface ContentCacheProgress {
   readonly completed: number;
@@ -127,6 +129,9 @@ function readContentSourceUrl(content: ContentsInfoClass, options: ContentCacheO
   }
   if (options.ftp && relativePath) {
     return relativePath;
+  }
+  if (options.ftp && isWindowsAbsolutePath(fileFullPath)) {
+    return content.CIF_FileName.trim();
   }
 
   return fileFullPath || relativePath || content.CIF_FileName.trim();
@@ -334,7 +339,13 @@ async function optimizeDownloadedImageForDisplay(downloadedPath: string, target:
   }
 
   const sourceUri = filesystem.toURI(downloadedPath);
-  const image = await loadImageElement(sourceUri);
+  let image: HTMLImageElement;
+  try {
+    image = await loadImageElement(sourceUri, IMAGE_OPTIMIZATION_LOAD_TIMEOUT_MS);
+  } catch (error) {
+    console.warn(`[download] 이미지 최적화 생략: ${downloadedPath} (${formatDownloadError(error)})`);
+    return downloadedPath;
+  }
   const outputSize = calculateOptimizedImageSize(
     image.naturalWidth || image.width,
     image.naturalHeight || image.height,
@@ -414,11 +425,22 @@ function calculateOptimizedImageSize(
   };
 }
 
-function loadImageElement(sourceUri: string): Promise<HTMLImageElement> {
+function loadImageElement(sourceUri: string, timeoutMs: number): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = document.createElement('img');
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error(`이미지 최적화 로드 실패: ${sourceUri}`));
+    const timerId = window.setTimeout(() => {
+      image.onload = null;
+      image.onerror = null;
+      reject(new Error(`이미지 최적화 로드 시간 초과: ${sourceUri}`));
+    }, timeoutMs);
+    image.onload = () => {
+      window.clearTimeout(timerId);
+      resolve(image);
+    };
+    image.onerror = () => {
+      window.clearTimeout(timerId);
+      reject(new Error(`이미지 최적화 로드 실패: ${sourceUri}`));
+    };
     image.src = sourceUri;
   });
 }
@@ -490,6 +512,21 @@ function downloadFtpToTizenStorage(target: DownloadTarget): Promise<string> {
   const launchAppControl = application.launchAppControl.bind(application);
 
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const settle = (callback: () => void) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      window.clearTimeout(timeoutId);
+      callback();
+    };
+    const timeoutId = window.setTimeout(() => {
+      settle(() => reject(new Error(
+        `FTP 콘텐츠 다운로드 시간 초과: ${target.fileName} (${FTP_DOWNLOAD_TIMEOUT_MS}ms; path=${sanitizeFtpPath(ftpSource)})`,
+      )));
+    }, FTP_DOWNLOAD_TIMEOUT_MS);
     const appControl = new ApplicationControl(
       FTP_DOWNLOAD_OPERATION,
       null,
@@ -510,27 +547,31 @@ function downloadFtpToTizenStorage(target: DownloadTarget): Promise<string> {
       appControl,
       FTP_DOWNLOADER_APP_ID,
       () => undefined,
-      (error) => reject(new Error(
+      (error) => settle(() => reject(new Error(
         `FTP 다운로드 서비스 실행 실패: ${formatDownloadError(error)}; path=${sanitizeFtpPath(ftpSource)}`,
-      )),
+      ))),
       {
         onsuccess: (data) => {
           const reply = readApplicationControlData(data);
           if (reply.status === 'ok' && reply.path) {
-            resolve(reply.path);
+            settle(() => resolve(reply.path));
             return;
           }
 
-          reject(new Error(
+          settle(() => reject(new Error(
             `FTP 콘텐츠 다운로드 실패: ${target.fileName} (${reply.error || 'unknown'}; path=${sanitizeFtpPath(ftpSource)})`,
-          ));
+          )));
         },
-        onfailure: () => reject(new Error(
+        onfailure: () => settle(() => reject(new Error(
           `FTP 콘텐츠 다운로드 실패: ${target.fileName} (service failure; path=${sanitizeFtpPath(ftpSource)})`,
-        )),
+        ))),
       },
     );
   });
+}
+
+function isWindowsAbsolutePath(value: string): boolean {
+  return /^[a-zA-Z]:[\\/]/.test(value.trim()) || /^\\\\/.test(value.trim());
 }
 
 function hasUriScheme(value: string): boolean {

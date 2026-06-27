@@ -26,10 +26,10 @@ import { RemoteCommandService, type RemoteCommandCallbackResult } from './remote
 import {
   buildManifestFromRemoteSchedulePlaylist,
   buildManifestsFromRemoteSchedulePlaylists,
+  createRemoteScheduleSnapshotFromUpdatePayload,
   evaluateRemoteSchedule,
   loadRemoteSchedule,
   saveRemoteScheduleSnapshot,
-  saveRemoteScheduleFromUpdatePayload,
   type RemoteScheduleDecision,
   type RemoteScheduleSnapshot,
 } from './remote-schedule';
@@ -93,6 +93,12 @@ type PlaybackMode = 'content' | 'empty-intro' | 'blackout';
 interface PagePlanResolution {
   readonly pagePlans: SeamlessPagePlan[];
   readonly mode: PlaybackMode;
+}
+
+interface BoundaryPreparationTarget {
+  readonly page: SeamlessPagePlan;
+  readonly remainingMs: number;
+  readonly reason: string;
 }
 
 interface PagePlayOptions {
@@ -929,16 +935,16 @@ export class NewHyOnPlayerApp {
 
   private async applyUpdateScheduleCommand(payload: UpdatePayload): Promise<boolean> {
     let snapshot: RemoteScheduleSnapshot;
+    let contentPeriodResult = { requested: 0, upserted: 0, removed: 0, total: 0 };
     this.remoteScheduleUpdateInProgress = true;
     try {
-      snapshot = saveRemoteScheduleFromUpdatePayload(payload);
-      const contentPeriodResult = saveContentPeriodsFromSchedule(snapshot.schedule);
-      this.setMessage('서버 스케줄 적용 완료');
+      snapshot = createRemoteScheduleSnapshotFromUpdatePayload(payload);
       this.logger.info(
         'command',
-        `updateschedule 적용 완료: special=${snapshot.specialScheduleCount}, playlists=${snapshot.playlistScheduleCount}, contentPeriods=${snapshot.contentPeriodCount}, contentPeriodCache=${contentPeriodResult.total}, generatedAt=${snapshot.generatedAt || '-'}`,
+        `updateschedule 적용 준비: special=${snapshot.specialScheduleCount}, playlists=${snapshot.playlistScheduleCount}, contentPeriods=${snapshot.contentPeriodCount}, generatedAt=${snapshot.generatedAt || '-'}`,
       );
       await this.cacheRemoteSchedulePlaylistContent(snapshot);
+      contentPeriodResult = saveContentPeriodsFromSchedule(snapshot.schedule);
       await this.syncContentPeriodsForManifests(
         [
           this.currentContentManifest,
@@ -946,6 +952,12 @@ export class NewHyOnPlayerApp {
         ],
         'updateschedule',
         false,
+      );
+      saveRemoteScheduleSnapshot(snapshot);
+      this.setMessage('서버 스케줄 적용 완료');
+      this.logger.info(
+        'command',
+        `updateschedule 적용 완료: special=${snapshot.specialScheduleCount}, playlists=${snapshot.playlistScheduleCount}, contentPeriods=${snapshot.contentPeriodCount}, contentPeriodCache=${contentPeriodResult.total}, generatedAt=${snapshot.generatedAt || '-'}`,
       );
     } finally {
       this.remoteScheduleUpdateInProgress = false;
@@ -1072,12 +1084,16 @@ export class NewHyOnPlayerApp {
       const cachedManifest = await cacheRemoteManifestContent(manifest, {
         ...cacheOptions,
         cacheNamespace: `updateschedule-${manifest.playlistName}`,
+        onProgress: (progress) => {
+          this.logger.info(
+            'schedule',
+            `예약 playlist 캐시 진행: ${manifest.playlistName} ${progress.completed}/${progress.total} ${progress.fileName}`,
+          );
+        },
       });
       this.replaceRemoteSchedulePlaylistPages(snapshot, cachedManifest);
       this.logger.info('schedule', `예약 playlist 캐시 완료: ${manifest.playlistName}`);
     }
-
-    saveRemoteScheduleSnapshot(snapshot);
   }
 
   private replaceRemoteSchedulePlaylistPages(snapshot: RemoteScheduleSnapshot, manifest: RuntimeConfig['manifest']): void {
@@ -1505,13 +1521,16 @@ export class NewHyOnPlayerApp {
     }
     this.writeRuntimeHealth('page-started');
     this.startMasterTimer();
-    this.prepareUpcomingPageFirstImages('page-started');
+    this.prepareUpcomingBoundaryFirstContent('page-started');
   }
 
   private recordContentShown(slotIndex: number, item: SeamlessContentItem): void {
     this.contentShowCount += 1;
     this.lastContent = `slot ${slotIndex + 1}: ${item.name}`;
     this.writeRuntimeHealth('content-shown');
+    window.setTimeout(() => {
+      this.prepareUpcomingBoundaryFirstContent('content-shown');
+    }, 0);
   }
 
   private async switchSurfacesToPage(
@@ -1576,43 +1595,115 @@ export class NewHyOnPlayerApp {
       this.writeRuntimeHealth('page-started');
     }
     this.startMasterTimer();
-    this.prepareUpcomingPageFirstImages('page-started');
+    this.prepareUpcomingBoundaryFirstContent('page-started');
   }
 
-  private prepareUpcomingPageFirstImages(reason: string): void {
-    if (this.playbackMode !== 'content' || this.pagePlans.length === 0) {
+  private prepareUpcomingBoundaryFirstContent(reason: string): void {
+    if (this.destroyed || this.playbackMode !== 'content' || this.pagePlans.length === 0) {
       return;
+    }
+
+    const target = this.resolveBoundaryPreparationTarget(reason);
+    if (!target) {
+      return;
+    }
+
+    target.page.slots.forEach((slot, slotIndex) => {
+      const item = this.firstPlayableContentItem(slot);
+      if (!item || item.contentType !== 'Image') {
+        return;
+      }
+
+      const slotPlayer = this.slotPlayers[slotIndex];
+      if (!slotPlayer) {
+        this.logger.warn('prepare', `boundary prepare skipped(${target.reason}/${reason}): slot ${slotIndex + 1} surface 없음, ${item.name}`);
+        return;
+      }
+
+      if (!slotPlayer.shouldPrepareBoundaryFirstContent(target.remainingMs)) {
+        this.logger.debug('prepare', `boundary prepare deferred(${target.reason}/${reason}): slot ${slotIndex + 1} ${item.name}`);
+        return;
+      }
+
+      const preparePromise = slotPlayer.prepareFirstContentForSlotPlan(slot);
+      if (preparePromise) {
+        void preparePromise
+          .then(() => {
+            this.logger.debug('prepare', `boundary prepared(${target.reason}/${reason}): slot ${slotIndex + 1} ${item.name}`);
+          })
+          .catch((error) => {
+            this.logger.warn('prepare', `boundary prepare failed(${target.reason}/${reason}): slot ${slotIndex + 1} ${item.name}: ${formatError(error)}`);
+          });
+      }
+    });
+  }
+
+  private resolveBoundaryPreparationTarget(reason: string): BoundaryPreparationTarget | null {
+    const pageRemainingMs = Math.max(0, this.currentPageDurationMilliseconds() - this.currentPageElapsedMilliseconds());
+    const scheduleTarget = this.resolveRemoteSchedulePreparationTarget(pageRemainingMs, reason);
+    if (scheduleTarget) {
+      return scheduleTarget;
     }
 
     const nextPageIndex = this.pagePlans.length <= 1
       ? this.pageIndex
       : (this.pageIndex + 1) % this.pagePlans.length;
     const nextPage = this.pagePlans[nextPageIndex];
-    if (!nextPage) {
-      return;
+    return nextPage
+      ? { page: nextPage, remainingMs: pageRemainingMs, reason: this.pagePlans.length <= 1 ? 'page-loop' : 'page-boundary' }
+      : null;
+  }
+
+  private resolveRemoteSchedulePreparationTarget(pageRemainingMs: number, reason: string): BoundaryPreparationTarget | null {
+    if (this.remoteScheduleUpdateInProgress) {
+      return null;
     }
 
-    nextPage.slots.forEach((slot, slotIndex) => {
-      const item = this.firstPlayableContentItem(slot);
-      if (item?.contentType === 'Image') {
-        const slotPlayer = this.slotPlayers[slotIndex];
-        if (!slotPlayer) {
-          this.logger.warn('image', `standby prepare skipped(${reason}): slot ${slotIndex + 1} surface 없음, ${item.name}`);
-          return;
-        }
+    const snapshot = loadRemoteSchedule();
+    if (!snapshot) {
+      return null;
+    }
 
-        const preparePromise = slotPlayer.prepareFirstContentForSlotPlan(slot);
-        if (preparePromise) {
-          void preparePromise
-            .then(() => {
-              this.logger.debug('image', `standby prepared(${reason}): slot ${slotIndex + 1} ${item.name}`);
-            })
-            .catch((error) => {
-              this.logger.warn('image', `standby prepare failed(${reason}): slot ${slotIndex + 1} ${item.name}: ${formatError(error)}`);
-            });
-        }
-      }
-    });
+    const nowMs = Date.now();
+    const decision = evaluateRemoteSchedule(snapshot, new Date(nowMs), this.currentContentManifest.playlistName);
+    if (decision.nextSwitchAtMs <= 0 || !decision.nextPlaylistName) {
+      return null;
+    }
+
+    const scheduleRemainingMs = decision.nextSwitchAtMs - nowMs;
+    if (scheduleRemainingMs < -SCHEDULE_CHECK_INTERVAL_MS || scheduleRemainingMs > pageRemainingMs + 250) {
+      return null;
+    }
+
+    const manifest = decision.nextScheduleId
+      ? buildManifestFromRemoteSchedulePlaylist(
+        snapshot,
+        decision.nextPlaylistName,
+        this.config.manifest.preserveAspectRatio,
+      )
+      : this.currentContentManifest;
+    if (!manifest) {
+      this.logger.warn('prepare', `예약 스케줄 준비 대상 playlist 데이터를 찾지 못했습니다: ${decision.nextPlaylistName}`);
+      return null;
+    }
+
+    const resolution = decision.nextScheduleId
+      ? { pagePlans: this.createContentPagePlans(manifest), mode: 'content' as PlaybackMode }
+      : this.createEffectiveUpdatePagePlans(manifest);
+    const page = resolution.pagePlans[0];
+    if (!page || resolution.mode !== 'content') {
+      return null;
+    }
+
+    this.logger.debug(
+      'prepare',
+      `예약 스케줄 boundary 준비 후보(${reason}): ${decision.nextPlaylistName} in ${Math.max(0, Math.round(scheduleRemainingMs))}ms`,
+    );
+    return {
+      page,
+      remainingMs: Math.max(0, scheduleRemainingMs),
+      reason: 'schedule-boundary',
+    };
   }
 
   private slotNeedsSurface(slot: SeamlessSlotPlan): boolean {
@@ -1740,15 +1831,21 @@ export class NewHyOnPlayerApp {
     const pageElapsedMs = this.currentPageElapsedMilliseconds();
     const rawPageElapsedMs = this.currentPageRawElapsedMilliseconds();
     this.render();
+    this.checkSchedules();
     const pageTransitionStarted = this.checkPageTransition(rawPageElapsedMs);
     if (!pageTransitionStarted && !this.pageTransitionInProgress && !this.isCurrentPageExpired(rawPageElapsedMs)) {
       this.scheduleSlotTimelineSync(pageElapsedMs, this.currentPageDurationMilliseconds(), this.pagePlans.length <= 1);
     }
-    this.checkSchedules();
   }
 
   private scheduleSlotTimelineSync(pageElapsedMs: number, pageDurationMs: number, loopCurrentPageAtPageEnd: boolean): void {
-    if (!this.playing || this.slotTimelineSyncInProgress || this.slotPlayers.length === 0) {
+    if (
+      !this.playing
+      || this.slotTimelineSyncInProgress
+      || this.remoteScheduleSwitchInProgress
+      || this.remoteScheduleUpdateInProgress
+      || this.slotPlayers.length === 0
+    ) {
       return;
     }
 
@@ -1770,6 +1867,8 @@ export class NewHyOnPlayerApp {
       || this.pagePlans.length <= 1
       || this.pageTransitionInProgress
       || this.contentReplacementInProgress
+      || this.remoteScheduleSwitchInProgress
+      || this.remoteScheduleUpdateInProgress
     ) {
       return false;
     }
@@ -1797,6 +1896,8 @@ export class NewHyOnPlayerApp {
       || this.pagePlans.length <= 1
       || this.pageTransitionInProgress
       || this.contentReplacementInProgress
+      || this.remoteScheduleSwitchInProgress
+      || this.remoteScheduleUpdateInProgress
       || !this.isCurrentPageExpired(this.currentPageRawElapsedMilliseconds())
     ) {
       return;
@@ -1807,7 +1908,9 @@ export class NewHyOnPlayerApp {
   }
 
   private isPageTransitionPending(): boolean {
-    return this.pageTransitionInProgress || this.isCurrentPageExpired(this.currentPageRawElapsedMilliseconds());
+    return this.pageTransitionInProgress
+      || this.remoteScheduleSwitchInProgress
+      || this.isCurrentPageExpired(this.currentPageRawElapsedMilliseconds());
   }
 
   private startScheduledPageTransition(source: 'timer' | 'content-end'): void {
@@ -1862,6 +1965,7 @@ export class NewHyOnPlayerApp {
       || this.contentReplacementInProgress
       || this.pageTransitionInProgress
       || this.remoteScheduleSwitchInProgress
+      || this.remoteScheduleUpdateInProgress
     ) {
       return;
     }
@@ -1894,7 +1998,12 @@ export class NewHyOnPlayerApp {
     nowMs: number,
     options: { readonly force?: boolean } = {},
   ): Promise<void> {
-    if (this.remoteScheduleSwitchInProgress || this.remoteScheduleUpdateInProgress || this.contentReplacementInProgress) {
+    if (
+      this.remoteScheduleSwitchInProgress
+      || this.remoteScheduleUpdateInProgress
+      || this.contentReplacementInProgress
+      || this.pageTransitionInProgress
+    ) {
       return;
     }
 
