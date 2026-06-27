@@ -34,6 +34,11 @@ export interface SeamlessPagePlan {
   readonly slots: SeamlessSlotPlan[];
 }
 
+export interface BuildPagePlanOptions {
+  readonly hasContentPeriod?: (content: ContentsInfoClass, item: SeamlessContentItem) => boolean;
+  readonly isContentAllowed?: (content: ContentsInfoClass, item: SeamlessContentItem) => boolean;
+}
+
 const MAX_MEDIA_SLOTS = 6;
 
 function normalizeEnum(value: string | undefined): string {
@@ -171,16 +176,30 @@ function pageDurationSeconds(page: PageInfoClass): number {
   );
 }
 
-export function buildPagePlan(page: PageInfoClass, playlistName: string): SeamlessPagePlan {
+export function buildPagePlan(page: PageInfoClass, playlistName: string, options: BuildPagePlanOptions = {}): SeamlessPagePlan {
   const playableElements = [...(page.PIC_Elements ?? [])]
     .filter(isMediaElement)
     .sort((left, right) => (left.EIF_ZIndex ?? 0) - (right.EIF_ZIndex ?? 0))
     .slice(0, MAX_MEDIA_SLOTS);
+  let hasPeriodRestrictedContent = false;
+  let dynamicDurationSeconds = 0;
 
   const slots = playableElements.map((element): SeamlessSlotPlan => {
     const items = (element.EIF_ContentsInfoClassList ?? [])
       .map(buildContentItem)
       .filter((item): item is SeamlessContentItem => item !== null);
+    let slotDurationSeconds = 0;
+    items.forEach((item) => {
+      const hasPeriod = options.hasContentPeriod?.(item.source, item) === true;
+      if (hasPeriod) {
+        hasPeriodRestrictedContent = true;
+      }
+
+      if (!hasPeriod || options.isContentAllowed?.(item.source, item) !== false) {
+        slotDurationSeconds += Math.max(1, item.durationSeconds);
+      }
+    });
+    dynamicDurationSeconds = Math.max(dynamicDurationSeconds, slotDurationSeconds);
 
     return configureSingleVideoSlotLoop({
       elementName: element.EIF_Name ?? '',
@@ -212,7 +231,7 @@ export function buildPagePlan(page: PageInfoClass, playlistName: string): Seamle
     pageName: page.PIC_PageName ?? '',
     canvasWidth: page.PIC_CanvasWidth && page.PIC_CanvasWidth > 0 ? page.PIC_CanvasWidth : 1920,
     canvasHeight: page.PIC_CanvasHeight && page.PIC_CanvasHeight > 0 ? page.PIC_CanvasHeight : 1080,
-    durationSeconds: pageDurationSeconds(page),
+    durationSeconds: hasPeriodRestrictedContent ? Math.max(1, dynamicDurationSeconds) : pageDurationSeconds(page),
     slots,
   };
 }

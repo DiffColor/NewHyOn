@@ -1,4 +1,5 @@
 import type { PageInfoClass, PlayerManifest } from '../domain/models';
+import type { ContentPeriodPayload } from './content-period';
 
 const REMOTE_MANIFEST_STORAGE_KEY = 'newhyon-tizen-player:remote-manifest';
 
@@ -11,6 +12,8 @@ export interface UpdatePayload {
     readonly PlaylistName?: string;
   };
   readonly Schedule?: unknown;
+  readonly ContentPeriods?: readonly ContentPeriodPayload[];
+  readonly contentPeriods?: readonly ContentPeriodPayload[];
   readonly ContentPeriodUpdateGuids?: string[];
 }
 

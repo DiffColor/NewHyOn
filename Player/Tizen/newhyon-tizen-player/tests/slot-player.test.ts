@@ -174,6 +174,87 @@ describe('SlotPlayer', () => {
     expect(play).toHaveBeenCalledTimes(1);
   });
 
+  it('기간 스케줄상 현재 재생 불가한 첫 콘텐츠는 건너뛰고 첫 허용 콘텐츠로 시작한다', async () => {
+    const play = vi.fn(async (..._args: unknown[]) => undefined);
+    const session = {
+      play,
+      pause: vi.fn(),
+      resume: vi.fn(),
+      stop: vi.fn(),
+      state: vi.fn(() => 'PLAYING'),
+      applyDisplayRect: vi.fn(),
+    } as unknown as AvplaySession;
+    const slotPlan: SeamlessSlotPlan = {
+      ...createTwoVideoSlot(),
+      items: [createVideoItem('blocked.mp4'), createVideoItem('allowed.mp4')],
+    };
+    const slot = new SlotPlayer(
+      0,
+      document.createElement('section'),
+      slotPlan,
+      false,
+      false,
+      () => session,
+      new RingLogger(5),
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      (item) => item.name !== 'blocked.mp4',
+    );
+
+    await slot.start();
+
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(play.mock.calls[0]?.[0]).toMatchObject({ name: 'allowed.mp4' });
+    expect(slot.timelineSnapshot().itemName).toBe('allowed.mp4');
+  });
+
+  it('다음 콘텐츠 표시는 기간 스케줄상 재생 불가한 콘텐츠를 건너뛴다', async () => {
+    const play = vi.fn(async (..._args: unknown[]) => undefined);
+    const prepare = vi.fn(async (..._args: unknown[]) => undefined);
+    const session = {
+      play,
+      prepare,
+      pause: vi.fn(),
+      resume: vi.fn(),
+      stop: vi.fn(),
+      state: vi.fn(() => 'PLAYING'),
+      applyDisplayRect: vi.fn(),
+      clearPrepared: vi.fn(),
+    } as unknown as AvplaySession;
+    const slotPlan: SeamlessSlotPlan = {
+      ...createTwoVideoSlot(),
+      items: [
+        createVideoItem('first.mp4'),
+        createVideoItem('blocked.mp4'),
+        createVideoItem('third.mp4'),
+      ],
+    };
+    const slot = new SlotPlayer(
+      0,
+      document.createElement('section'),
+      slotPlan,
+      false,
+      false,
+      () => session,
+      new RingLogger(5),
+      undefined,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      (item) => item.name !== 'blocked.mp4',
+    );
+
+    await slot.start();
+    const snapshot = slot.timelineSnapshot();
+
+    expect(snapshot.itemName).toBe('first.mp4');
+    expect(snapshot.nextItemName).toBe('third.mp4');
+  });
+
   it('단일 이미지 타임라인은 한 바퀴가 지나면 0초부터 다시 표시한다', async () => {
     vi.useFakeTimers();
     const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');

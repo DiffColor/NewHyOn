@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NewHyOnPlayerApp } from '../src/app/newhyon-player-app';
+import { saveContentPeriodsFromSchedule } from '../src/app/content-period';
 import { DEFAULT_PLAYER_SETTINGS } from '../src/app/player-settings';
 import { loadRemoteManifest, type UpdatePayload } from '../src/app/update-payload';
 import { getDefaultWeeklySchedule, saveWeeklySchedule } from '../src/app/weekly-schedule';
@@ -322,6 +323,129 @@ describe('NewHyOnPlayerApp', () => {
     expect(open).not.toHaveBeenCalled();
     expect(avplayPlay).not.toHaveBeenCalled();
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
+    app.destroy();
+  });
+
+  it('콘텐츠 데이터는 있지만 현재 콘텐츠 기간 밖이면 인트로가 아니라 검은 화면을 유지한다', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 22, 9, 1, 0));
+    const play = vi.fn();
+    window.webapis = createWebApis(createPlayer(play));
+    saveContentPeriodsFromSchedule({
+      ContentPeriods: [
+        {
+          ContentGuid: 'default-period-content',
+          StartDate: '2026-06-20',
+          EndDate: '2026-06-21',
+          StartTime: '00:00',
+          EndTime: '23:59',
+        },
+      ],
+    });
+    const manifest = createManifest();
+    manifest.pages[0]!.PIC_Elements![0]!.EIF_ContentsInfoClassList![0] = {
+      ...manifest.pages[0]!.PIC_Elements![0]!.EIF_ContentsInfoClassList![0]!,
+      CIF_StrGUID: 'default-period-content',
+    };
+
+    const app = new NewHyOnPlayerApp({
+      manifest,
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
+    expect(document.querySelector('#status-page')?.textContent).toContain('No active content');
+    expect(document.querySelector('.empty-intro-video')).toBeNull();
+    expect(document.querySelectorAll('.slot')).toHaveLength(0);
+    expect(play).not.toHaveBeenCalled();
+    app.destroy();
+  });
+
+  it('오버레이에는 서버 주소, URL, 계정 정보를 표시하지 않는다', () => {
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+    const mutable = app as unknown as {
+      dbStatus: string;
+      dbStatusDetail: string;
+      signalrStatus: string;
+      signalrStatusDetail: string;
+      ftpStatus: string;
+      ftpStatusDetail: string;
+      heartbeatStatus: string;
+      heartbeatStatusDetail: string;
+      updateOverlayState: {
+        phase: string;
+        playlistName: string;
+        commandId: string;
+        completed: number;
+        total: number;
+        progress: number;
+        currentFile: string;
+        detail: string;
+      };
+      bindUi(): void;
+      render(): void;
+    };
+    mutable.bindUi();
+    mutable.dbStatus = 'connected';
+    mutable.dbStatusDetail = '10.0.0.10:8181';
+    mutable.signalrStatus = 'connected';
+    mutable.signalrStatusDetail = 'http://10.0.0.30:5000/Data?playerGuid=guid-1';
+    mutable.ftpStatus = 'connected';
+    mutable.ftpStatusDetail = '10.0.0.20:10022/MediaRoot';
+    mutable.heartbeatStatus = 'failed';
+    mutable.heartbeatStatusDetail = 'ws://10.0.0.30:5000/Data?id=token-1';
+    mutable.updateOverlayState = {
+      phase: 'failed',
+      playlistName: 'playlist',
+      commandId: 'command-1',
+      completed: 0,
+      total: 1,
+      progress: 0,
+      currentFile: 'video.mp4',
+      detail: 'ftp://ftp-user:ftp-pass@10.0.0.20:21/MediaRoot/video.mp4 password=ftp-pass',
+    };
+
+    mutable.render();
+
+    const communicationText = document.querySelector('#status-communication')?.textContent ?? '';
+    expect(communicationText).toContain('DB: 연결됨');
+    expect(communicationText).toContain('SignalR: 연결됨');
+    expect(communicationText).toContain('FTP: 연결됨');
+    expect(communicationText).not.toMatch(/10\.0\.0|http:\/\/|ws:\/\//);
+
+    const updateText = document.querySelector('#status-update')?.textContent ?? '';
+    expect(updateText).toContain('[endpoint]');
+    expect(updateText).not.toMatch(/10\.0\.0|ftp:\/\/|ftp-user|ftp-pass|MediaRoot/);
+
+    (app as unknown as {
+      logger: { info(scope: string, message: string): void };
+    }).logger.info('heartbeat', 'http://10.0.0.30:5000/Data password=ftp-pass');
+    const logText = document.querySelector('#log-output')?.textContent ?? '';
+    expect(logText).toContain('[endpoint]');
+    expect(logText).not.toMatch(/10\.0\.0|http:\/\/|ftp-pass/);
     app.destroy();
   });
 
@@ -1052,9 +1176,113 @@ describe('NewHyOnPlayerApp', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
-    expect(document.querySelector('#status-page')?.textContent).not.toContain('Tizen Intro');
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('Tizen Intro');
+    expect(document.querySelector('#status-page')?.textContent).toContain('Tizen Intro');
+    expect(document.querySelector('.empty-intro-video')).not.toBeNull();
     expect(document.querySelector('#status-message')?.textContent).toContain('예약 스케줄 데이터 없음');
+    app.destroy();
+  });
+
+  it('updateschedule의 활성 예약 playlist 콘텐츠가 모두 기간 밖이면 기본 콘텐츠를 유지한다', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 22, 9, 1, 0));
+    const play = vi.fn();
+    window.webapis = createWebApis(createPlayer(play));
+
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
+
+    await (app as unknown as {
+      applyUpdateScheduleCommand(payload: UpdatePayload): Promise<boolean>;
+    }).applyUpdateScheduleCommand({
+      Schedule: {
+        GeneratedAt: '2026-06-22 09:00:00',
+        ContentPeriods: [
+          {
+            ContentGuid: 'scheduled-period-content',
+            StartDate: '2026-06-20',
+            EndDate: '2026-06-21',
+            StartTime: '00:00',
+            EndTime: '23:59',
+          },
+        ],
+        SpecialSchedules: [
+          {
+            Id: 'schedule-period-out',
+            PageListName: 'period-scheduled-list',
+            DayOfWeek1: false,
+            DayOfWeek2: true,
+            DayOfWeek3: false,
+            DayOfWeek4: false,
+            DayOfWeek5: false,
+            DayOfWeek6: false,
+            DayOfWeek7: false,
+            IsPeriodEnable: false,
+            DisplayStartH: 9,
+            DisplayStartM: 0,
+            DisplayEndH: 18,
+            DisplayEndM: 0,
+          },
+        ],
+        Playlists: {
+          period: {
+            PlaylistName: 'period-scheduled-list',
+            PageList: { PLI_PageListName: 'period-scheduled-list' },
+            Pages: [
+              {
+                PIC_PageName: 'period-scheduled-page',
+                PIC_PlaytimeSecond: 10,
+                PIC_CanvasWidth: 1920,
+                PIC_CanvasHeight: 1080,
+                PIC_Elements: [
+                  {
+                    EIF_Name: 'period-video',
+                    EIF_Type: 'Media',
+                    EIF_Width: 1920,
+                    EIF_Height: 1080,
+                    EIF_PosLeft: 0,
+                    EIF_PosTop: 0,
+                    EIF_IsMuted: true,
+                    EIF_ContentsInfoClassList: [
+                      {
+                        CIF_StrGUID: 'scheduled-period-content',
+                        CIF_FileName: 'period-scheduled.mp4',
+                        CIF_FileFullPath: 'downloads/period-scheduled.mp4',
+                        CIF_ContentType: 'Video',
+                        CIF_PlayMinute: '00',
+                        CIF_PlaySec: '10',
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('period-scheduled-list');
+    expect(document.querySelector('#status-page')?.textContent).toContain('No active content');
+    expect(document.querySelector('.empty-intro-video')).toBeNull();
+    expect(document.querySelectorAll('.slot')).toHaveLength(0);
+    expect(document.querySelector('#status-message')?.textContent).toContain('예약 스케줄 콘텐츠 기간 외');
     app.destroy();
   });
 

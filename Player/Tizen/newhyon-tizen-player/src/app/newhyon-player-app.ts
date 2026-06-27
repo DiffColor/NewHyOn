@@ -1,7 +1,7 @@
 import type { RuntimeConfig } from './runtime-config';
 import type { PlayerSettings } from './player-settings';
 import { RingLogger } from '../core/logger';
-import { buildPagePlan, type SeamlessContentItem, type SeamlessPagePlan, type SeamlessSlotPlan } from '../domain/page-plan';
+import { buildPagePlan, type BuildPagePlanOptions, type SeamlessContentItem, type SeamlessPagePlan, type SeamlessSlotPlan } from '../domain/page-plan';
 import {
   REMOTE_KEY_REGISTRATION_LIST,
   resolveRemoteControlAction,
@@ -44,6 +44,12 @@ import {
   countRemoteManifestContentForOptions,
   type ContentCacheOptions,
 } from './sssp-content-cache';
+import {
+  hasContentPeriod,
+  isContentPeriodAllowed,
+  saveContentPeriodsFromSchedule,
+  saveContentPeriodsFromUpdatePayload,
+} from './content-period';
 import { buildManifestFromUpdatePayload, saveRemoteManifest, type UpdatePayload } from './update-payload';
 import { evaluateWeeklySchedule, loadWeeklySchedule, saveWeeklyScheduleFromUpdatePayload } from './weekly-schedule';
 import { TIZEN_INTRO_VIDEO_FILE, createTizenIntroManifest } from './default-manifest';
@@ -80,7 +86,7 @@ interface PlayerInfoSyncUiOptions {
   readonly hideLoadingWhenDone?: boolean;
 }
 
-type PlaybackMode = 'content' | 'empty-intro';
+type PlaybackMode = 'content' | 'empty-intro' | 'blackout';
 
 interface PagePlanResolution {
   readonly pagePlans: SeamlessPagePlan[];
@@ -181,6 +187,7 @@ export class NewHyOnPlayerApp {
   private activeRemoteSchedulePlaylistName: string | null = null;
   private lastScheduleCheckSecond = -1;
   private lastBroadcastScheduleCheckMinute = -1;
+  private lastContentPeriodCheckMinute = -1;
   private settingsOverlay: SettingsOverlay | null = null;
   private lastRemoteKey = '-';
   private lastRemoteAction = '-';
@@ -380,7 +387,7 @@ export class NewHyOnPlayerApp {
     this.logger.subscribe((entries) => {
       this.view.logOutput.textContent = [...entries]
         .reverse()
-        .map((entry) => `${entry.timestamp} | ${entry.level.toUpperCase()} | ${entry.scope} | ${entry.message}`)
+        .map((entry) => `${entry.timestamp} | ${entry.level.toUpperCase()} | ${entry.scope} | ${this.sanitizeOverlaySensitiveText(entry.message)}`)
         .join('\n');
       const latest = entries[entries.length - 1];
       if (latest?.scope === 'avplay' || latest?.scope === 'avplay-trace') {
@@ -545,7 +552,7 @@ export class NewHyOnPlayerApp {
       onUpdateList: async (payload, urgent, commandId) => this.applyUpdateListCommand(payload, urgent, commandId),
       onUpdateSchedule: async (payload) => this.applyUpdateScheduleCommand(payload),
       onUpdateWeekly: async (payload) => this.applyUpdateWeeklyCommand(payload, 'updateweekly'),
-      onUpdateContentPeriod: async () => true,
+      onUpdateContentPeriod: async (payload) => this.applyUpdateContentPeriodCommand(payload),
       onCheck: async () => {
         await this.sendHeartbeatNow();
         return true;
@@ -861,14 +868,109 @@ export class NewHyOnPlayerApp {
 
   private async applyUpdateScheduleCommand(payload: UpdatePayload): Promise<boolean> {
     const snapshot = saveRemoteScheduleFromUpdatePayload(payload);
+    const contentPeriodResult = saveContentPeriodsFromSchedule(snapshot.schedule);
     this.setMessage('서버 스케줄 적용 완료');
     this.logger.info(
       'command',
-      `updateschedule 적용 완료: special=${snapshot.specialScheduleCount}, playlists=${snapshot.playlistScheduleCount}, contentPeriods=${snapshot.contentPeriodCount}, generatedAt=${snapshot.generatedAt || '-'}`,
+      `updateschedule 적용 완료: special=${snapshot.specialScheduleCount}, playlists=${snapshot.playlistScheduleCount}, contentPeriods=${snapshot.contentPeriodCount}, contentPeriodCache=${contentPeriodResult.total}, generatedAt=${snapshot.generatedAt || '-'}`,
     );
     await this.cacheRemoteSchedulePlaylistContent(snapshot);
     await this.applyRemoteScheduleSnapshot(snapshot, Date.now());
     return true;
+  }
+
+  private async applyUpdateContentPeriodCommand(payload: UpdatePayload | null): Promise<boolean> {
+    const result = saveContentPeriodsFromUpdatePayload(payload ?? ({} as UpdatePayload));
+    this.setMessage(`기간별 콘텐츠 스케줄 적용: ${result.upserted}건`);
+    this.logger.info(
+      'command',
+      `updatecontentperiod 적용 완료: requested=${result.requested}, upserted=${result.upserted}, removed=${result.removed}, total=${result.total}`,
+    );
+    await this.refreshPlaybackForContentPeriodChange();
+    return true;
+  }
+
+  private async refreshPlaybackForContentPeriodChange(): Promise<void> {
+    if (!this.contentPlaybackAllowed) {
+      return;
+    }
+
+    if (this.activeRemoteSchedulePlaylistName) {
+      const snapshot = loadRemoteSchedule();
+      const manifest = snapshot
+        ? buildManifestFromRemoteSchedulePlaylist(
+          snapshot,
+          this.activeRemoteSchedulePlaylistName,
+          this.config.manifest.preserveAspectRatio,
+        )
+        : null;
+      if (!manifest) {
+        this.logger.warn('command', `기간별 콘텐츠 스케줄 반영 보류: 활성 예약 playlist 데이터를 찾지 못했습니다(${this.activeRemoteSchedulePlaylistName}).`);
+        return;
+      }
+
+      const pagePlans = this.createContentPagePlans(manifest);
+      if (pagePlans.length === 0) {
+        const hasContentItems = this.hasManifestContentItems(manifest);
+        const resolution = hasContentItems
+          ? this.createBlackoutPagePlans(manifest)
+          : this.createEmptyIntroPagePlans(manifest);
+        const reason = hasContentItems ? '기간 밖' : '데이터 없음';
+        this.logger.warn('command', `활성 예약 playlist에 현재 재생 가능한 콘텐츠가 없습니다(${reason}): ${manifest.playlistName}`);
+        await this.applyRebuiltPlaybackPlans(resolution.pagePlans, resolution.mode);
+        return;
+      }
+
+      await this.applyRebuiltPlaybackPlans(pagePlans, 'content');
+      return;
+    }
+
+    const resolution = this.createEffectiveUpdatePagePlans(this.currentContentManifest);
+    await this.applyRebuiltPlaybackPlans(resolution.pagePlans, resolution.mode);
+  }
+
+  private async applyRebuiltPlaybackPlans(
+    pagePlans: readonly SeamlessPagePlan[],
+    playbackMode: PlaybackMode,
+    options: { readonly force?: boolean } = {},
+  ): Promise<void> {
+    if (pagePlans.length === 0) {
+      return;
+    }
+
+    if (options.force !== true && this.playbackPlanSignature(this.pagePlans, this.playbackMode) === this.playbackPlanSignature(pagePlans, playbackMode)) {
+      return;
+    }
+
+    const targetPageIndex = Math.min(this.pageIndex, pagePlans.length - 1);
+    if (this.broadcastOnAir) {
+      await this.playPage(targetPageIndex, {
+        preservePreviousUntilReady: true,
+        commitPageTimelineBeforeSurfaceSwap: true,
+        pagePlans,
+        playbackMode,
+      });
+      return;
+    }
+
+    this.commitPlaybackPlan(pagePlans, playbackMode, targetPageIndex);
+    this.render();
+    this.writeRuntimeHealth('content-period-applied');
+  }
+
+  private playbackPlanSignature(pagePlans: readonly SeamlessPagePlan[], playbackMode: PlaybackMode): string {
+    return [
+      playbackMode,
+      ...pagePlans.map((page) => [
+        page.playlistName,
+        page.pageName,
+        page.durationSeconds,
+        ...page.slots.map((slot) => slot.items
+          .filter((item) => this.isContentItemPlayable(item))
+          .map((item) => item.id)
+          .join(',')),
+      ].join(':')),
+    ].join('|');
   }
 
   private async cacheRemoteSchedulePlaylistContent(snapshot: RemoteScheduleSnapshot): Promise<void> {
@@ -1230,7 +1332,7 @@ export class NewHyOnPlayerApp {
     }
 
     page.slots.forEach((slot, slotIndex) => {
-      if (slot.items.length === 0 || slot.width <= 0 || slot.height <= 0) {
+      if (!this.slotNeedsSurface(slot)) {
         return;
       }
 
@@ -1270,6 +1372,7 @@ export class NewHyOnPlayerApp {
           this.handlePageBoundaryContentEnded(endedSlotIndex, item);
         },
         () => this.isPageTransitionPending(),
+        (item) => this.isContentItemPlayable(item),
       );
       slotPlayer.setPageTimeline(0, Math.max(1, page.durationSeconds) * 1000, targetPagePlans.length <= 1);
       nextSlotPlayers.push(slotPlayer);
@@ -1411,7 +1514,7 @@ export class NewHyOnPlayerApp {
     }
 
     nextPage.slots.forEach((slot, slotIndex) => {
-      const item = slot.items[0] ?? null;
+      const item = this.firstPlayableContentItem(slot);
       if (item?.contentType === 'Image') {
         const slotPlayer = this.slotPlayers[slotIndex];
         if (!slotPlayer) {
@@ -1434,7 +1537,7 @@ export class NewHyOnPlayerApp {
   }
 
   private slotNeedsSurface(slot: SeamlessSlotPlan): boolean {
-    return slot.items.length > 0 && slot.width > 0 && slot.height > 0;
+    return this.firstPlayableContentItem(slot) !== null && slot.width > 0 && slot.height > 0;
   }
 
   private ensureSlotSurface(
@@ -1468,6 +1571,7 @@ export class NewHyOnPlayerApp {
         this.handlePageBoundaryContentEnded(endedSlotIndex, item);
       },
       () => this.isPageTransitionPending(),
+      (item) => this.isContentItemPlayable(item),
     );
     slotPlayer.applyLayout(page.canvasWidth, page.canvasHeight);
     slotPlayer.setPageTimeline(0, Math.max(1, page.durationSeconds) * 1000, this.pagePlans.length <= 1);
@@ -1655,6 +1759,7 @@ export class NewHyOnPlayerApp {
     }
 
     const currentMinute = Math.floor(nowMs / 60000);
+    this.checkContentPeriodBoundary(currentMinute);
     if (currentMinute === this.lastBroadcastScheduleCheckMinute || this.scheduleCheckInProgress) {
       return;
     }
@@ -1667,6 +1772,25 @@ export class NewHyOnPlayerApp {
       })
       .finally(() => {
         this.scheduleCheckInProgress = false;
+      });
+  }
+
+  private checkContentPeriodBoundary(currentMinute: number): void {
+    if (
+      currentMinute === this.lastContentPeriodCheckMinute
+      || !this.broadcastOnAir
+      || !this.playing
+      || this.contentReplacementInProgress
+      || this.pageTransitionInProgress
+      || this.remoteScheduleSwitchInProgress
+    ) {
+      return;
+    }
+
+    this.lastContentPeriodCheckMinute = currentMinute;
+    void this.refreshPlaybackForContentPeriodChange()
+      .catch((error) => {
+        this.logger.warn('schedule', `기간별 콘텐츠 경계 재평가 실패: ${formatError(error)}`);
       });
   }
 
@@ -1757,8 +1881,19 @@ export class NewHyOnPlayerApp {
 
     const pagePlans = this.createContentPagePlans(manifest);
     if (pagePlans.length === 0) {
-      this.logger.warn('schedule', `예약 playlist에 재생 가능한 콘텐츠가 없어 기존 화면을 유지합니다: ${decision.playlistName}`);
-      this.setMessage(`예약 스케줄 데이터 없음: ${decision.playlistName}`);
+      const hasContentItems = this.hasManifestContentItems(manifest);
+      const resolution = hasContentItems
+        ? this.createBlackoutPagePlans(manifest)
+        : this.createEmptyIntroPagePlans(manifest);
+      await this.applyRebuiltPlaybackPlans(resolution.pagePlans, resolution.mode);
+      if (hasContentItems) {
+        this.activeRemoteSchedulePlaylistName = decision.playlistName;
+        this.setMessage(`예약 스케줄 콘텐츠 기간 외: ${decision.playlistName}`);
+        this.logger.info('schedule', `예약 playlist의 모든 콘텐츠가 현재 기간 밖이라 검은 화면으로 전환합니다: playlist=${decision.playlistName}, schedule=${decision.scheduleId || '-'}`);
+      } else {
+        this.setMessage(`예약 스케줄 데이터 없음: ${decision.playlistName}`);
+        this.logger.warn('schedule', `예약 playlist에 재생 가능한 콘텐츠 데이터가 없어 인트로로 전환합니다: playlist=${decision.playlistName}, schedule=${decision.scheduleId || '-'}`);
+      }
       return;
     }
 
@@ -2089,6 +2224,11 @@ export class NewHyOnPlayerApp {
       return { pagePlans, mode: 'content' };
     }
 
+    if (this.hasManifestContentItems(manifest)) {
+      this.logger.info('manifest', '현재 기간에 표출할 콘텐츠가 없어 검은 화면으로 전환합니다.');
+      return this.createBlackoutPagePlans(manifest);
+    }
+
     return this.createEmptyIntroPagePlans(manifest);
   }
 
@@ -2096,6 +2236,11 @@ export class NewHyOnPlayerApp {
     const pagePlans = this.createContentPagePlans(manifest);
     if (pagePlans.length > 0) {
       return { pagePlans, mode: 'content' };
+    }
+
+    if (this.hasManifestContentItems(manifest)) {
+      this.logger.info('manifest', '현재 기간에 표출할 콘텐츠가 없어 검은 화면으로 전환합니다.');
+      return this.createBlackoutPagePlans(manifest);
     }
 
     this.logger.info('manifest', 'updatelist에 재생 가능한 데이터가 없어 empty-intro 모드로 전환합니다.');
@@ -2191,7 +2336,7 @@ export class NewHyOnPlayerApp {
   }
 
   private createContentPagePlans(manifest: RuntimeConfig['manifest']): SeamlessPagePlan[] {
-    const pagePlans = manifest.pages.map((page) => buildPagePlan(page, manifest.playlistName));
+    const pagePlans = manifest.pages.map((page) => buildPagePlan(page, manifest.playlistName, this.createContentPeriodPlanOptions()));
     return this.hasPlayablePagePlans(pagePlans) ? pagePlans : [];
   }
 
@@ -2204,9 +2349,47 @@ export class NewHyOnPlayerApp {
     };
   }
 
+  private createBlackoutPagePlans(manifest: RuntimeConfig['manifest']): PagePlanResolution {
+    const referencePage = manifest.pages[0];
+    return {
+      pagePlans: [
+        {
+          playlistName: manifest.playlistName,
+          pageName: 'No active content',
+          canvasWidth: referencePage?.PIC_CanvasWidth && referencePage.PIC_CanvasWidth > 0 ? referencePage.PIC_CanvasWidth : 1920,
+          canvasHeight: referencePage?.PIC_CanvasHeight && referencePage.PIC_CanvasHeight > 0 ? referencePage.PIC_CanvasHeight : 1080,
+          durationSeconds: 60,
+          slots: [],
+        },
+      ],
+      mode: 'blackout',
+    };
+  }
+
   private hasPlayablePagePlans(pagePlans: readonly SeamlessPagePlan[]): boolean {
     return pagePlans.some((page) =>
+      page.slots.some((slot) => slot.width > 0 && slot.height > 0 && this.firstPlayableContentItem(slot) !== null));
+  }
+
+  private hasManifestContentItems(manifest: RuntimeConfig['manifest']): boolean {
+    const pagePlans = manifest.pages.map((page) => buildPagePlan(page, manifest.playlistName));
+    return pagePlans.some((page) =>
       page.slots.some((slot) => slot.width > 0 && slot.height > 0 && slot.items.length > 0));
+  }
+
+  private createContentPeriodPlanOptions(now = new Date()): BuildPagePlanOptions {
+    return {
+      hasContentPeriod: (content) => hasContentPeriod(content.CIF_StrGUID),
+      isContentAllowed: (content) => isContentPeriodAllowed(content.CIF_StrGUID, now),
+    };
+  }
+
+  private isContentItemPlayable(item: SeamlessContentItem): boolean {
+    return isContentPeriodAllowed(item.source.CIF_StrGUID, new Date());
+  }
+
+  private firstPlayableContentItem(slot: SeamlessSlotPlan): SeamlessContentItem | null {
+    return slot.items.find((item) => this.isContentItemPlayable(item)) ?? null;
   }
 
   private setConnectionStatus(target: 'db' | 'signalr' | 'ftp', status: ConnectionStatus, detail: string): void {
@@ -2343,10 +2526,10 @@ export class NewHyOnPlayerApp {
 
   private formatCommunicationStatus(): string {
     return [
-      `DB: ${this.formatConnectionStatus(this.dbStatus)} (${this.dbStatusDetail})`,
-      `SignalR: ${this.formatConnectionStatus(this.signalrStatus)} (${this.signalrStatusDetail})`,
-      `FTP: ${this.formatConnectionStatus(this.ftpStatus)} (${this.ftpStatusDetail})`,
-      `Heartbeat: ${this.heartbeatStatus} (${this.heartbeatStatusDetail})`,
+      `DB: ${this.formatConnectionStatus(this.dbStatus)}`,
+      `SignalR: ${this.formatConnectionStatus(this.signalrStatus)}`,
+      `FTP: ${this.formatConnectionStatus(this.ftpStatus)}`,
+      `Heartbeat: ${this.formatOverlayStatusText(this.heartbeatStatus)}`,
     ].join('\n');
   }
 
@@ -2367,10 +2550,22 @@ export class NewHyOnPlayerApp {
       ? `파일 ${state.completed}/${state.total}`
       : '파일 0/0';
     const fileText = state.currentFile !== '-' ? ` · ${state.currentFile}` : '';
-    const commandText = state.commandId !== '-' ? `\n${state.commandId}` : '';
-    const detailText = state.detail ? `\n${state.detail}` : '';
+    const commandText = state.commandId !== '-' ? `\n${this.sanitizeOverlaySensitiveText(state.commandId)}` : '';
+    const detailText = state.detail ? `\n${this.sanitizeOverlaySensitiveText(state.detail)}` : '';
 
     return `${phaseText[state.phase]} ${state.progress}%\n${state.playlistName}\n${countText}${fileText}${commandText}${detailText}`;
+  }
+
+  private formatOverlayStatusText(value: string): string {
+    return this.sanitizeOverlaySensitiveText(value).trim() || '-';
+  }
+
+  private sanitizeOverlaySensitiveText(value: string): string {
+    return value
+      .replace(/\b(?:https?|ftp|ws|wss):\/\/[^\s)]+/gi, '[endpoint]')
+      .replace(/\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?(?:\/[^\s)]*)?/g, '[server]')
+      .replace(/([?&](?:token|password|pass|key|id|playerGuid|playerName)=)[^&\s)]+/gi, '$1***')
+      .replace(/\b(?:password|passwd|pwd|pass|token|secret|key)=\S+/gi, (match) => match.replace(/=.*/, '=***'));
   }
 
   private setMessage(message: string): void {

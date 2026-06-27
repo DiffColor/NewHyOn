@@ -175,4 +175,53 @@ describe('buildPagePlan', () => {
     expect(plan.slots[0].items.map((item) => item.name)).toEqual(['media.png']);
     expect(plan.slots.slice(1).every((slot) => slot.items.length === 0)).toBe(true);
   });
+
+  it('기간 스케줄이 있는 콘텐츠가 포함되면 현재 허용된 콘텐츠 시간 합으로 페이지 duration을 재계산한다', () => {
+    const page: PageInfoClass = {
+      PIC_PageName: 'period-page',
+      PIC_PlaytimeSecond: 30,
+      PIC_Elements: [
+        {
+          EIF_Name: 'media',
+          EIF_Type: 'Media',
+          EIF_Width: 1920,
+          EIF_Height: 1080,
+          EIF_PosLeft: 0,
+          EIF_PosTop: 0,
+          EIF_ZIndex: 0,
+          EIF_ContentsInfoClassList: [
+            {
+              CIF_StrGUID: 'always',
+              CIF_FileName: 'always.png',
+              CIF_ContentType: 'Image',
+              CIF_PlayMinute: '00',
+              CIF_PlaySec: '10',
+            },
+            {
+              CIF_StrGUID: 'allowed',
+              CIF_FileName: 'allowed.png',
+              CIF_ContentType: 'Image',
+              CIF_PlayMinute: '00',
+              CIF_PlaySec: '10',
+            },
+            {
+              CIF_StrGUID: 'blocked',
+              CIF_FileName: 'blocked.png',
+              CIF_ContentType: 'Image',
+              CIF_PlayMinute: '00',
+              CIF_PlaySec: '10',
+            },
+          ],
+        },
+      ],
+    };
+
+    const plan = buildPagePlan(page, 'playlist', {
+      hasContentPeriod: (content) => content.CIF_StrGUID === 'allowed' || content.CIF_StrGUID === 'blocked',
+      isContentAllowed: (content) => content.CIF_StrGUID !== 'blocked',
+    });
+
+    expect(plan.durationSeconds).toBe(20);
+    expect(plan.slots[0].items.map((item) => item.id)).toEqual(['always', 'allowed', 'blocked']);
+  });
 });
