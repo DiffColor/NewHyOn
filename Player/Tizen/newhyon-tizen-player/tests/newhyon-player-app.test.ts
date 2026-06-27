@@ -1110,6 +1110,112 @@ describe('NewHyOnPlayerApp', () => {
     app.destroy();
   });
 
+  it('활성 예약 playlist 이름이 같아도 updateschedule 콘텐츠를 다시 적용한다', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 22, 9, 1, 0));
+    const play = vi.fn();
+    window.webapis = createWebApis(createPlayer(play));
+    window.tizen = {
+      filesystem: {
+        toURI: (path) => `file:///opt/usr/home/owner/content/${path}`,
+        pathExists: (path) => path === 'downloads/first-scheduled.mp4' || path === 'downloads/second-scheduled.mp4',
+      },
+    };
+
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+
+    const buildSchedulePayload = (fileName: string): UpdatePayload => ({
+      Schedule: {
+        GeneratedAt: '2026-06-22 09:00:00',
+        SpecialSchedules: [
+          {
+            Id: 'schedule-same-name',
+            PageListName: 'scheduled-list',
+            DayOfWeek1: false,
+            DayOfWeek2: true,
+            DayOfWeek3: false,
+            DayOfWeek4: false,
+            DayOfWeek5: false,
+            DayOfWeek6: false,
+            DayOfWeek7: false,
+            IsPeriodEnable: false,
+            DisplayStartH: 9,
+            DisplayStartM: 0,
+            DisplayEndH: 18,
+            DisplayEndM: 0,
+          },
+        ],
+        Playlists: [
+          {
+            PlaylistName: 'scheduled-list',
+            PageList: { PLI_PageListName: 'scheduled-list' },
+            Pages: [
+              {
+                PIC_PageName: 'scheduled-page',
+                PIC_PlaytimeSecond: 10,
+                PIC_CanvasWidth: 1920,
+                PIC_CanvasHeight: 1080,
+                PIC_Elements: [
+                  {
+                    EIF_Name: 'scheduled-video',
+                    EIF_Type: 'Media',
+                    EIF_Width: 1920,
+                    EIF_Height: 1080,
+                    EIF_PosLeft: 0,
+                    EIF_PosTop: 0,
+                    EIF_IsMuted: true,
+                    EIF_ContentsInfoClassList: [
+                      {
+                        CIF_FileName: fileName,
+                        CIF_FileFullPath: `downloads/${fileName}`,
+                        CIF_ContentType: 'Video',
+                        CIF_PlayMinute: '00',
+                        CIF_PlaySec: '10',
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const firstSchedulePromise = (app as unknown as {
+      applyUpdateScheduleCommand(payload: UpdatePayload): Promise<boolean>;
+    }).applyUpdateScheduleCommand(buildSchedulePayload('first-scheduled.mp4'));
+    await vi.advanceTimersByTimeAsync(64);
+    await firstSchedulePromise;
+    await Promise.resolve();
+    expect(document.querySelector('#status-slots')?.textContent).toContain('first-scheduled.mp4');
+
+    const secondSchedulePromise = (app as unknown as {
+      applyUpdateScheduleCommand(payload: UpdatePayload): Promise<boolean>;
+    }).applyUpdateScheduleCommand(buildSchedulePayload('second-scheduled.mp4'));
+    await vi.advanceTimersByTimeAsync(64);
+    await secondSchedulePromise;
+    await Promise.resolve();
+
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('scheduled-list');
+    expect(document.querySelector('#status-slots')?.textContent).toContain('second-scheduled.mp4');
+    app.destroy();
+  });
+
   it('updateschedule의 활성 예약 playlist가 비어 있으면 기존 콘텐츠를 유지한다', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 22, 9, 1, 0));

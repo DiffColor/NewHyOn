@@ -186,6 +186,7 @@ export class NewHyOnPlayerApp {
   private slotTimelineSyncInProgress = false;
   private scheduleCheckInProgress = false;
   private remoteScheduleSwitchInProgress = false;
+  private remoteScheduleUpdateInProgress = false;
   private activeRemoteSchedulePlaylistName: string | null = null;
   private lastScheduleCheckSecond = -1;
   private lastBroadcastScheduleCheckMinute = -1;
@@ -927,23 +928,29 @@ export class NewHyOnPlayerApp {
   }
 
   private async applyUpdateScheduleCommand(payload: UpdatePayload): Promise<boolean> {
-    const snapshot = saveRemoteScheduleFromUpdatePayload(payload);
-    const contentPeriodResult = saveContentPeriodsFromSchedule(snapshot.schedule);
-    this.setMessage('서버 스케줄 적용 완료');
-    this.logger.info(
-      'command',
-      `updateschedule 적용 완료: special=${snapshot.specialScheduleCount}, playlists=${snapshot.playlistScheduleCount}, contentPeriods=${snapshot.contentPeriodCount}, contentPeriodCache=${contentPeriodResult.total}, generatedAt=${snapshot.generatedAt || '-'}`,
-    );
-    await this.cacheRemoteSchedulePlaylistContent(snapshot);
-    await this.syncContentPeriodsForManifests(
-      [
-        this.currentContentManifest,
-        ...buildManifestsFromRemoteSchedulePlaylists(snapshot, this.config.manifest.preserveAspectRatio),
-      ],
-      'updateschedule',
-      false,
-    );
-    await this.applyRemoteScheduleSnapshot(snapshot, Date.now());
+    let snapshot: RemoteScheduleSnapshot;
+    this.remoteScheduleUpdateInProgress = true;
+    try {
+      snapshot = saveRemoteScheduleFromUpdatePayload(payload);
+      const contentPeriodResult = saveContentPeriodsFromSchedule(snapshot.schedule);
+      this.setMessage('서버 스케줄 적용 완료');
+      this.logger.info(
+        'command',
+        `updateschedule 적용 완료: special=${snapshot.specialScheduleCount}, playlists=${snapshot.playlistScheduleCount}, contentPeriods=${snapshot.contentPeriodCount}, contentPeriodCache=${contentPeriodResult.total}, generatedAt=${snapshot.generatedAt || '-'}`,
+      );
+      await this.cacheRemoteSchedulePlaylistContent(snapshot);
+      await this.syncContentPeriodsForManifests(
+        [
+          this.currentContentManifest,
+          ...buildManifestsFromRemoteSchedulePlaylists(snapshot, this.config.manifest.preserveAspectRatio),
+        ],
+        'updateschedule',
+        false,
+      );
+    } finally {
+      this.remoteScheduleUpdateInProgress = false;
+    }
+    await this.applyRemoteScheduleSnapshot(snapshot, Date.now(), { force: true });
     return true;
   }
 
@@ -1867,6 +1874,10 @@ export class NewHyOnPlayerApp {
   }
 
   private checkReservationScheduleLookahead(nowMs: number): void {
+    if (this.remoteScheduleUpdateInProgress) {
+      return;
+    }
+
     const snapshot = loadRemoteSchedule();
     if (!snapshot) {
       return;
@@ -1878,8 +1889,12 @@ export class NewHyOnPlayerApp {
       });
   }
 
-  private async applyRemoteScheduleSnapshot(snapshot: RemoteScheduleSnapshot, nowMs: number): Promise<void> {
-    if (this.remoteScheduleSwitchInProgress || this.contentReplacementInProgress) {
+  private async applyRemoteScheduleSnapshot(
+    snapshot: RemoteScheduleSnapshot,
+    nowMs: number,
+    options: { readonly force?: boolean } = {},
+  ): Promise<void> {
+    if (this.remoteScheduleSwitchInProgress || this.remoteScheduleUpdateInProgress || this.contentReplacementInProgress) {
       return;
     }
 
@@ -1898,7 +1913,7 @@ export class NewHyOnPlayerApp {
     }
 
     const activeKey = decision.isFromSchedule ? decision.playlistName : null;
-    if (this.activeRemoteSchedulePlaylistName === activeKey) {
+    if (options.force !== true && this.activeRemoteSchedulePlaylistName === activeKey) {
       return;
     }
 
