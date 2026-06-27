@@ -2602,7 +2602,7 @@ export class NewHyOnPlayerApp {
       `SignalR: ${this.formatConnectionStatus(this.signalrStatus)}`,
       `FTP: ${this.formatConnectionStatus(this.ftpStatus)}`,
       `Heartbeat: ${this.formatOverlayStatusText(this.heartbeatStatus)}`,
-    ].join('\n');
+    ].join(' / ');
   }
 
   private formatUpdateOverlayStatus(): string {
@@ -2622,10 +2622,10 @@ export class NewHyOnPlayerApp {
       ? `파일 ${state.completed}/${state.total}`
       : '파일 0/0';
     const fileText = state.currentFile !== '-' ? ` · ${state.currentFile}` : '';
-    const commandText = state.commandId !== '-' ? `\n${this.sanitizeOverlaySensitiveText(state.commandId)}` : '';
-    const detailText = state.detail ? `\n${this.sanitizeOverlaySensitiveText(state.detail)}` : '';
+    const commandText = state.commandId !== '-' ? ` · ${this.sanitizeOverlaySensitiveText(state.commandId)}` : '';
+    const detailText = state.detail ? ` · ${this.sanitizeOverlaySensitiveText(state.detail)}` : '';
 
-    return `${phaseText[state.phase]} ${state.progress}%\n${state.playlistName}\n${countText}${fileText}${commandText}${detailText}`;
+    return `${phaseText[state.phase]} ${state.progress}% / ${state.playlistName} / ${countText}${fileText}${commandText}${detailText}`;
   }
 
   private formatOverlayStatusText(value: string): string {

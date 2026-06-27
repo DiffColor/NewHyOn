@@ -409,6 +409,13 @@ body {
   line-height: 1.25;
 }
 
+#status-update,
+#status-communication {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .timeline-status {
   font-weight: 500;
 }
