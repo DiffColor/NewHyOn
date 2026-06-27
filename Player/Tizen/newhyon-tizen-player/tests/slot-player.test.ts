@@ -1599,7 +1599,7 @@ describe('SlotPlayer', () => {
     }
   });
 
-  it('경계 준비 이미지는 직전 컨텐츠 이미지 전환 후에도 해제되지 않는다', async () => {
+  it('예약 경계 준비 이미지는 직전 컨텐츠 이미지 전환으로 해제되지 않는다', async () => {
     vi.useFakeTimers();
     const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
     Object.defineProperty(HTMLImageElement.prototype, 'src', {
@@ -1637,7 +1637,7 @@ describe('SlotPlayer', () => {
 
       slot.setPageTimeline(0, 30000, false);
       await slot.start();
-      slot.prepareFirstContentForSlotPlan(scheduleSlot);
+      slot.prepareFirstContentForSlotPlan(scheduleSlot, 5000, { protectFromNormalTransition: true });
       await vi.runAllTicks();
       await vi.advanceTimersByTimeAsync(32);
 
@@ -1648,7 +1648,7 @@ describe('SlotPlayer', () => {
       await vi.runAllTicks();
       await vi.advanceTimersByTimeAsync(32);
 
-      expect(slot.snapshot()).toContain('second.png (IMAGE)');
+      expect(slot.snapshot()).toContain('first.mp4 (PLAYING)');
       expect(Array.from(element.querySelectorAll<HTMLImageElement>('.slot-image--prepared'))
         .some((image) => image.getAttribute('src')?.includes('schedule-first.png'))).toBe(true);
     } finally {
@@ -1656,6 +1656,49 @@ describe('SlotPlayer', () => {
         Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
       }
     }
+  });
+
+  it('예약 경계 첫 콘텐츠가 영상이어도 AVPlay에 준비하고 직전 컨텐츠 전환으로 해제하지 않는다', async () => {
+    vi.useFakeTimers();
+    const element = document.createElement('section');
+    const prepare = vi.fn(async (..._args: unknown[]) => undefined);
+    const clearPrepared = vi.fn();
+    const session = {
+      play: vi.fn(async () => undefined),
+      prepare,
+      clearPrepared,
+      hide: vi.fn(),
+      hideCurrentKeepPrepared: vi.fn(async () => undefined),
+      detachCurrentSurfaceForTransition: vi.fn(() => true),
+      stopDetachedSurface: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+      stop: vi.fn(),
+      state: vi.fn(() => 'PLAYING'),
+      applyDisplayRect: vi.fn(),
+    } as unknown as AvplaySession;
+    const slot = new SlotPlayer(0, element, createVideoThenImageSlot(), false, false, () => session, new RingLogger(5));
+    const scheduleSlot = {
+      ...createVideoSlot(),
+      items: [createVideoItem('schedule-first.mp4')],
+    };
+
+    slot.setPageTimeline(0, 30000, false);
+    await slot.start();
+    expect(prepare).not.toHaveBeenCalled();
+
+    slot.prepareFirstContentForSlotPlan(scheduleSlot, 5000, { protectFromNormalTransition: true });
+    await vi.runAllTicks();
+
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(prepare.mock.calls[0]?.[0]).toMatchObject({ name: 'schedule-first.mp4' });
+    clearPrepared.mockClear();
+
+    await slot.syncToPageElapsed(10000, 30000, false);
+    await vi.runAllTicks();
+
+    expect(slot.snapshot()).toContain('first.mp4 (PLAYING)');
+    expect(clearPrepared).not.toHaveBeenCalled();
   });
 
   it('현재 컨텐츠 전환이 페이지 경계보다 빠르면 경계 준비를 미룬다', async () => {

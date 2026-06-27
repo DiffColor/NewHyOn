@@ -285,6 +285,7 @@ describe('NewHyOnPlayerApp', () => {
     vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => undefined);
     window.webapis = createWebApis(createPlayer(() => undefined));
     window.tizen = undefined;
+    window.NEWHYON_PLAYER_HEALTH = undefined;
   });
 
   it('재생 가능한 콘텐츠가 없으면 Tizen 인트로 영상을 재생한다', async () => {
@@ -719,7 +720,7 @@ describe('NewHyOnPlayerApp', () => {
     app.destroy();
   });
 
-  it('페이지 만료 전에는 다음 페이지 AVPlay를 미리 건드리지 않고 만료 후 전환한다', async () => {
+  it('페이지 만료 전에는 다음 페이지 첫 영상도 미리 준비하고 만료 후 전환한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn();
     const players: AVPlayApi[] = [];
@@ -752,7 +753,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(play).toHaveBeenCalledTimes(1);
     expect(getPlayer).toHaveBeenCalledTimes(2);
     expect(players[0]?.prepareAsync).toHaveBeenCalledTimes(1);
-    expect(players[1]?.prepareAsync).not.toHaveBeenCalled();
+    expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(6499);
     await Promise.resolve();
@@ -760,7 +761,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelectorAll('.slot')).toHaveLength(1);
     expect(play).toHaveBeenCalledTimes(1);
     expect(getPlayer).toHaveBeenCalledTimes(2);
-    expect(players[1]?.prepareAsync).not.toHaveBeenCalled();
+    expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(3501);
     await vi.advanceTimersByTimeAsync(64);
