@@ -32,6 +32,7 @@ export interface SlotPlayerTimelineSnapshot {
 export class SlotPlayer {
   private readonly imageA = document.createElement('img');
   private readonly imageB = document.createElement('img');
+  private readonly boundaryImage = document.createElement('img');
   private readonly videoMask = document.createElement('div');
   private currentImage: HTMLImageElement;
   private standbyImage: HTMLImageElement;
@@ -48,6 +49,8 @@ export class SlotPlayer {
   private preparedImageId: string | null = null;
   private preparedImagePromise: Promise<void> | null = null;
   private preparedImageElement: HTMLImageElement | null = null;
+  private preparedBoundaryImageId: string | null = null;
+  private preparedBoundaryImagePromise: Promise<void> | null = null;
   private contentGeneration = 0;
   private layoutCanvasWidth = 0;
   private layoutCanvasHeight = 0;
@@ -79,8 +82,9 @@ export class SlotPlayer {
     this.standbyImage = this.imageB;
     this.imageA.className = 'slot-image slot-image--visible';
     this.imageB.className = 'slot-image';
+    this.boundaryImage.className = 'slot-image';
     this.videoMask.className = 'slot-video-mask';
-    this.element.append(this.videoMask, this.imageA, this.imageB);
+    this.element.append(this.videoMask, this.imageA, this.imageB, this.boundaryImage);
   }
 
   updatePlaybackSettings(preserveAspectRatio: boolean, switchOnContentEnd: boolean): void {
@@ -126,12 +130,17 @@ export class SlotPlayer {
     const incomingFirstItem = incomingFirstItemIndex !== null ? slot.items[incomingFirstItemIndex] ?? null : null;
     if (!incomingFirstItem) {
       this.clearPreparedImage();
+      this.clearPreparedBoundaryImage();
       this.clearPreparedContent();
     } else if (incomingFirstItem.contentType === 'Image') {
       if (this.preparedImageId !== incomingFirstItem.id) {
         this.clearPreparedImage();
       }
+      if (this.preparedBoundaryImageId !== incomingFirstItem.id) {
+        this.clearPreparedBoundaryImage();
+      }
     } else if (this.preparedItemId !== incomingFirstItem.id) {
+      this.clearPreparedBoundaryImage();
       this.clearPreparedContent();
     }
     this.slot = slot;
@@ -145,6 +154,7 @@ export class SlotPlayer {
       this.hideImages();
       this.currentImage.removeAttribute('src');
       this.standbyImage.removeAttribute('src');
+      this.boundaryImage.removeAttribute('src');
       this.element.classList.remove('slot--video-active');
       this.element.classList.add('slot--empty');
       return true;
@@ -199,13 +209,17 @@ export class SlotPlayer {
     this.resetItemClock();
     this.clearPreparedContent();
     this.clearPreparedImage();
+    this.clearPreparedBoundaryImage();
     this.releaseCurrentVideoSession();
     this.currentImage.removeAttribute('src');
     this.standbyImage.removeAttribute('src');
+    this.boundaryImage.removeAttribute('src');
     this.currentImage.classList.remove('slot-image--visible');
     this.standbyImage.classList.remove('slot-image--visible');
+    this.boundaryImage.classList.remove('slot-image--visible');
     this.currentImage.classList.remove('slot-image--prepared');
     this.standbyImage.classList.remove('slot-image--prepared');
+    this.boundaryImage.classList.remove('slot-image--prepared');
     this.element.classList.remove('slot--video-active');
     this.failureMessage = null;
   }
@@ -240,6 +254,7 @@ export class SlotPlayer {
     this.resetItemClock();
     this.clearPreparedContent();
     this.clearPreparedImage();
+    this.clearPreparedBoundaryImage();
     if (!this.canAdvanceContent()) {
       return;
     }
@@ -275,23 +290,21 @@ export class SlotPlayer {
     }
 
     if (item.contentType === 'Image') {
-      if (this.preparedImageId !== item.id || !this.preparedImagePromise) {
-        this.clearPreparedImage();
-        const image = this.imageElementForPreparation(item);
-        this.preparedImageId = item.id;
-        this.preparedImageElement = image;
-        this.preparedImagePromise = this.prepareImageElement(
-          image,
+      if (this.preparedBoundaryImageId !== item.id || !this.preparedBoundaryImagePromise) {
+        this.clearPreparedBoundaryImage();
+        this.preparedBoundaryImageId = item.id;
+        this.preparedBoundaryImagePromise = this.prepareImageElement(
+          this.boundaryImage,
           item,
           'page-boundary-first',
           { underVideo: this.currentItem()?.contentType === 'Video' },
         ).catch((error) => {
-          this.clearPreparedImage();
+          this.clearPreparedBoundaryImage();
           throw error;
         });
       }
 
-      const pageBoundaryPreparePromise = this.preparedImagePromise
+      const pageBoundaryPreparePromise = this.preparedBoundaryImagePromise
         .then(() => undefined)
         .catch((error) => {
           this.logger.warn('slot', `slot ${this.slotIndex + 1} 다음 페이지 첫 콘텐츠 준비 실패: ${String(error)}`);
@@ -455,6 +468,7 @@ export class SlotPlayer {
         this.resetItemClock();
         this.clearPreparedContent();
         this.clearPreparedImage();
+        this.clearPreparedBoundaryImage();
         await this.releaseCurrentVideoSession();
         this.hideImages();
         this.element.classList.remove('slot--video-active');
@@ -663,6 +677,7 @@ export class SlotPlayer {
     this.resetItemClock();
     this.clearPreparedContent();
     this.clearPreparedImage();
+    this.clearPreparedBoundaryImage();
     this.releaseCurrentVideoSession();
     this.hideImages();
     this.element.classList.remove('slot--video-active');
@@ -680,13 +695,19 @@ export class SlotPlayer {
     } = {},
   ): Promise<void> {
     const showStartedAt = performance.now();
-    const image = this.preparedImageId === item.id && this.preparedImageElement
-      ? this.preparedImageElement
-      : this.standbyImage;
+    const image = this.preparedBoundaryImageId === item.id
+      ? this.boundaryImage
+      : (this.preparedImageId === item.id && this.preparedImageElement
+        ? this.preparedImageElement
+        : this.standbyImage);
     const previousImage = image === this.currentImage ? this.standbyImage : this.currentImage;
     this.applyImageDisplayMode();
 
-    if (this.preparedImageId === item.id && this.preparedImagePromise) {
+    if (this.preparedBoundaryImageId === item.id && this.preparedBoundaryImagePromise) {
+      const waitStartedAt = performance.now();
+      await this.preparedBoundaryImagePromise;
+      this.logImageTiming(item, 'show boundary prepared wait', waitStartedAt, `total=${this.elapsed(showStartedAt)}ms`);
+    } else if (this.preparedImageId === item.id && this.preparedImagePromise) {
       const waitStartedAt = performance.now();
       await this.preparedImagePromise;
       this.logImageTiming(item, 'show prepared wait', waitStartedAt, `total=${this.elapsed(showStartedAt)}ms`);
@@ -708,6 +729,7 @@ export class SlotPlayer {
     this.currentImage = image;
     this.standbyImage = previousImage;
     this.consumePreparedImage(item.id);
+    this.consumePreparedBoundaryImage(item.id);
     this.logImageTiming(item, 'visible class applied', visibleStartedAt, `total=${this.elapsed(showStartedAt)}ms`);
     options.onVisibleApplied?.();
     const visiblePaintPromise = this.waitForPaint().then(() => {
@@ -783,15 +805,19 @@ export class SlotPlayer {
     const objectFit = this.preserveAspectRatio ? 'contain' : 'fill';
     this.imageA.style.objectFit = objectFit;
     this.imageB.style.objectFit = objectFit;
+    this.boundaryImage.style.objectFit = objectFit;
   }
 
   private hideImages(): void {
     this.imageA.classList.remove('slot-image--visible');
     this.imageB.classList.remove('slot-image--visible');
+    this.boundaryImage.classList.remove('slot-image--visible');
     this.imageA.classList.remove('slot-image--prepared');
     this.imageB.classList.remove('slot-image--prepared');
+    this.boundaryImage.classList.remove('slot-image--prepared');
     this.imageA.classList.remove('slot-image--under-video');
     this.imageB.classList.remove('slot-image--under-video');
+    this.boundaryImage.classList.remove('slot-image--under-video');
   }
 
   private startPassiveItemClock(item: SeamlessContentItem, elapsedMs = 0): void {
@@ -1053,6 +1079,23 @@ export class SlotPlayer {
     image.style.zIndex = '0';
   }
 
+  private clearPreparedBoundaryImage(itemId?: string): void {
+    if (itemId && this.preparedBoundaryImageId !== itemId) {
+      return;
+    }
+
+    this.preparedBoundaryImageId = null;
+    this.preparedBoundaryImagePromise = null;
+    if (this.currentImage === this.boundaryImage) {
+      return;
+    }
+
+    this.boundaryImage.classList.remove('slot-image--visible');
+    this.boundaryImage.classList.remove('slot-image--prepared');
+    this.boundaryImage.classList.remove('slot-image--under-video');
+    this.boundaryImage.style.zIndex = '0';
+  }
+
   private consumePreparedImage(itemId: string): void {
     if (this.preparedImageId !== itemId) {
       return;
@@ -1061,6 +1104,15 @@ export class SlotPlayer {
     this.preparedImageId = null;
     this.preparedImagePromise = null;
     this.preparedImageElement = null;
+  }
+
+  private consumePreparedBoundaryImage(itemId: string): void {
+    if (this.preparedBoundaryImageId !== itemId) {
+      return;
+    }
+
+    this.preparedBoundaryImageId = null;
+    this.preparedBoundaryImagePromise = null;
   }
 
   private waitForPaint(): Promise<void> {

@@ -1599,6 +1599,65 @@ describe('SlotPlayer', () => {
     }
   });
 
+  it('경계 준비 이미지는 직전 컨텐츠 이미지 전환 후에도 해제되지 않는다', async () => {
+    vi.useFakeTimers();
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      configurable: true,
+      get() {
+        return this.getAttribute('src') ?? '';
+      },
+      set(value: string) {
+        this.setAttribute('src', value);
+        queueMicrotask(() => this.onload?.(new Event('load')));
+      },
+    });
+
+    try {
+      const element = document.createElement('section');
+      const session = {
+        play: vi.fn(async () => undefined),
+        prepare: vi.fn(async () => undefined),
+        clearPrepared: vi.fn(),
+        hide: vi.fn(),
+        hideCurrentKeepPrepared: vi.fn(async () => undefined),
+        detachCurrentSurfaceForTransition: vi.fn(() => true),
+        stopDetachedSurface: vi.fn(),
+        pause: vi.fn(),
+        resume: vi.fn(),
+        stop: vi.fn(),
+        state: vi.fn(() => 'PLAYING'),
+        applyDisplayRect: vi.fn(),
+      } as unknown as AvplaySession;
+      const slot = new SlotPlayer(0, element, createVideoThenImageSlot(), false, false, () => session, new RingLogger(5));
+      const scheduleSlot = {
+        ...createVideoSlot(),
+        items: [createImageItem('schedule-first.png')],
+      };
+
+      slot.setPageTimeline(0, 30000, false);
+      await slot.start();
+      slot.prepareFirstContentForSlotPlan(scheduleSlot);
+      await vi.runAllTicks();
+      await vi.advanceTimersByTimeAsync(32);
+
+      expect(Array.from(element.querySelectorAll<HTMLImageElement>('.slot-image--prepared'))
+        .some((image) => image.getAttribute('src')?.includes('schedule-first.png'))).toBe(true);
+
+      await slot.syncToPageElapsed(10000, 30000, false);
+      await vi.runAllTicks();
+      await vi.advanceTimersByTimeAsync(32);
+
+      expect(slot.snapshot()).toContain('second.png (IMAGE)');
+      expect(Array.from(element.querySelectorAll<HTMLImageElement>('.slot-image--prepared'))
+        .some((image) => image.getAttribute('src')?.includes('schedule-first.png'))).toBe(true);
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
+      }
+    }
+  });
+
   it('현재 컨텐츠 전환이 페이지 경계보다 빠르면 경계 준비를 미룬다', async () => {
     vi.useFakeTimers();
     const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');

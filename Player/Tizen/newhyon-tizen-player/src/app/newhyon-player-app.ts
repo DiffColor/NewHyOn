@@ -149,6 +149,8 @@ const TRANSITION_SLOT_INDEX_OFFSET = 100;
 const MASTER_TICK_INTERVAL_MS = 200;
 const MASTER_TICK_LAG_WARN_MS = 500;
 const SCHEDULE_CHECK_INTERVAL_MS = 1000;
+const SCHEDULE_PREPARE_LEAD_MS = 5000;
+const SCHEDULE_PREPARE_LOOKAHEAD_MS = SCHEDULE_PREPARE_LEAD_MS + SCHEDULE_CHECK_INTERVAL_MS;
 const RUNTIME_HEALTH_RECENT_LOG_LIMIT = 200;
 const RUNTIME_HEALTH_LOG_FLUSH_DELAY_MS = 250;
 
@@ -1671,7 +1673,10 @@ export class NewHyOnPlayerApp {
     }
 
     const scheduleRemainingMs = decision.nextSwitchAtMs - nowMs;
-    if (scheduleRemainingMs < -SCHEDULE_CHECK_INTERVAL_MS || scheduleRemainingMs > pageRemainingMs + 250) {
+    if (
+      scheduleRemainingMs < -SCHEDULE_CHECK_INTERVAL_MS
+      || scheduleRemainingMs > SCHEDULE_PREPARE_LOOKAHEAD_MS
+    ) {
       return null;
     }
 
@@ -1987,6 +1992,7 @@ export class NewHyOnPlayerApp {
       return;
     }
 
+    this.prepareUpcomingBoundaryFirstContent('schedule-tick');
     void this.applyRemoteScheduleSnapshot(snapshot, nowMs)
       .catch((error) => {
         this.logger.warn('schedule', `예약 스케줄 적용 실패: ${formatError(error)}`);
@@ -2009,10 +2015,10 @@ export class NewHyOnPlayerApp {
 
     const fallbackPlaylistName = this.currentContentManifest.playlistName;
     const decision = evaluateRemoteSchedule(snapshot, new Date(nowMs), fallbackPlaylistName);
-    const lookaheadDecision = evaluateRemoteSchedule(snapshot, new Date(nowMs + 3000), fallbackPlaylistName);
+    const lookaheadDecision = evaluateRemoteSchedule(snapshot, new Date(nowMs + SCHEDULE_PREPARE_LOOKAHEAD_MS), fallbackPlaylistName);
     if (
       lookaheadDecision.nextSwitchAtMs > 0
-      && lookaheadDecision.nextSwitchAtMs <= nowMs + 3000
+      && lookaheadDecision.nextSwitchAtMs <= nowMs + SCHEDULE_PREPARE_LOOKAHEAD_MS
       && lookaheadDecision.nextPlaylistName
     ) {
       this.logger.debug(
