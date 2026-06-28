@@ -145,9 +145,11 @@ export class AvplaySession {
       this.currentEndedHandler = onStreamEnded;
       this.currentLaneIndex = nextLaneIndex;
       this.heldLaneIndex = previousLaneIndex;
+      if (firstFrameReady) {
+        await firstFrameReady.promise;
+        this.assertCurrentPlaybackFirstFrame(operationId, nextLaneIndex, item);
+      }
       this.updateObjectVisibility();
-      await firstFrameReady?.promise;
-      this.assertCurrentPlaybackFirstFrame(operationId, nextLaneIndex, item);
       this.freezeAndStopHeldLane();
       return { durationMs };
     } catch (error) {

@@ -403,11 +403,12 @@ describe('AvplaySession', () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
     const listenerRef: { current: AVPlayListener | null } = { current: null };
+    const laneA = document.createElement('object');
     playerA.setListener = vi.fn((nextListener) => {
       listenerRef.current = nextListener;
     });
     const session = new AvplaySession(0, [
-      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerA, objectElement: laneA },
       { player: playerB, objectElement: document.createElement('object') },
     ], document.body, new RingLogger(1), {
       onEnded: vi.fn(),
@@ -428,10 +429,13 @@ describe('AvplaySession', () => {
     await Promise.resolve();
 
     expect(resolved).toBe(false);
+    expect(playerA.play).toHaveBeenCalledTimes(1);
+    expect(laneA.style.visibility).toBe('hidden');
     listenerRef.current?.oncurrentplaytime?.(0);
     await playPromise;
 
     expect(resolved).toBe(true);
+    expect(laneA.style.visibility).toBe('visible');
   });
 
   it('현재 영상 첫 프레임 대기 중 다음 lane prepare가 들어와도 현재 play를 폐기하지 않는다', async () => {
