@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AvplaySession, AvplaySessionPool } from '../src/player/avplay-session';
+import { AvplaySession, createAvplaySessionPair } from '../src/player/avplay-session';
 import { RingLogger } from '../src/core/logger';
 import type { SeamlessContentItem, SeamlessSlotPlan } from '../src/domain/page-plan';
 
@@ -20,79 +20,6 @@ function createPlayer(): AVPlayApi {
     getState: vi.fn(() => 'IDLE'),
   };
 }
-
-describe('AvplaySessionPool', () => {
-  it('acquire 시 AVPlayStore 플레이어 두 개로 심리스 세션 하나를 만든다', () => {
-    const getPlayer = vi.fn(createPlayer);
-    window.webapis = {
-      avplay: createPlayer(),
-      avplaystore: {
-        getPlayer,
-      },
-    };
-
-    const pool = new AvplaySessionPool(document.body, new RingLogger(1), () => ({
-      onEnded: vi.fn(),
-      onError: vi.fn(),
-    }));
-
-    expect(getPlayer).not.toHaveBeenCalled();
-
-    const first = pool.acquire(0);
-    const firstAgain = pool.acquire(0);
-    expect(firstAgain).toBe(first);
-    expect(getPlayer).toHaveBeenCalledTimes(2);
-
-    pool.acquire(1);
-    expect(getPlayer).toHaveBeenCalledTimes(4);
-  });
-
-  it('AVPlayStore 공식 한도 이상으로 getPlayer를 호출하지 않는다', () => {
-    const getPlayer = vi.fn(createPlayer);
-    window.webapis = {
-      avplay: createPlayer(),
-      avplaystore: {
-        getPlayer,
-      },
-    };
-
-    const pool = new AvplaySessionPool(document.body, new RingLogger(1), () => ({
-      onEnded: vi.fn(),
-      onError: vi.fn(),
-    }));
-
-    pool.acquire(0);
-    pool.acquire(1);
-
-    expect(getPlayer).toHaveBeenCalledTimes(4);
-    expect(() => pool.acquire(2)).toThrow('Tizen AVPlayStore 세션 한도를 초과했습니다');
-    expect(getPlayer).toHaveBeenCalledTimes(4);
-  });
-
-  it('반납된 idle 세션은 다음 슬롯에서 재사용한다', () => {
-    const getPlayer = vi.fn(createPlayer);
-    window.webapis = {
-      avplay: createPlayer(),
-      avplaystore: {
-        getPlayer,
-      },
-    };
-
-    const pool = new AvplaySessionPool(document.body, new RingLogger(1), () => ({
-      onEnded: vi.fn(),
-      onError: vi.fn(),
-    }));
-
-    const first = pool.acquire(0);
-    expect(getPlayer).toHaveBeenCalledTimes(2);
-
-    pool.release(first);
-    const reused = pool.acquire(100);
-
-    expect(reused).toBe(first);
-    expect(getPlayer).toHaveBeenCalledTimes(2);
-  });
-});
 
 function createVideoItem(fileName = 'video.mp4'): SeamlessContentItem {
   return {
@@ -128,6 +55,25 @@ function createSlotPlan(): SeamlessSlotPlan {
 }
 
 describe('AvplaySession', () => {
+  it('AVPlayStore 플레이어 두 개로 고정 세션 페어 하나를 만든다', () => {
+    const getPlayer = vi.fn(createPlayer);
+    window.webapis = {
+      avplay: createPlayer(),
+      avplaystore: {
+        getPlayer,
+      },
+    };
+
+    const session = createAvplaySessionPair(0, document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(session).toBeInstanceOf(AvplaySession);
+    expect(getPlayer).toHaveBeenCalledTimes(2);
+    expect(document.body.querySelectorAll('object.avplay-object')).toHaveLength(2);
+  });
+
   it('화면 비율 유지 설정에 맞춰 AVPlay display method를 적용한다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
@@ -486,6 +432,203 @@ describe('AvplaySession', () => {
     await playPromise;
 
     expect(resolved).toBe(true);
+  });
+
+  it('현재 영상 첫 프레임 대기 중 다음 lane prepare가 들어와도 현재 play를 폐기하지 않는다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    const listenerRef: { current: AVPlayListener | null } = { current: null };
+    const nextPrepareGate = {
+      resolve: null as (() => void) | null,
+    };
+    playerA.setListener = vi.fn((nextListener) => {
+      listenerRef.current = nextListener;
+    });
+    playerB.prepareAsync = vi.fn((successCallback: () => void) => {
+      nextPrepareGate.resolve = successCallback;
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(20), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    const playPromise = session.play(
+      createVideoItem('current.mp4'),
+      createSlotPlan(),
+      document.createElement('section'),
+      false,
+      vi.fn(),
+      { waitForFirstFrame: true },
+    );
+    await Promise.resolve();
+    const preparePromise = session.prepare(
+      createVideoItem('next.mp4'),
+      createSlotPlan(),
+      document.createElement('section'),
+      false,
+    );
+    await Promise.resolve();
+
+    listenerRef.current?.oncurrentplaytime?.(1);
+    await expect(playPromise).resolves.toEqual({ durationMs: null });
+
+    nextPrepareGate.resolve?.();
+    await expect(preparePromise).resolves.toEqual({ durationMs: null });
+    expect(playerA.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('같은 영상 prepare가 겹치면 기존 prepare 작업에 합류한다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    const prepareGate = {
+      resolve: null as (() => void) | null,
+    };
+    playerA.prepareAsync = vi.fn((successCallback: () => void) => {
+      prepareGate.resolve = successCallback;
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(20), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+    const item = createVideoItem('same-next.mp4');
+    const slot = createSlotPlan();
+    const element = document.createElement('section');
+
+    const firstPrepare = session.prepare(item, slot, element, false);
+    await Promise.resolve();
+    const secondPrepare = session.prepare(item, slot, element, false);
+    await Promise.resolve();
+
+    expect(playerA.prepareAsync).toHaveBeenCalledTimes(1);
+    prepareGate.resolve?.();
+    await expect(firstPrepare).resolves.toEqual({ durationMs: null });
+    await expect(secondPrepare).resolves.toEqual({ durationMs: null });
+    expect(playerB.prepareAsync).not.toHaveBeenCalled();
+  });
+
+  it('같은 소스 영상 prepare는 id가 달라도 기존 prepare 작업에 합류한다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    const prepareGate = {
+      resolve: null as (() => void) | null,
+    };
+    playerA.prepareAsync = vi.fn((successCallback: () => void) => {
+      prepareGate.resolve = successCallback;
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(20), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+    const firstItem = {
+      ...createVideoItem('same-source.mp4'),
+      id: 'page-a-content-id',
+    };
+    const secondItem = {
+      ...createVideoItem('same-source.mp4'),
+      id: 'page-b-content-id',
+    };
+    const slot = createSlotPlan();
+    const element = document.createElement('section');
+
+    const firstPrepare = session.prepare(firstItem, slot, element, false);
+    await Promise.resolve();
+    const secondPrepare = session.prepare(secondItem, slot, element, false);
+    await Promise.resolve();
+
+    expect(playerA.prepareAsync).toHaveBeenCalledTimes(1);
+    prepareGate.resolve?.();
+    await expect(firstPrepare).resolves.toEqual({ durationMs: null });
+    await expect(secondPrepare).resolves.toEqual({ durationMs: null });
+    expect(playerB.prepareAsync).not.toHaveBeenCalled();
+  });
+
+  it('준비 중 clearPrepared가 들어와도 AVPlay prepareAsync 완료 전에는 작업을 폐기하지 않는다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    const prepareGate = {
+      resolve: null as (() => void) | null,
+    };
+    playerA.prepareAsync = vi.fn((successCallback: () => void) => {
+      prepareGate.resolve = successCallback;
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(20), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+    const item = createVideoItem('prepared-next.mp4');
+    const slot = createSlotPlan();
+    const element = document.createElement('section');
+
+    const preparePromise = session.prepare(item, slot, element, false);
+    await Promise.resolve();
+    session.clearPrepared();
+
+    prepareGate.resolve?.();
+
+    await expect(preparePromise).resolves.toEqual({ durationMs: null });
+    await session.play(item, slot, element, false, vi.fn());
+    expect(playerA.prepareAsync).toHaveBeenCalledTimes(1);
+    expect(playerA.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('다른 영상 prepare 요청은 진행 중인 prepareAsync가 끝난 뒤 같은 lane을 정리하고 시작한다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    let playerAState = 'IDLE';
+    const prepareCallbacks: Array<() => void> = [];
+    playerA.getState = vi.fn(() => playerAState);
+    playerA.prepareAsync = vi.fn((successCallback: () => void) => {
+      prepareCallbacks.push(() => {
+        playerAState = 'READY';
+        successCallback();
+      });
+    });
+    playerA.stop = vi.fn(() => {
+      playerAState = 'IDLE';
+    });
+    playerA.close = vi.fn(() => {
+      playerAState = 'IDLE';
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(20), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+    const slot = createSlotPlan();
+    const element = document.createElement('section');
+
+    const firstPrepare = session.prepare(createVideoItem('first-next.mp4'), slot, element, false);
+    await Promise.resolve();
+    const secondPrepare = session.prepare(createVideoItem('second-next.mp4'), slot, element, false);
+    await Promise.resolve();
+
+    expect(playerA.prepareAsync).toHaveBeenCalledTimes(1);
+    expect(playerA.stop).not.toHaveBeenCalled();
+    prepareCallbacks[0]?.();
+    await expect(firstPrepare).resolves.toEqual({ durationMs: null });
+    await Promise.resolve();
+
+    expect(playerA.stop).toHaveBeenCalledTimes(1);
+    expect(playerA.open).toHaveBeenLastCalledWith('https://example.com/second-next.mp4');
+    expect(playerA.prepareAsync).toHaveBeenCalledTimes(2);
+    prepareCallbacks[1]?.();
+
+    await expect(secondPrepare).resolves.toEqual({ durationMs: null });
+    expect(playerB.prepareAsync).not.toHaveBeenCalled();
   });
 
   it('폐기된 prepareAsync 완료는 play까지 진행하지 않는다', async () => {

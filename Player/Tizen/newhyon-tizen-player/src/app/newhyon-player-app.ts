@@ -7,7 +7,7 @@ import {
   resolveRemoteControlAction,
   type RemoteControlAction,
 } from '../input/remote-control';
-import { AvplaySessionPool } from '../player/avplay-session';
+import { type AvplaySession, createAvplaySessionPair } from '../player/avplay-session';
 import { TizenAudioPolicy } from '../player/audio-policy';
 import { SlotPlayer, type SlotPlayerTimelineSnapshot } from '../player/slot-player';
 import { RuntimeHealthReporter } from './runtime-health-reporter';
@@ -105,7 +105,7 @@ interface PagePlayOptions {
   readonly preservePreviousUntilReady?: boolean;
   readonly pagePlans?: readonly SeamlessPagePlan[];
   readonly playbackMode?: PlaybackMode;
-  readonly commitPageTimelineBeforeSurfaceSwap?: boolean;
+  readonly commitPageTimelineBeforeContentSwitch?: boolean;
 }
 
 interface EmptyIntroVideoOptions {
@@ -145,7 +145,8 @@ interface UpdateOverlayState {
 
 type LoadingStepState = 'pending' | 'active' | 'complete' | 'error' | 'skipped';
 
-const TRANSITION_SLOT_INDEX_OFFSET = 100;
+const FIXED_AVPLAY_SESSION_PAIR_COUNT = 2;
+const AVPLAY_PLAYERS_PER_SESSION_PAIR = 2;
 const MASTER_TICK_INTERVAL_MS = 200;
 const MASTER_TICK_LAG_WARN_MS = 500;
 const SCHEDULE_CHECK_INTERVAL_MS = 1000;
@@ -176,9 +177,9 @@ export class NewHyOnPlayerApp {
   private readonly view: ViewRefs;
   private readonly pagePlans: SeamlessPagePlan[];
   private readonly slotPlayers: SlotPlayer[] = [];
+  private readonly avplaySessionPairs: Array<AvplaySession | null> = [];
   private readonly audioPolicy = new TizenAudioPolicy(this.logger);
   private readonly healthReporter = new RuntimeHealthReporter();
-  private avplayPool: AvplaySessionPool | null = null;
   private pageIndex = 0;
   private pageStartedAt = 0;
   private pagePausedElapsedMs = 0;
@@ -288,6 +289,7 @@ export class NewHyOnPlayerApp {
     try {
       this.bindUi();
       this.registerInputKeys();
+      this.ensureFixedAvplaySessionPairs();
       this.settingsOverlay = new SettingsOverlay({
         onApply: (settings) => {
           this.applyPlayerSettings(settings);
@@ -330,7 +332,7 @@ export class NewHyOnPlayerApp {
     this.heartbeatReporter = null;
     this.remoteCommandService?.dispose();
     this.remoteCommandService = null;
-    this.avplayPool?.stopAll();
+    this.stopAvplaySessionPairs();
     this.removeEmptyIntroVideo();
     this.audioPolicy.restore();
     this.settingsOverlay?.close();
@@ -342,21 +344,38 @@ export class NewHyOnPlayerApp {
     document.removeEventListener('visibilitychange', this.handleVisibilityChange);
   }
 
-  private ensureAvplayPool(): AvplaySessionPool {
-    if (this.avplayPool) {
-      return this.avplayPool;
+  private ensureFixedAvplaySessionPairs(): void {
+    for (let pairIndex = 0; pairIndex < FIXED_AVPLAY_SESSION_PAIR_COUNT; pairIndex += 1) {
+      if (this.avplaySessionPairs[pairIndex]) {
+        continue;
+      }
+
+      this.avplaySessionPairs[pairIndex] = createAvplaySessionPair(pairIndex, this.view.stage, this.logger, {
+        onEnded: () => {
+          this.logger.info('avplay', `pair ${pairIndex + 1} stream completed`);
+        },
+        onError: (message) => {
+          this.setMessage(message);
+          this.logger.error('avplay', message);
+        },
+      });
+    }
+  }
+
+  private ensureAvplaySessionPairForSlot(slotIndex: number): AvplaySession {
+    const pairIndex = slotIndex;
+    const existing = this.avplaySessionPairs[pairIndex];
+    if (existing) {
+      return existing;
     }
 
-    this.avplayPool = new AvplaySessionPool(this.view.stage, this.logger, (index) => ({
-      onEnded: () => {
-        this.logger.info('avplay', `slot ${index + 1} stream completed`);
-      },
-      onError: (message) => {
-        this.setMessage(message);
-        this.logger.error('avplay', message);
-      },
-    }));
-    return this.avplayPool;
+    throw new Error(
+      `Tizen AVPlayStore 고정 페어 한도를 초과했습니다: slot ${slotIndex + 1}, fixed pairs ${FIXED_AVPLAY_SESSION_PAIR_COUNT}, players ${FIXED_AVPLAY_SESSION_PAIR_COUNT * AVPLAY_PLAYERS_PER_SESSION_PAIR}/4`,
+    );
+  }
+
+  private stopAvplaySessionPairs(): void {
+    this.avplaySessionPairs.forEach((session) => session?.stop());
   }
 
   private applyPlayerSettings(settings: PlayerSettings): void {
@@ -1039,7 +1058,7 @@ export class NewHyOnPlayerApp {
     if (this.broadcastOnAir) {
       await this.playPage(targetPageIndex, {
         preservePreviousUntilReady: true,
-        commitPageTimelineBeforeSurfaceSwap: true,
+        commitPageTimelineBeforeContentSwitch: true,
         pagePlans,
         playbackMode,
       });
@@ -1349,48 +1368,36 @@ export class NewHyOnPlayerApp {
     }
 
     const targetPageIndex = (index + targetPagePlans.length) % targetPagePlans.length;
-    const avplayPool = targetPlaybackMode === 'content' ? this.ensureAvplayPool() : null;
-    const preserveActiveSurface = options.preservePreviousUntilReady === true && this.hasActivePlaybackSurface();
-    const preservePrevious = preserveActiveSurface
-      && targetPlaybackMode === 'content';
-    const preserveIntroTransition = preserveActiveSurface
+    const page = targetPagePlans[targetPageIndex]!;
+    const preserveIntroTransition = options.preservePreviousUntilReady === true
+      && this.hasActivePlaybackSurface()
       && targetPlaybackMode === 'empty-intro';
-    const previousSlotPlayers = preservePrevious ? [...this.slotPlayers] : [];
-    const previousSlotElements = preservePrevious
-      ? Array.from(this.view.stage.querySelectorAll<HTMLElement>('.slot'))
-      : [];
 
-    if (!preservePrevious && !preserveIntroTransition) {
+    if (targetPlaybackMode === 'content') {
+      await this.playContentPage(
+        targetPagePlans,
+        targetPlaybackMode,
+        targetPageIndex,
+        page,
+        options.commitPageTimelineBeforeContentSwitch === true,
+      );
+      return;
+    }
+
+    if (!preserveIntroTransition) {
       this.clearTimers();
       this.stopSlots();
-      avplayPool?.resetLeases();
       this.removeStageSlots();
       this.removeEmptyIntroVideo();
       this.commitPlaybackPlan(targetPagePlans, targetPlaybackMode, targetPageIndex);
     }
 
-    const page = targetPagePlans[targetPageIndex]!;
-    if (preservePrevious && targetPlaybackMode === 'content') {
-      await this.switchSurfacesToPage(
-        targetPagePlans,
-        targetPlaybackMode,
-        targetPageIndex,
-        page,
-        options.commitPageTimelineBeforeSurfaceSwap === true,
-      );
-      return;
-    }
-
-    if (!preservePrevious && !preserveIntroTransition) {
+    if (!preserveIntroTransition) {
       this.audioPolicy.applyForPage(page);
     }
     this.view.stage.style.setProperty('--canvas-width', String(page.canvasWidth));
     this.view.stage.style.setProperty('--canvas-height', String(page.canvasHeight));
     this.view.stage.style.aspectRatio = `${page.canvasWidth} / ${page.canvasHeight}`;
-    const nextSlotPlayers: SlotPlayer[] = [];
-    const nextSlotElements: HTMLElement[] = [];
-    const stagedContentShown: StagedContentShown[] = [];
-    let transitionCommitted = !preservePrevious;
 
     if (targetPlaybackMode === 'empty-intro') {
       if (preserveIntroTransition) {
@@ -1428,102 +1435,14 @@ export class NewHyOnPlayerApp {
       return;
     }
 
-    page.slots.forEach((slot, slotIndex) => {
-      if (!this.slotNeedsSurface(slot)) {
-        return;
-      }
-
-      const element = document.createElement('section');
-      element.className = 'slot';
-      element.style.left = `${(slot.left / page.canvasWidth) * 100}%`;
-      element.style.top = `${(slot.top / page.canvasHeight) * 100}%`;
-      element.style.width = `${(slot.width / page.canvasWidth) * 100}%`;
-      element.style.height = `${(slot.height / page.canvasHeight) * 100}%`;
-      element.style.zIndex = String(slot.zIndex);
-      if (preservePrevious) {
-        element.style.visibility = 'hidden';
-      }
-      this.view.stage.appendChild(element);
-
-      const leaseSlotIndex = preservePrevious ? slotIndex + TRANSITION_SLOT_INDEX_OFFSET : slotIndex;
-      nextSlotElements.push(element);
-      const slotPlayer = new SlotPlayer(
-        slotIndex,
-        element,
-        slot,
-        this.config.manifest.preserveAspectRatio,
-        this.config.settings.switchOnContentEnd,
-        () => avplayPool!.acquire(leaseSlotIndex),
-        this.logger,
-        (shownSlotIndex, item) => {
-          if (transitionCommitted) {
-            this.recordContentShown(shownSlotIndex, item);
-            return;
-          }
-
-          stagedContentShown.push({ slotIndex: shownSlotIndex, item });
-        },
-        preservePrevious,
-        (session) => avplayPool!.release(session),
-        (endedSlotIndex, item) => {
-          this.handlePageBoundaryContentEnded(endedSlotIndex, item);
-        },
-        () => this.isPageTransitionPending(),
-        (item) => this.isContentItemPlayable(item),
-      );
-      slotPlayer.setPageTimeline(0, Math.max(1, page.durationSeconds) * 1000, targetPagePlans.length <= 1);
-      nextSlotPlayers.push(slotPlayer);
-    });
-
-    if (!preservePrevious) {
-      this.slotPlayers.splice(0, this.slotPlayers.length, ...nextSlotPlayers);
-      this.playing = true;
-      this.pageStartCount += 1;
-      this.pageStartedAt = performance.now();
-      this.render();
-      this.setMessage(`페이지 재생: ${page.pageName}`);
-      this.logger.info('page', `start ${page.pageName} (${page.durationSeconds}s)`);
-    } else {
-      this.logger.info('page', `prepare ${page.pageName} (${page.durationSeconds}s, seamless)`);
-    }
-
-    const startResults = await Promise.all(nextSlotPlayers.map((slotPlayer) => slotPlayer.start()));
-    if (preservePrevious) {
-      const failed = startResults.some((started) => !started);
-      if (failed) {
-        const failureMessage = this.formatSlotTransitionFailure(nextSlotPlayers);
-        nextSlotPlayers.forEach((slotPlayer) => slotPlayer.stop());
-        nextSlotElements.forEach((element) => element.remove());
-        avplayPool?.releaseTransitionLeases(TRANSITION_SLOT_INDEX_OFFSET);
-        throw new Error(`심리스 전환 준비 실패: ${failureMessage}`);
-      }
-
-      transitionCommitted = true;
-      this.commitPlaybackPlan(targetPagePlans, targetPlaybackMode, targetPageIndex);
-      this.audioPolicy.applyForPage(page);
-      nextSlotElements.forEach((element) => {
-        element.style.visibility = '';
-      });
-      nextSlotPlayers.forEach((slotPlayer) => slotPlayer.applyDisplayRect());
-      await this.waitForPaint();
-      previousSlotPlayers.forEach((slotPlayer) => slotPlayer.stop());
-      previousSlotElements.forEach((element) => element.remove());
-      this.removeEmptyIntroVideo();
-      avplayPool?.commitTransitionLeases(TRANSITION_SLOT_INDEX_OFFSET);
-      this.slotPlayers.splice(0, this.slotPlayers.length, ...nextSlotPlayers);
-      stagedContentShown.forEach(({ slotIndex, item }) => {
-        this.recordContentShown(slotIndex, item);
-      });
-      this.playing = true;
-      this.pageStartCount += 1;
-      this.pageStartedAt = performance.now();
-      this.render();
-      this.setMessage(`페이지 재생: ${page.pageName}`);
-      this.logger.info('page', `start ${page.pageName} (${page.durationSeconds}s, seamless)`);
-    }
+    this.playing = true;
+    this.pageStartCount += 1;
+    this.pageStartedAt = performance.now();
+    this.render();
+    this.setMessage(`페이지 재생: ${page.pageName}`);
+    this.logger.info('page', `start ${page.pageName} (${page.durationSeconds}s, ${targetPlaybackMode})`);
     this.writeRuntimeHealth('page-started');
     this.startMasterTimer();
-    this.prepareUpcomingBoundaryFirstContent('page-started');
   }
 
   private recordContentShown(slotIndex: number, item: SeamlessContentItem): void {
@@ -1535,21 +1454,21 @@ export class NewHyOnPlayerApp {
     }, 0);
   }
 
-  private async switchSurfacesToPage(
+  private async playContentPage(
     targetPagePlans: readonly SeamlessPagePlan[],
     targetPlaybackMode: PlaybackMode,
     targetPageIndex: number,
     page: SeamlessPagePlan,
-    commitPageTimelineBeforeSurfaceSwap: boolean,
+    commitPageTimelineBeforeContentSwitch: boolean,
   ): Promise<void> {
-    const avplayPool = this.ensureAvplayPool();
-    const previousState = commitPageTimelineBeforeSurfaceSwap ? this.capturePlaybackState() : null;
-    this.logger.info('page', `prepare ${page.pageName} (${page.durationSeconds}s, surface-swap)`);
+    const previousState = commitPageTimelineBeforeContentSwitch ? this.capturePlaybackState() : null;
+    this.logger.info('page', `prepare ${page.pageName} (${page.durationSeconds}s, page-content-transition)`);
     this.view.stage.style.setProperty('--canvas-width', String(page.canvasWidth));
     this.view.stage.style.setProperty('--canvas-height', String(page.canvasHeight));
     this.view.stage.style.aspectRatio = `${page.canvasWidth} / ${page.canvasHeight}`;
+    this.ensureContentSlotSurfaces(targetPagePlans, page);
 
-    if (commitPageTimelineBeforeSurfaceSwap) {
+    if (commitPageTimelineBeforeContentSwitch) {
       this.commitPlaybackPlan(targetPagePlans, targetPlaybackMode, targetPageIndex);
       this.audioPolicy.applyForPage(page);
       this.playing = true;
@@ -1559,14 +1478,10 @@ export class NewHyOnPlayerApp {
       this.writeRuntimeHealth('page-started');
     }
 
-    const startResults = await Promise.all(page.slots.map((slot, slotIndex) => {
-      const existing = this.slotPlayers[slotIndex];
-      if (!existing && !this.slotNeedsSurface(slot)) {
-        return Promise.resolve(true);
-      }
-
-      const slotPlayer = existing ?? this.ensureSlotSurface(slotIndex, slot, page, avplayPool);
-      slotPlayer.setPageTimeline(0, Math.max(1, page.durationSeconds) * 1000, targetPagePlans.length <= 1);
+    const pageDurationMs = Math.max(1, page.durationSeconds) * 1000;
+    const startResults = await Promise.all(this.slotPlayers.map((slotPlayer, slotIndex) => {
+      const slot = page.slots[slotIndex] ?? this.createEmptySlotPlan(slotIndex, page);
+      slotPlayer.setPageTimeline(0, pageDurationMs, targetPagePlans.length <= 1);
       return slotPlayer.switchToSlotPlan(slot, page.canvasWidth, page.canvasHeight);
     }));
     const failed = startResults.some((started) => !started);
@@ -1575,29 +1490,77 @@ export class NewHyOnPlayerApp {
         this.restorePlaybackState(previousState);
         this.render();
       }
-      throw new Error(`페이지 surface 전환 준비 실패: ${this.formatSlotTransitionFailure(this.slotPlayers)}`);
+      throw new Error(`페이지 콘텐츠 전환 준비 실패: ${this.formatSlotTransitionFailure(this.slotPlayers)}`);
     }
 
-    if (!commitPageTimelineBeforeSurfaceSwap) {
+    if (!commitPageTimelineBeforeContentSwitch) {
       this.commitPlaybackPlan(targetPagePlans, targetPlaybackMode, targetPageIndex);
       this.audioPolicy.applyForPage(page);
     }
     this.removeEmptyIntroVideo();
     this.slotPlayers.forEach((slotPlayer) => slotPlayer.applyDisplayRect());
-    await this.waitForPaint();
-    if (!commitPageTimelineBeforeSurfaceSwap) {
+    if (!commitPageTimelineBeforeContentSwitch) {
       this.playing = true;
       this.pageStartCount += 1;
       this.pageStartedAt = performance.now();
     }
     this.render();
     this.setMessage(`페이지 재생: ${page.pageName}`);
-    this.logger.info('page', `start ${page.pageName} (${page.durationSeconds}s, surface-swap)`);
-    if (!commitPageTimelineBeforeSurfaceSwap) {
+    this.logger.info('page', `start ${page.pageName} (${page.durationSeconds}s, page-content-transition)`);
+    if (!commitPageTimelineBeforeContentSwitch) {
       this.writeRuntimeHealth('page-started');
     }
     this.startMasterTimer();
     this.prepareUpcomingBoundaryFirstContent('page-started');
+  }
+
+  private ensureContentSlotSurfaces(
+    pagePlans: readonly SeamlessPagePlan[],
+    page: SeamlessPagePlan,
+  ): void {
+    const targetSlotCount = Math.max(1, ...pagePlans.map((plan) => (
+      plan.slots.filter((slot) => this.slotNeedsSurface(slot)).length
+    )));
+    while (this.slotPlayers.length < targetSlotCount) {
+      const slotIndex = this.slotPlayers.length;
+      const element = document.createElement('section');
+      element.className = 'slot';
+      this.view.stage.appendChild(element);
+      const slotPlayer = new SlotPlayer(
+        slotIndex,
+        element,
+        this.createEmptySlotPlan(slotIndex, page),
+        this.config.manifest.preserveAspectRatio,
+        this.config.settings.switchOnContentEnd,
+        () => this.ensureAvplaySessionPairForSlot(slotIndex),
+        this.logger,
+        (shownSlotIndex, item) => {
+          this.recordContentShown(shownSlotIndex, item);
+        },
+        false,
+        () => undefined,
+        (endedSlotIndex, item) => {
+          this.handlePageBoundaryContentEnded(endedSlotIndex, item);
+        },
+        () => this.isPageTransitionPending(),
+        (item) => this.isContentItemPlayable(item),
+      );
+      slotPlayer.applyLayout(page.canvasWidth, page.canvasHeight);
+      this.slotPlayers.push(slotPlayer);
+    }
+  }
+
+  private createEmptySlotPlan(slotIndex: number, page: SeamlessPagePlan): SeamlessSlotPlan {
+    return {
+      elementName: `empty-slot-${slotIndex + 1}`,
+      isMuted: true,
+      width: 0,
+      height: 0,
+      left: 0,
+      top: 0,
+      zIndex: page.slots[slotIndex]?.zIndex ?? slotIndex,
+      items: [],
+    };
   }
 
   private prepareUpcomingBoundaryFirstContent(reason: string): void {
@@ -1612,13 +1575,13 @@ export class NewHyOnPlayerApp {
 
     target.page.slots.forEach((slot, slotIndex) => {
       const item = this.firstPlayableContentItem(slot);
-      if (!item) {
+      if (!item || item.contentType !== 'Image') {
         return;
       }
 
       const slotPlayer = this.slotPlayers[slotIndex];
       if (!slotPlayer) {
-        this.logger.warn('prepare', `boundary prepare skipped(${target.reason}/${reason}): slot ${slotIndex + 1} surface 없음, ${item.name}`);
+        this.logger.warn('prepare', `boundary prepare skipped(${target.reason}/${reason}): slot ${slotIndex + 1} player 없음, ${item.name}`);
         return;
       }
 
@@ -1627,9 +1590,7 @@ export class NewHyOnPlayerApp {
         return;
       }
 
-      const preparePromise = slotPlayer.prepareFirstContentForSlotPlan(slot, target.remainingMs, {
-        protectFromNormalTransition: target.reason === 'schedule-boundary',
-      });
+      const preparePromise = slotPlayer.prepareFirstContentForSlotPlan(slot);
       if (preparePromise) {
         void preparePromise
           .then(() => {
@@ -1715,45 +1676,6 @@ export class NewHyOnPlayerApp {
 
   private slotNeedsSurface(slot: SeamlessSlotPlan): boolean {
     return this.firstPlayableContentItem(slot) !== null && slot.width > 0 && slot.height > 0;
-  }
-
-  private ensureSlotSurface(
-    slotIndex: number,
-    slot: SeamlessSlotPlan,
-    page: SeamlessPagePlan,
-    avplayPool: AvplaySessionPool,
-  ): SlotPlayer {
-    const existing = this.slotPlayers[slotIndex];
-    if (existing) {
-      return existing;
-    }
-
-    const element = document.createElement('section');
-    element.className = 'slot';
-    this.view.stage.appendChild(element);
-    const slotPlayer = new SlotPlayer(
-      slotIndex,
-      element,
-      slot,
-      this.config.manifest.preserveAspectRatio,
-      this.config.settings.switchOnContentEnd,
-      () => avplayPool.acquire(slotIndex),
-      this.logger,
-      (shownSlotIndex, item) => {
-        this.recordContentShown(shownSlotIndex, item);
-      },
-      false,
-      (session) => avplayPool.release(session),
-      (endedSlotIndex, item) => {
-        this.handlePageBoundaryContentEnded(endedSlotIndex, item);
-      },
-      () => this.isPageTransitionPending(),
-      (item) => this.isContentItemPlayable(item),
-    );
-    slotPlayer.applyLayout(page.canvasWidth, page.canvasHeight);
-    slotPlayer.setPageTimeline(0, Math.max(1, page.durationSeconds) * 1000, this.pagePlans.length <= 1);
-    this.slotPlayers[slotIndex] = slotPlayer;
-    return slotPlayer;
   }
 
   private formatSlotTransitionFailure(slotPlayers: readonly SlotPlayer[]): string {
@@ -1928,7 +1850,7 @@ export class NewHyOnPlayerApp {
     this.pageTransitionInProgress = true;
     void this.playPage(this.pageIndex + 1, {
       preservePreviousUntilReady: true,
-      commitPageTimelineBeforeSurfaceSwap: true,
+      commitPageTimelineBeforeContentSwitch: true,
     })
       .catch((error) => {
         this.logger.error('page', `페이지 전환 실패(${source}): ${formatError(error)}`);
@@ -2058,7 +1980,7 @@ export class NewHyOnPlayerApp {
       const resolution = this.createEffectiveUpdatePagePlans(this.currentContentManifest);
       await this.playPage(0, {
         preservePreviousUntilReady: true,
-        commitPageTimelineBeforeSurfaceSwap: true,
+        commitPageTimelineBeforeContentSwitch: true,
         pagePlans: resolution.pagePlans,
         playbackMode: resolution.mode,
       });
@@ -2103,7 +2025,7 @@ export class NewHyOnPlayerApp {
 
     await this.playPage(0, {
       preservePreviousUntilReady: true,
-      commitPageTimelineBeforeSurfaceSwap: true,
+      commitPageTimelineBeforeContentSwitch: true,
       pagePlans,
       playbackMode: 'content',
     });
@@ -2861,6 +2783,18 @@ export class NewHyOnPlayerApp {
     this.view.hud.classList.toggle('debug-hud--hidden', !visible);
   }
 
+  private handleAsyncPagePlaybackError(context: string, error: unknown): void {
+    if (this.destroyed) {
+      return;
+    }
+
+    const message = `${context} 실패: ${formatError(error)}`;
+    this.setMessage(message);
+    this.logger.error('page', message);
+    this.render();
+    this.writeRuntimeHealth('page-playback-failed');
+  }
+
   private togglePlayback(): void {
     if (!this.broadcastOnAir) {
       this.setMessage('방송시간 외 대기 중입니다.');
@@ -2883,7 +2817,12 @@ export class NewHyOnPlayerApp {
       }
 
       if (this.slotPlayers.length === 0) {
-        void this.playPage(this.pageIndex);
+        const page = this.pagePlans[this.pageIndex];
+        if (page) {
+          this.setMessage(`페이지 재생: ${page.pageName}`);
+        }
+        void this.playPage(this.pageIndex)
+          .catch((error) => this.handleAsyncPagePlaybackError('페이지 재생', error));
         return;
       }
 
@@ -2913,7 +2852,7 @@ export class NewHyOnPlayerApp {
     this.pagePausedElapsedMs = 0;
     this.clearTimers();
     this.stopSlots();
-    this.avplayPool?.stopAll();
+    this.stopAvplaySessionPairs();
     this.removeStageSlots();
     this.removeEmptyIntroVideo();
     this.audioPolicy.restore();
@@ -3030,9 +2969,11 @@ export class NewHyOnPlayerApp {
       this.settingsOverlay?.open();
       this.setMessage('설정창을 열었습니다.');
     } else if (action === 'next-page') {
-      void this.playPage(this.pageIndex + 1, { preservePreviousUntilReady: true });
+      void this.playPage(this.pageIndex + 1, { preservePreviousUntilReady: true })
+        .catch((error) => this.handleAsyncPagePlaybackError('다음 페이지 전환', error));
     } else if (action === 'previous-page') {
-      void this.playPage(this.pageIndex - 1, { preservePreviousUntilReady: true });
+      void this.playPage(this.pageIndex - 1, { preservePreviousUntilReady: true })
+        .catch((error) => this.handleAsyncPagePlaybackError('이전 페이지 전환', error));
     }
   };
 }

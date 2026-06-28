@@ -951,7 +951,7 @@ describe('SlotPlayer', () => {
     expect(slot.blocksPageTransitionForContentEnd()).toBe(false);
   });
 
-  it('페이지 surface 전환 중 이전 영상 종료 이벤트는 현재 페이지 콘텐츠 advance를 발생시키지 않는다', async () => {
+  it('페이지 콘텐츠 전환 중 이전 영상 종료 이벤트는 현재 페이지 콘텐츠 advance를 발생시키지 않는다', async () => {
     const endedHandlers: Array<() => boolean | Promise<boolean> | void | Promise<void>> = [];
     const secondPlayGate = {
       release: null as (() => void) | null,
@@ -1264,7 +1264,7 @@ describe('SlotPlayer', () => {
     }
   });
 
-  it('영상에서 이미지로 전환되면 idle AVPlay 세션 임대를 반납한다', async () => {
+  it('영상에서 이미지로 전환되면 AVPlay 세션을 정리한다', async () => {
     vi.useFakeTimers();
     const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
     Object.defineProperty(HTMLImageElement.prototype, 'src', {
@@ -1285,10 +1285,6 @@ describe('SlotPlayer', () => {
         play: vi.fn(async () => undefined),
         prepare: vi.fn(async () => undefined),
         clearPrepared: vi.fn(),
-        detachCurrentSurfaceForTransition: vi.fn(() => {
-          callOrder.push('detach');
-          return true;
-        }),
         hide: vi.fn(() => {
           callOrder.push('hide');
         }),
@@ -1325,13 +1321,12 @@ describe('SlotPlayer', () => {
       await vi.runAllTicks();
       await syncPromise;
       expect(syncResolved).toBe(true);
-      expect(session.detachCurrentSurfaceForTransition).toHaveBeenCalledTimes(1);
       expect(session.hide).not.toHaveBeenCalled();
       await vi.runAllTicks();
       expect(session.stop).toHaveBeenCalledTimes(1);
       expect(release).toHaveBeenCalledWith(session);
       expect(slot.snapshot()).toContain('second.png (IMAGE)');
-      expect(callOrder).toEqual(['detach', 'stop']);
+      expect(callOrder).toEqual(['stop']);
     } finally {
       if (descriptor) {
         Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
@@ -1372,7 +1367,6 @@ describe('SlotPlayer', () => {
         }),
         prepare: vi.fn(async () => undefined),
         clearPrepared: vi.fn(),
-        detachCurrentSurfaceForTransition: vi.fn(() => true),
         hide: vi.fn(),
         pause: vi.fn(),
         resume: vi.fn(),
@@ -1439,7 +1433,6 @@ describe('SlotPlayer', () => {
         }),
         prepare: vi.fn(async () => undefined),
         clearPrepared: vi.fn(),
-        detachCurrentSurfaceForTransition: vi.fn(() => true),
         hide: vi.fn(),
         pause: vi.fn(),
         resume: vi.fn(),
@@ -1499,10 +1492,6 @@ describe('SlotPlayer', () => {
           return undefined;
         }),
         clearPrepared: vi.fn(),
-        detachCurrentSurfaceForTransition: vi.fn(() => {
-          callOrder.push('detach');
-          return true;
-        }),
         hide: vi.fn(() => {
           callOrder.push('hide');
         }),
@@ -1539,7 +1528,7 @@ describe('SlotPlayer', () => {
       await vi.runOnlyPendingTimersAsync();
       await vi.runAllTicks();
       expect(session.prepare).toHaveBeenCalledTimes(1);
-      expect(callOrder).toEqual(['detach', 'stop', 'prepare']);
+      expect(callOrder).toEqual(['stop', 'prepare']);
     } finally {
       if (descriptor) {
         Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
@@ -1621,8 +1610,6 @@ describe('SlotPlayer', () => {
         clearPrepared: vi.fn(),
         hide: vi.fn(),
         hideCurrentKeepPrepared: vi.fn(async () => undefined),
-        detachCurrentSurfaceForTransition: vi.fn(() => true),
-        stopDetachedSurface: vi.fn(),
         pause: vi.fn(),
         resume: vi.fn(),
         stop: vi.fn(),
@@ -1637,7 +1624,7 @@ describe('SlotPlayer', () => {
 
       slot.setPageTimeline(0, 30000, false);
       await slot.start();
-      slot.prepareFirstContentForSlotPlan(scheduleSlot, 5000, { protectFromNormalTransition: true });
+      slot.prepareFirstContentForSlotPlan(scheduleSlot);
       await vi.runAllTicks();
       await vi.advanceTimersByTimeAsync(32);
 
@@ -1648,7 +1635,7 @@ describe('SlotPlayer', () => {
       await vi.runAllTicks();
       await vi.advanceTimersByTimeAsync(32);
 
-      expect(slot.snapshot()).toContain('first.mp4 (PLAYING)');
+      expect(slot.snapshot()).toContain('second.png (IMAGE)');
       expect(Array.from(element.querySelectorAll<HTMLImageElement>('.slot-image--prepared'))
         .some((image) => image.getAttribute('src')?.includes('schedule-first.png'))).toBe(true);
     } finally {
@@ -1656,49 +1643,6 @@ describe('SlotPlayer', () => {
         Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
       }
     }
-  });
-
-  it('예약 경계 첫 콘텐츠가 영상이어도 AVPlay에 준비하고 직전 컨텐츠 전환으로 해제하지 않는다', async () => {
-    vi.useFakeTimers();
-    const element = document.createElement('section');
-    const prepare = vi.fn(async (..._args: unknown[]) => undefined);
-    const clearPrepared = vi.fn();
-    const session = {
-      play: vi.fn(async () => undefined),
-      prepare,
-      clearPrepared,
-      hide: vi.fn(),
-      hideCurrentKeepPrepared: vi.fn(async () => undefined),
-      detachCurrentSurfaceForTransition: vi.fn(() => true),
-      stopDetachedSurface: vi.fn(),
-      pause: vi.fn(),
-      resume: vi.fn(),
-      stop: vi.fn(),
-      state: vi.fn(() => 'PLAYING'),
-      applyDisplayRect: vi.fn(),
-    } as unknown as AvplaySession;
-    const slot = new SlotPlayer(0, element, createVideoThenImageSlot(), false, false, () => session, new RingLogger(5));
-    const scheduleSlot = {
-      ...createVideoSlot(),
-      items: [createVideoItem('schedule-first.mp4')],
-    };
-
-    slot.setPageTimeline(0, 30000, false);
-    await slot.start();
-    expect(prepare).not.toHaveBeenCalled();
-
-    slot.prepareFirstContentForSlotPlan(scheduleSlot, 5000, { protectFromNormalTransition: true });
-    await vi.runAllTicks();
-
-    expect(prepare).toHaveBeenCalledTimes(1);
-    expect(prepare.mock.calls[0]?.[0]).toMatchObject({ name: 'schedule-first.mp4' });
-    clearPrepared.mockClear();
-
-    await slot.syncToPageElapsed(10000, 30000, false);
-    await vi.runAllTicks();
-
-    expect(slot.snapshot()).toContain('first.mp4 (PLAYING)');
-    expect(clearPrepared).not.toHaveBeenCalled();
   });
 
   it('현재 컨텐츠 전환이 페이지 경계보다 빠르면 경계 준비를 미룬다', async () => {

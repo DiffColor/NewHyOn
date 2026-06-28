@@ -6,8 +6,6 @@ const DISPLAY_METHOD_FILL = 'PLAYER_DISPLAY_MODE_FULL_SCREEN';
 const DISPLAY_METHOD_CONTAIN = 'PLAYER_DISPLAY_MODE_LETTER_BOX';
 const AVPLAY_BASE_WIDTH = 1920;
 const AVPLAY_BASE_HEIGHT = 1080;
-const MAX_AVPLAYSTORE_PLAYERS = 4;
-const PLAYERS_PER_SEAMLESS_SESSION = 2;
 const FIRST_FRAME_READY_TIMEOUT_MS = 5000;
 const STOPPABLE_STATES = new Set(['READY', 'PLAYING', 'PAUSED']);
 const VIDEO_DURATION_MATCH_TOLERANCE_MS = 250;
@@ -31,8 +29,14 @@ interface DisplayContext {
 
 interface PreparedLane {
   readonly laneIndex: number;
-  readonly itemId: string;
+  readonly itemKey: string;
   readonly durationMs: number | null;
+}
+
+interface PrepareInFlight {
+  readonly itemKey: string;
+  readonly laneIndex: number;
+  readonly promise: Promise<AvplayPlaybackInfo>;
 }
 
 export interface AvplayPlayOptions {
@@ -45,6 +49,7 @@ export interface AvplayPlaybackInfo {
 
 interface FirstFrameReadyGate {
   readonly promise: Promise<void>;
+  readonly start: () => void;
   readonly markReady: (reason: string) => void;
   readonly fail: (message: string) => void;
   readonly cancel: () => void;
@@ -65,7 +70,7 @@ export class AvplaySession {
   private heldLaneIndex: number | null = null;
   private displayContext: DisplayContext | null = null;
   private preparedLane: PreparedLane | null = null;
-  private detachedLaneIndexes: number[] = [];
+  private prepareInFlight: PrepareInFlight | null = null;
   private traceSeq = 0;
   private operationSeq = 0;
 
@@ -95,7 +100,8 @@ export class AvplaySession {
   ): Promise<AvplayPlaybackInfo> {
     const operationId = this.nextOperationId();
     this.displayContext = { slot, slotElement };
-    const preparedLaneIndex = this.preparedLane?.itemId === item.id ? this.preparedLane.laneIndex : null;
+    const itemKey = this.playbackKey(item);
+    const preparedLaneIndex = this.preparedLane?.itemKey === itemKey ? this.preparedLane.laneIndex : null;
     const nextLaneIndex = preparedLaneIndex ?? (this.currentLaneIndex === 0 ? 1 : 0);
     const lane = this.lanes[nextLaneIndex];
     const sourceUrl = resolveAvplaySourceUrl(item.sourceUrl);
@@ -110,7 +116,7 @@ export class AvplaySession {
     );
     try {
       const previousLaneIndex = this.currentLaneIndex;
-      let durationMs = this.preparedLane?.itemId === item.id ? this.preparedLane.durationMs : null;
+      let durationMs = this.preparedLane?.itemKey === itemKey ? this.preparedLane.durationMs : null;
       if (preparedLaneIndex === null) {
         this.clearPreparedLane();
         this.resetLaneForPlayback(nextLaneIndex);
@@ -133,6 +139,7 @@ export class AvplaySession {
       this.callLane(nextLaneIndex, 'play', () => {
         lane.player.play();
       }, item.name);
+      firstFrameReady?.start();
 
       this.currentItem = item;
       this.currentEndedHandler = onStreamEnded;
@@ -140,7 +147,7 @@ export class AvplaySession {
       this.heldLaneIndex = previousLaneIndex;
       this.updateObjectVisibility();
       await firstFrameReady?.promise;
-      this.assertOperationCurrent(operationId, nextLaneIndex, 'play.firstFrame', item.name);
+      this.assertCurrentPlaybackFirstFrame(operationId, nextLaneIndex, item);
       this.freezeAndStopHeldLane();
       return { durationMs };
     } catch (error) {
@@ -155,29 +162,61 @@ export class AvplaySession {
     slotElement: HTMLElement,
     preserveAspectRatio: boolean,
   ): Promise<AvplayPlaybackInfo> {
-    const operationId = this.nextOperationId();
     this.displayContext = { slot, slotElement };
-    if (this.preparedLane?.itemId === item.id) {
+    const itemKey = this.playbackKey(item);
+    if (this.preparedLane?.itemKey === itemKey) {
       this.applyDisplayRectToLane(this.preparedLane.laneIndex, slot, slotElement);
       return { durationMs: this.preparedLane.durationMs };
     }
 
+    const inFlightResult = await this.waitForPrepareLaneAvailable(itemKey, slot, slotElement);
+    if (inFlightResult) {
+      return inFlightResult;
+    }
+
+    const operationId = this.nextOperationId();
     const laneIndex = this.currentLaneIndex === 0 ? 1 : 0;
-    const sourceUrl = resolveAvplaySourceUrl(item.sourceUrl);
-    this.clearPreparedLane();
-    this.resetLaneForPlayback(laneIndex);
-    this.configureLaneForItem(laneIndex, item, sourceUrl, slot, slotElement, preserveAspectRatio, null);
-    await this.prepareLaneAsync(laneIndex, item.name);
-    this.assertOperationCurrent(operationId, laneIndex, 'prepare.prepareAsync', item.name);
-    const durationMs = this.readDurationMs(laneIndex, item.name);
-    this.setLaneLooping(laneIndex, this.shouldLoopForDuration(item, durationMs));
-    this.preparedLane = { laneIndex, itemId: item.id, durationMs };
-    this.updateObjectVisibility();
-    this.logger.info('avplay', `slot ${this.index} lane ${laneIndex + 1} prepared next: ${item.name}`);
-    return { durationMs };
+    let resolvePrepare: (value: AvplayPlaybackInfo) => void = () => undefined;
+    let rejectPrepare: (reason: unknown) => void = () => undefined;
+    const preparePromise = new Promise<AvplayPlaybackInfo>((resolve, reject) => {
+      resolvePrepare = resolve;
+      rejectPrepare = reject;
+    });
+    this.prepareInFlight = { itemKey, laneIndex, promise: preparePromise };
+    void (async (): Promise<void> => {
+      const sourceUrl = resolveAvplaySourceUrl(item.sourceUrl);
+      this.clearPreparedLane();
+      this.resetLaneForPlayback(laneIndex);
+      this.configureLaneForItem(laneIndex, item, sourceUrl, slot, slotElement, preserveAspectRatio, null);
+      await this.prepareLaneAsync(laneIndex, item.name);
+      this.assertOperationCurrent(operationId, laneIndex, 'prepare.prepareAsync', item.name);
+      const durationMs = this.readDurationMs(laneIndex, item.name);
+      this.setLaneLooping(laneIndex, this.shouldLoopForDuration(item, durationMs));
+      this.preparedLane = { laneIndex, itemKey, durationMs };
+      this.updateObjectVisibility();
+      this.logger.info('avplay', `slot ${this.index} lane ${laneIndex + 1} prepared next: ${item.name}`);
+      resolvePrepare({ durationMs });
+    })().catch((error) => {
+      rejectPrepare(error);
+    });
+    try {
+      return await preparePromise;
+    } finally {
+      if (this.prepareInFlight?.promise === preparePromise) {
+        this.prepareInFlight = null;
+      }
+    }
   }
 
   clearPrepared(): void {
+    if (this.prepareInFlight) {
+      this.logger.info(
+        'avplay-trace',
+        `session ${this.index} clearPrepared deferred while prepareAsync in-flight lane=${this.prepareInFlight.laneIndex + 1} ${this.traceContext()}`,
+      );
+      return;
+    }
+
     this.nextOperationId();
     this.logger.info('avplay-trace', `session ${this.index} clearPrepared ${this.traceContext()}`);
     this.clearPreparedLane();
@@ -197,6 +236,7 @@ export class AvplaySession {
     this.currentLaneIndex = null;
     this.heldLaneIndex = null;
     this.preparedLane = null;
+    this.prepareInFlight = null;
     this.updateObjectVisibility();
   }
 
@@ -213,36 +253,6 @@ export class AvplaySession {
       this.closeLane(laneToStop);
     }
     return Promise.resolve();
-  }
-
-  detachCurrentSurfaceForTransition(): boolean {
-    const laneIndexes = [this.currentLaneIndex, this.heldLaneIndex]
-      .filter((laneIndex, index, values): laneIndex is number => laneIndex !== null && values.indexOf(laneIndex) === index);
-    if (laneIndexes.length === 0) {
-      return false;
-    }
-
-    this.detachedLaneIndexes = Array.from(new Set([...this.detachedLaneIndexes, ...laneIndexes]));
-    this.logger.info('avplay-trace', `session ${this.index} detach surface lanes=${laneIndexes.map((laneIndex) => laneIndex + 1).join(',')} ${this.traceContext()}`);
-    this.currentItem = null;
-    this.currentEndedHandler = null;
-    this.currentLaneIndex = null;
-    this.heldLaneIndex = null;
-    this.updateObjectVisibility();
-    return true;
-  }
-
-  stopDetachedSurface(keepPrepared: boolean): void {
-    const laneIndexes = this.detachedLaneIndexes;
-    this.detachedLaneIndexes = [];
-    laneIndexes.forEach((laneIndex) => {
-      if (keepPrepared && this.preparedLane?.laneIndex === laneIndex) {
-        return;
-      }
-
-      this.stopLane(laneIndex);
-      this.closeLane(laneIndex);
-    });
   }
 
   applyDisplayRect(slot: SeamlessSlotPlan, slotElement: HTMLElement): void {
@@ -307,7 +317,6 @@ export class AvplaySession {
   stop(): void {
     this.nextOperationId();
     this.logger.info('avplay-trace', `session ${this.index} stop all ${this.traceContext()}`);
-    this.detachedLaneIndexes = [];
     this.lanes.forEach((_lane, laneIndex) => {
       this.stopLane(laneIndex);
       this.closeLane(laneIndex);
@@ -317,6 +326,7 @@ export class AvplaySession {
     this.currentLaneIndex = null;
     this.heldLaneIndex = null;
     this.preparedLane = null;
+    this.prepareInFlight = null;
     this.updateObjectVisibility();
   }
 
@@ -385,6 +395,7 @@ export class AvplaySession {
 
   private createFirstFrameReadyGate(laneIndex: number, itemName: string): FirstFrameReadyGate {
     let settled = false;
+    let started = false;
     let timerId: number | null = null;
     let resolvePromise: (() => void) | null = null;
     let rejectPromise: ((error: Error) => void) | null = null;
@@ -392,14 +403,22 @@ export class AvplaySession {
     const promise = new Promise<void>((resolve, reject) => {
       resolvePromise = resolve;
       rejectPromise = reject;
+    });
+
+    const startTimer = () => {
+      if (settled || started) {
+        return;
+      }
+
+      started = true;
       timerId = window.setTimeout(() => {
         if (settled) {
           return;
         }
         settled = true;
-        reject(new Error(`slot ${this.index} lane ${laneIndex + 1} 첫 프레임 준비 시간 초과: ${itemName}`));
+        rejectPromise?.(new Error(`slot ${this.index} lane ${laneIndex + 1} 첫 프레임 준비 시간 초과: ${itemName}`));
       }, FIRST_FRAME_READY_TIMEOUT_MS);
-    });
+    };
 
     const clear = () => {
       if (timerId !== null) {
@@ -410,6 +429,7 @@ export class AvplaySession {
 
     return {
       promise,
+      start: startTimer,
       markReady: (reason) => {
         if (settled) {
           return;
@@ -456,6 +476,44 @@ export class AvplaySession {
     if (this.preparedLane?.laneIndex === laneIndex) {
       this.preparedLane = null;
     }
+  }
+
+  private playbackKey(item: SeamlessContentItem): string {
+    return `${item.contentType}:${resolveAvplaySourceUrl(item.sourceUrl)}`;
+  }
+
+  private async waitForPrepareLaneAvailable(
+    itemKey: string,
+    slot: SeamlessSlotPlan,
+    slotElement: HTMLElement,
+  ): Promise<AvplayPlaybackInfo | null> {
+    while (this.prepareInFlight) {
+      const inFlight = this.prepareInFlight;
+      if (inFlight.itemKey === itemKey) {
+        const result = await inFlight.promise;
+        if (this.preparedLane?.itemKey === itemKey) {
+          this.applyDisplayRectToLane(this.preparedLane.laneIndex, slot, slotElement);
+        }
+        return result;
+      }
+
+      this.logger.info(
+        'avplay-trace',
+        `session ${this.index} wait prepareAsync before next prepare lane=${inFlight.laneIndex + 1} requested=${itemKey} active=${inFlight.itemKey} ${this.traceContext()}`,
+      );
+      try {
+        await inFlight.promise;
+      } catch (error) {
+        this.logger.warn('avplay', `slot ${this.index} 이전 prepareAsync 완료 대기 중 오류: ${String(error)}`);
+      }
+
+      if (this.preparedLane?.itemKey === itemKey) {
+        this.applyDisplayRectToLane(this.preparedLane.laneIndex, slot, slotElement);
+        return { durationMs: this.preparedLane.durationMs };
+      }
+    }
+
+    return null;
   }
 
   private clearPreparedLane(): void {
@@ -642,7 +700,7 @@ export class AvplaySession {
     lane.objectElement.style.width = '1px';
     lane.objectElement.style.height = '1px';
     if (state !== 'IDLE' && state !== 'READY' && state !== 'PLAYING' && state !== 'PAUSED') {
-      this.logger.info('avplay-trace', `slot ${this.index} lane ${laneIndex + 1} hide surface skipped state=${state} ${this.traceContext()}`);
+      this.logger.info('avplay-trace', `slot ${this.index} lane ${laneIndex + 1} hide rect skipped state=${state} ${this.traceContext()}`);
       return;
     }
 
@@ -707,7 +765,7 @@ export class AvplaySession {
 
   private traceContext(): string {
     const prepared = this.preparedLane
-      ? `${this.preparedLane.laneIndex + 1}:${this.preparedLane.itemId}`
+      ? `${this.preparedLane.laneIndex + 1}:${this.preparedLane.itemKey}`
       : '-';
     return `current=${this.currentLaneIndex !== null ? this.currentLaneIndex + 1 : '-'} held=${this.heldLaneIndex !== null ? this.heldLaneIndex + 1 : '-'} prepared=${prepared} item=${this.currentItem?.name ?? '-'}`;
   }
@@ -733,6 +791,26 @@ export class AvplaySession {
     throw new Error(`slot ${this.index} lane ${laneIndex + 1} AVPlay 작업이 폐기되었습니다: ${itemName}`);
   }
 
+  private assertCurrentPlaybackFirstFrame(operationId: number, laneIndex: number, item: SeamlessContentItem): void {
+    if (operationId === this.operationSeq) {
+      return;
+    }
+
+    if (this.currentLaneIndex === laneIndex && this.currentItem?.id === item.id) {
+      this.logger.info(
+        'avplay-trace',
+        `slot ${this.index} lane ${laneIndex + 1} play.firstFrame accepted after concurrent prepare ${this.traceContext()}${this.formatTraceDetail(item.name)}`,
+      );
+      return;
+    }
+
+    this.logger.info(
+      'avplay-trace',
+      `slot ${this.index} lane ${laneIndex + 1} stale play.firstFrame ignored ${this.traceContext()}${this.formatTraceDetail(item.name)}`,
+    );
+    throw new Error(`slot ${this.index} lane ${laneIndex + 1} AVPlay 작업이 폐기되었습니다: ${item.name}`);
+  }
+
   private updateObjectVisibility(): void {
     const slotHidden = this.displayContext?.slotElement.style.visibility === 'hidden';
     const slotZIndex = this.displayContext?.slot.zIndex ?? 0;
@@ -750,116 +828,19 @@ export class AvplaySession {
   }
 }
 
-export class AvplaySessionPool {
-  private readonly sessions: AvplaySession[] = [];
-  private readonly slotLeases = new Map<number, AvplaySession>();
-  private readonly store: AVPlayStoreManager;
-
-  constructor(
-    private readonly host: HTMLElement,
-    private readonly logger: RingLogger,
-    private readonly createEvents: (index: number) => VideoSessionEvents,
-  ) {
-    const store = window.webapis?.avplaystore;
-    if (!store) {
-      throw new Error('AVPlayStore API를 찾지 못했습니다. avplay-seamless-still-mode 기준 재생은 삼성 Tizen Signage 실장비의 webapis.avplaystore가 필요합니다.');
-    }
-
-    this.store = store;
+export function createAvplaySessionPair(
+  index: number,
+  host: HTMLElement,
+  logger: RingLogger,
+  events: VideoSessionEvents,
+): AvplaySession {
+  const store = window.webapis?.avplaystore;
+  if (!store) {
+    throw new Error('AVPlayStore API를 찾지 못했습니다. avplay-seamless-still-mode 기준 재생은 삼성 Tizen Signage 실장비의 webapis.avplaystore가 필요합니다.');
   }
 
-  acquire(slotIndex: number): AvplaySession {
-    const leased = this.slotLeases.get(slotIndex);
-    if (leased) {
-      return leased;
-    }
-
-    const leasedSessions = new Set(this.slotLeases.values());
-    const reusableSession = this.sessions.find((session) => !leasedSessions.has(session));
-    if (reusableSession) {
-      this.slotLeases.set(slotIndex, reusableSession);
-      return reusableSession;
-    }
-
-    const createdStorePlayers = this.sessions.length * PLAYERS_PER_SEAMLESS_SESSION;
-    if (createdStorePlayers + PLAYERS_PER_SEAMLESS_SESSION > MAX_AVPLAYSTORE_PLAYERS) {
-      throw new Error(
-        `Tizen AVPlayStore 세션 한도를 초과했습니다: slot ${slotIndex + 1}, seamless players ${createdStorePlayers}/${MAX_AVPLAYSTORE_PLAYERS}`,
-      );
-    }
-
-    const sessionIndex = this.sessions.length;
-    const session = new AvplaySession(
-      sessionIndex,
-      [
-        this.createLaneObject(),
-        this.createLaneObject(),
-      ],
-      this.host,
-      this.logger,
-      this.createEvents(sessionIndex),
-    );
-    this.sessions.push(session);
-    this.slotLeases.set(slotIndex, session);
-    return session;
-  }
-
-  resetLeases(): void {
-    this.slotLeases.clear();
-  }
-
-  release(session: AvplaySession): void {
-    Array.from(this.slotLeases.entries())
-      .filter(([, leasedSession]) => leasedSession === session)
-      .forEach(([slotIndex]) => {
-        this.slotLeases.delete(slotIndex);
-      });
-  }
-
-  commitTransitionLeases(slotIndexOffset: number): void {
-    const committed = new Map<number, AvplaySession>();
-    this.slotLeases.forEach((session, slotIndex) => {
-      if (slotIndex >= slotIndexOffset) {
-        committed.set(slotIndex - slotIndexOffset, session);
-      }
-    });
-    this.slotLeases.clear();
-    committed.forEach((session, slotIndex) => {
-      this.slotLeases.set(slotIndex, session);
-    });
-  }
-
-  releaseTransitionLeases(slotIndexOffset: number): void {
-    Array.from(this.slotLeases.keys())
-      .filter((slotIndex) => slotIndex >= slotIndexOffset)
-      .forEach((slotIndex) => {
-        this.slotLeases.delete(slotIndex);
-      });
-  }
-
-  getLeased(slotIndex: number): AvplaySession | null {
-    const session = this.slotLeases.get(slotIndex);
-    if (!session) {
-      return null;
-    }
-
-    return session;
-  }
-
-  pauseAll(): void {
-    this.sessions.forEach((session) => session.pause());
-  }
-
-  resumeAll(): void {
-    this.sessions.forEach((session) => session.resume());
-  }
-
-  stopAll(): void {
-    this.sessions.forEach((session) => session.stop());
-  }
-
-  private createLaneObject(): AvplayLane {
-    const player = this.store.getPlayer();
+  const createLaneObject = (): AvplayLane => {
+    const player = store.getPlayer();
     if (!player) {
       throw new Error('AVPlayStore 플레이어를 확보하지 못했습니다.');
     }
@@ -868,5 +849,16 @@ export class AvplaySessionPool {
       player,
       objectElement: document.createElement('object'),
     };
-  }
+  };
+
+  return new AvplaySession(
+    index,
+    [
+      createLaneObject(),
+      createLaneObject(),
+    ],
+    host,
+    logger,
+    events,
+  );
 }

@@ -87,8 +87,11 @@ export class CommandQueueClient {
 
     const rows = await this.fetchRecentRows();
     return rows
-      .filter((entry) => hasPlayer(entry, normalizedPlayerId) && isActionableStatus(entry, normalizedPlayerId))
-      .sort(compareCreatedAt);
+      .filter((entry) =>
+        hasPlayer(entry, normalizedPlayerId)
+        && isCurrentCommand(entry)
+        && isActionableStatus(entry, normalizedPlayerId))
+      .sort(compareCreatedAtDescending);
   }
 
   async markAttempt(commandId: string): Promise<void> {
@@ -118,6 +121,10 @@ export class CommandQueueClient {
 
   async markFailed(commandId: string, playerGuid: string): Promise<void> {
     await this.updateStatus(commandId, playerGuid, 'failed');
+  }
+
+  async markRetry(commandId: string, playerGuid: string): Promise<void> {
+    await this.updateStatus(commandId, playerGuid, 'sent');
   }
 
   async markSent(commandId: string, playerGuid: string): Promise<void> {
@@ -219,6 +226,15 @@ function isActionableStatus(entry: CommandQueueEntry, normalizedPlayerId: string
   return isSentDeliveryStale(entry);
 }
 
+export function isCurrentCommand(entry: CommandQueueEntry): boolean {
+  if (readText(entry.ReplacedBy ?? entry.replacedBy)) {
+    return false;
+  }
+
+  const expiresAt = parseTimestamp(entry.ExpiresAt ?? entry.expiresAt);
+  return expiresAt <= 0 || expiresAt > Date.now();
+}
+
 function isSentDeliveryStale(entry: CommandQueueEntry): boolean {
   const timestamp = parseTimestamp(entry.UpdatedAt ?? entry.updatedAt)
     || parseTimestamp(entry.CreatedAt ?? entry.createdAt);
@@ -242,14 +258,18 @@ function readStatusMap(entry: CommandQueueEntry): Record<string, string> {
   );
 }
 
-function compareCreatedAt(left: CommandQueueEntry, right: CommandQueueEntry): number {
+function compareCreatedAtDescending(left: CommandQueueEntry, right: CommandQueueEntry): number {
   const leftTime = parseTimestamp(left.CreatedAt ?? left.createdAt);
   const rightTime = parseTimestamp(right.CreatedAt ?? right.createdAt);
   if (leftTime !== rightTime) {
-    return leftTime - rightTime;
+    return rightTime - leftTime;
   }
 
-  return (left.id ?? '').localeCompare(right.id ?? '');
+  return (right.id ?? '').localeCompare(left.id ?? '');
+}
+
+function readText(value: string | undefined): string {
+  return value?.trim() ?? '';
 }
 
 function parseTimestamp(value: string | undefined): number {

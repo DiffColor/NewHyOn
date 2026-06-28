@@ -126,6 +126,27 @@ describe('cacheRemoteManifestContent', () => {
     });
   });
 
+  it('원격 HTTP 콘텐츠 다운로드가 완료되지 않으면 timeout으로 실패하고 다운로드를 취소한다', async () => {
+    vi.useFakeTimers();
+    const cancel = vi.fn();
+    window.tizen = {
+      ...window.tizen,
+      download: {
+        start: vi.fn(() => 7),
+        cancel,
+      },
+    };
+
+    const cachePromise = cacheRemoteManifestContent(createManifest());
+    const rejection = expect(cachePromise).rejects.toThrow(
+      /^콘텐츠 다운로드 시간 초과: content-guid-1-[0-9a-f]{8}\.mp4 \(60000ms; url=https:\/\/cdn\.example\.com\/media\/video\.mp4\)$/,
+    );
+    await vi.advanceTimersByTimeAsync(60000);
+
+    await rejection;
+    expect(cancel).toHaveBeenCalledWith(7);
+  });
+
   it('이미 저장된 콘텐츠는 다운로드를 다시 시작하지 않는다', async () => {
     window.tizen = {
       ...window.tizen,
@@ -140,6 +161,39 @@ describe('cacheRemoteManifestContent', () => {
     expect(window.tizen?.download?.start).not.toHaveBeenCalled();
     expect(cached.pages[0]?.PIC_Elements?.[0]?.EIF_ContentsInfoClassList?.[0]?.CIF_FileFullPath)
       .toMatch(/^downloads\/content-guid-1-/);
+  });
+
+  it('최적화 산출물만 남아 있으면 다운로드 완료 캐시로 간주하지 않는다', async () => {
+    const manifest = createManifest();
+    manifest.pages[0]!.PIC_Elements![0]!.EIF_ContentsInfoClassList = [
+      {
+        CIF_FileName: 'hero.jpg',
+        CIF_FileFullPath: 'https://cdn.example.com/media/hero.jpg',
+        CIF_ContentType: 'Image',
+        CIF_PlayMinute: '00',
+        CIF_PlaySec: '05',
+        CIF_StrGUID: 'image-guid-1',
+      },
+    ];
+    window.tizen = {
+      ...window.tizen,
+      filesystem: {
+        toURI: (path) => `file:///opt/usr/home/owner/content/${path}`,
+        pathExists: (path) => path.includes('-display-1920x1080.'),
+      },
+      download: {
+        start: vi.fn((_request, callback) => {
+          callback?.oncompleted?.(1, 'downloads/image-guid-1-source.jpg');
+          return 1;
+        }),
+      },
+    };
+
+    const cached = await cacheRemoteManifestContent(manifest);
+
+    expect(window.tizen?.download?.start).toHaveBeenCalledTimes(1);
+    expect(cached.pages[0]?.PIC_Elements?.[0]?.EIF_ContentsInfoClassList?.[0]?.CIF_FileFullPath)
+      .toBe('downloads/image-guid-1-source.jpg');
   });
 
   it('업데이트 네임스페이스가 있으면 기존 재생 파일과 다른 캐시 파일명으로 다운로드한다', async () => {
@@ -159,104 +213,44 @@ describe('cacheRemoteManifestContent', () => {
     expect(request?.[2]).toMatch(/^cmd-1-[0-9a-f]{8}-content-guid-1-/);
   });
 
-  it('원격 이미지는 다운로드 후 현재 화면 표시 크기에 맞춘 최적화 파일 경로로 manifest를 바꾼다', async () => {
-    const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
-    const naturalWidthDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'naturalWidth');
-    const naturalHeightDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'naturalHeight');
-    const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
-      drawImage: vi.fn(),
-    } as unknown as CanvasRenderingContext2D);
-    const toBlob = vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function toBlob(callback, type) {
-      callback(new Blob(['optimized'], { type: type ?? 'image/jpeg' }));
-    });
-    const writeBlobNonBlocking = vi.fn((_blob: Blob, onsuccess?: () => void) => {
-      onsuccess?.();
-    });
-    const closeNonBlocking = vi.fn((onsuccess?: () => void) => {
-      onsuccess?.();
-    });
-
-    Object.defineProperty(HTMLImageElement.prototype, 'src', {
-      configurable: true,
-      get() {
-        return this.getAttribute('src') ?? '';
+  it('원격 이미지는 다운로드 단계에서 최적화하지 않고 원본 캐시 경로로 manifest를 바꾼다', async () => {
+    const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext');
+    const toBlob = vi.spyOn(HTMLCanvasElement.prototype, 'toBlob');
+    const openFile = vi.fn();
+    const manifest = createManifest();
+    manifest.pages[0]!.PIC_Elements![0]!.EIF_ContentsInfoClassList = [
+      {
+        CIF_FileName: 'hero.jpg',
+        CIF_FileFullPath: 'https://cdn.example.com/media/hero.jpg',
+        CIF_ContentType: 'Image',
+        CIF_PlayMinute: '00',
+        CIF_PlaySec: '05',
+        CIF_StrGUID: 'image-guid-1',
       },
-      set(value: string) {
-        this.setAttribute('src', value);
-        queueMicrotask(() => this.onload?.(new Event('load')));
+    ];
+    window.tizen = {
+      ...window.tizen,
+      filesystem: {
+        toURI: (path) => `file:///opt/usr/home/owner/content/${path}`,
+        pathExists: () => false,
+        openFile,
       },
-    });
-    Object.defineProperty(HTMLImageElement.prototype, 'naturalWidth', {
-      configurable: true,
-      get() {
-        return 3840;
+      download: {
+        start: vi.fn((_request, callback) => {
+          callback?.oncompleted?.(1, 'downloads/image-guid-1-source.jpg');
+          return 1;
+        }),
       },
-    });
-    Object.defineProperty(HTMLImageElement.prototype, 'naturalHeight', {
-      configurable: true,
-      get() {
-        return 2160;
-      },
-    });
+    };
 
-    try {
-      const manifest = createManifest();
-      manifest.pages[0]!.PIC_Elements![0]!.EIF_ContentsInfoClassList = [
-        {
-          CIF_FileName: 'hero.jpg',
-          CIF_FileFullPath: 'https://cdn.example.com/media/hero.jpg',
-          CIF_ContentType: 'Image',
-          CIF_PlayMinute: '00',
-          CIF_PlaySec: '05',
-          CIF_StrGUID: 'image-guid-1',
-        },
-      ];
-      window.tizen = {
-        ...window.tizen,
-        filesystem: {
-          toURI: (path) => `file:///opt/usr/home/owner/content/${path}`,
-          pathExists: () => false,
-          openFile: vi.fn((_path, _mode, onsuccess) => {
-            onsuccess({
-              writeBlobNonBlocking,
-              closeNonBlocking,
-            });
-          }),
-        },
-        download: {
-          start: vi.fn((_request, callback) => {
-            callback?.oncompleted?.(1, 'downloads/image-guid-1-source.jpg');
-            return 1;
-          }),
-        },
-      };
+    const cached = await cacheRemoteManifestContent(manifest);
+    const content = cached.pages[0]?.PIC_Elements?.[0]?.EIF_ContentsInfoClassList?.[0];
 
-      const cached = await cacheRemoteManifestContent(manifest);
-      const content = cached.pages[0]?.PIC_Elements?.[0]?.EIF_ContentsInfoClassList?.[0];
-
-      expect(content?.CIF_FileFullPath).toMatch(/^downloads\/image-guid-1-[0-9a-f]{8}-display-1920x1080\.jpg$/);
-      expect(content?.CIF_RelativePath).toBe(content?.CIF_FileFullPath);
-      expect(window.tizen.filesystem?.openFile).toHaveBeenCalledWith(
-        content?.CIF_FileFullPath,
-        'w',
-        expect.any(Function),
-        expect.any(Function),
-        true,
-      );
-      expect(getContext).toHaveBeenCalled();
-      expect(toBlob).toHaveBeenCalledWith(expect.any(Function), 'image/jpeg', 0.86);
-      expect(writeBlobNonBlocking).toHaveBeenCalledTimes(1);
-    } finally {
-      if (descriptor) {
-        Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
-      }
-      if (naturalWidthDescriptor) {
-        Object.defineProperty(HTMLImageElement.prototype, 'naturalWidth', naturalWidthDescriptor);
-      }
-      if (naturalHeightDescriptor) {
-        Object.defineProperty(HTMLImageElement.prototype, 'naturalHeight', naturalHeightDescriptor);
-      }
-    }
+    expect(content?.CIF_FileFullPath).toBe('downloads/image-guid-1-source.jpg');
+    expect(content?.CIF_RelativePath).toBe('downloads/image-guid-1-source.jpg');
+    expect(openFile).not.toHaveBeenCalled();
+    expect(getContext).not.toHaveBeenCalled();
+    expect(toBlob).not.toHaveBeenCalled();
   });
 
   it('FTP 설정과 콘텐츠 상대경로를 분리해 downloader service에 전달한다', async () => {

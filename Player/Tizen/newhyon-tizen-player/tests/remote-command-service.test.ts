@@ -164,6 +164,137 @@ describe('RemoteCommandService', () => {
     }));
   });
 
+  it('업데이트 처리 중 예외가 나면 failed로 닫지 않고 sent로 되돌려 재시도 가능하게 둔다', async () => {
+    const updateQueue = vi.fn(() => createObservable({ replaced: 1 }));
+    const upsertHistory = vi.fn(() => createObservable({ inserted: 1 }));
+    const updateHistory = vi.fn(() => createObservable({ replaced: 1 }));
+    const command = {
+      id: 'cmd-download-fail',
+      PlayerIds: ['player-guid-1'],
+      Command: 'updatelist',
+      payloadJson: encodePayload({
+        PageList: { PLI_PageListName: 'remote-list' },
+        Pages: [{
+          PIC_PageName: 'page',
+          PIC_PlaytimeSecond: 10,
+          PIC_Elements: [],
+        }],
+      }),
+      Status: { 'player-guid-1': 'pending' },
+      CreatedAt: '2026-06-22 09:00:00',
+    };
+    const horizonCollection = vi.fn((name: string) => {
+      if (name === 'CommandQueue') {
+        return {
+          order: vi.fn(() => ({ limit: vi.fn(() => ({ fetch: vi.fn(() => createObservable([command])) })) })),
+          limit: vi.fn(() => ({ fetch: vi.fn(() => createObservable([command])) })),
+          find: vi.fn(() => ({ fetch: vi.fn(() => createObservable(command)) })),
+          update: updateQueue,
+        };
+      }
+
+      return {
+        upsert: upsertHistory,
+        update: updateHistory,
+      };
+    });
+    horizonFactory.mockReturnValue(Object.assign(horizonCollection, { disconnect: vi.fn() }));
+    const onUpdateList = vi.fn(async () => {
+      throw new Error('download failed');
+    });
+    const service = new RemoteCommandService({
+      managerAddress: 'turtlesrv.ddns.net',
+      playerGuid: 'player-guid-1',
+      playerName: 'tizen',
+      onUpdateList,
+      onCheck: vi.fn(async () => true),
+      onGetMac: vi.fn(async () => true),
+      onReboot: vi.fn(async () => true),
+      onPowerOff: vi.fn(async () => true),
+    });
+
+    await service.checkNow();
+
+    expect(updateHistory).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'cmd-download-fail',
+      status: 'failed',
+      errorCode: 'COMMAND_EXCEPTION',
+    }));
+    expect(updateQueue).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'cmd-download-fail',
+      Status: {
+        'player-guid-1': 'sent',
+      },
+    }));
+    expect(updateQueue).not.toHaveBeenCalledWith(expect.objectContaining({
+      id: 'cmd-download-fail',
+      Status: {
+        'player-guid-1': 'failed',
+      },
+    }));
+  });
+
+  it('여러 업데이트 명령이 있으면 최신 명령을 먼저 처리한다', async () => {
+    const updateQueue = vi.fn(() => createObservable({ replaced: 1 }));
+    const upsertHistory = vi.fn(() => createObservable({ inserted: 1 }));
+    const updateHistory = vi.fn(() => createObservable({ replaced: 1 }));
+    const oldCommand = {
+      id: 'cmd-old',
+      PlayerIds: ['player-guid-1'],
+      Command: 'updatelist',
+      payloadJson: encodePayload({
+        PageList: { PLI_PageListName: 'old-list' },
+        Pages: [{ PIC_PageName: 'old', PIC_PlaytimeSecond: 10, PIC_Elements: [] }],
+      }),
+      Status: { 'player-guid-1': 'pending' },
+      CreatedAt: '2026-06-22 09:00:00',
+    };
+    const latestCommand = {
+      id: 'cmd-latest',
+      PlayerIds: ['player-guid-1'],
+      Command: 'updatelist',
+      payloadJson: encodePayload({
+        PageList: { PLI_PageListName: 'latest-list' },
+        Pages: [{ PIC_PageName: 'latest', PIC_PlaytimeSecond: 10, PIC_Elements: [] }],
+      }),
+      Status: { 'player-guid-1': 'pending' },
+      CreatedAt: '2026-06-22 09:05:00',
+    };
+    const horizonCollection = vi.fn((name: string) => {
+      if (name === 'CommandQueue') {
+        return {
+          order: vi.fn(() => ({ limit: vi.fn(() => ({ fetch: vi.fn(() => createObservable([oldCommand, latestCommand])) })) })),
+          limit: vi.fn(() => ({ fetch: vi.fn(() => createObservable([oldCommand, latestCommand])) })),
+          find: vi.fn((id: string) => ({ fetch: vi.fn(() => createObservable(id === 'cmd-latest' ? latestCommand : oldCommand)) })),
+          update: updateQueue,
+        };
+      }
+
+      return {
+        upsert: upsertHistory,
+        update: updateHistory,
+      };
+    });
+    horizonFactory.mockReturnValue(Object.assign(horizonCollection, { disconnect: vi.fn() }));
+    const onUpdateList = vi.fn(async () => true);
+    const service = new RemoteCommandService({
+      managerAddress: 'turtlesrv.ddns.net',
+      playerGuid: 'player-guid-1',
+      playerName: 'tizen',
+      onUpdateList,
+      onCheck: vi.fn(async () => true),
+      onGetMac: vi.fn(async () => true),
+      onReboot: vi.fn(async () => true),
+      onPowerOff: vi.fn(async () => true),
+    });
+
+    await service.checkNow();
+
+    expect(onUpdateList).toHaveBeenCalledWith(expect.objectContaining({
+      PageList: { PLI_PageListName: 'latest-list' },
+    }), false, 'cmd-latest');
+  });
+
   it('SignalR CommandQueue envelope도 같은 처리 경로로 ack한다', async () => {
     const updateQueue = vi.fn(() => createObservable({ replaced: 1 }));
     const upsertHistory = vi.fn(() => createObservable({ inserted: 1 }));
@@ -282,6 +413,81 @@ describe('RemoteCommandService', () => {
     }));
     expect(updateQueue).toHaveBeenCalledWith(expect.objectContaining({
       id: 'cmd-signalr-list',
+      Status: {
+        'player-guid-1': 'ack',
+      },
+    }));
+  });
+
+  it('교체된 SignalR CommandQueue 알림이 오면 최신 pending 명령을 처리한다', async () => {
+    const updateQueue = vi.fn(() => createObservable({ replaced: 1 }));
+    const upsertHistory = vi.fn(() => createObservable({ inserted: 1 }));
+    const updateHistory = vi.fn(() => createObservable({ replaced: 1 }));
+    const replacedCommand = {
+      id: 'cmd-replaced',
+      PlayerIds: ['player-guid-1'],
+      Command: 'updatelist',
+      payloadJson: encodePayload({
+        PageList: { PLI_PageListName: 'old-list' },
+        Pages: [{ PIC_PageName: 'old', PIC_PlaytimeSecond: 10, PIC_Elements: [] }],
+      }),
+      Status: { 'player-guid-1': 'sent' },
+      CreatedAt: '2026-06-22 09:00:00',
+      ReplacedBy: 'cmd-latest',
+    };
+    const latestCommand = {
+      id: 'cmd-latest',
+      PlayerIds: ['player-guid-1'],
+      Command: 'updatelist',
+      payloadJson: encodePayload({
+        PageList: { PLI_PageListName: 'latest-list' },
+        Pages: [{ PIC_PageName: 'latest', PIC_PlaytimeSecond: 10, PIC_Elements: [] }],
+      }),
+      Status: { 'player-guid-1': 'pending' },
+      CreatedAt: '2026-06-22 09:05:00',
+    };
+    const horizonCollection = vi.fn((name: string) => {
+      if (name === 'CommandQueue') {
+        return {
+          order: vi.fn(() => ({ limit: vi.fn(() => ({ fetch: vi.fn(() => createObservable([replacedCommand, latestCommand])) })) })),
+          limit: vi.fn(() => ({ fetch: vi.fn(() => createObservable([replacedCommand, latestCommand])) })),
+          find: vi.fn((id: string) => ({ fetch: vi.fn(() => createObservable(id === 'cmd-replaced' ? replacedCommand : latestCommand)) })),
+          update: updateQueue,
+        };
+      }
+
+      return {
+        upsert: upsertHistory,
+        update: updateHistory,
+      };
+    });
+    horizonFactory.mockReturnValue(Object.assign(horizonCollection, { disconnect: vi.fn() }));
+    const onUpdateList = vi.fn(async () => true);
+    const service = new RemoteCommandService({
+      managerAddress: 'turtlesrv.ddns.net',
+      playerGuid: 'player-guid-1',
+      playerName: 'tizen',
+      onUpdateList,
+      onCheck: vi.fn(async () => true),
+      onGetMac: vi.fn(async () => true),
+      onReboot: vi.fn(async () => true),
+      onPowerOff: vi.fn(async () => true),
+    });
+
+    service.handleSignalRMessage({
+      dataType: 'CommandQueue',
+      data: {
+        commandId: 'cmd-replaced',
+        command: 'updatelist',
+      },
+    });
+    await vi.waitFor(() => expect(onUpdateList).toHaveBeenCalledTimes(1));
+
+    expect(onUpdateList).toHaveBeenCalledWith(expect.objectContaining({
+      PageList: { PLI_PageListName: 'latest-list' },
+    }), false, 'cmd-latest');
+    expect(updateQueue).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'cmd-latest',
       Status: {
         'player-guid-1': 'ack',
       },

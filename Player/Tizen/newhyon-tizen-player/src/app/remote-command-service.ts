@@ -1,5 +1,6 @@
 import {
   CommandQueueClient,
+  isCurrentCommand,
   readCommand,
   readPayloadBase64,
   type CommandQueueEntry,
@@ -94,6 +95,9 @@ export class RemoteCommandService {
         await this.commandQueueClient.markAck(entry.id, playerGuid);
         this.options.onStatus?.('ack', entry.id);
         runAfterAck(result.afterAck, this.options.onStatus);
+      } else if (shouldRetryCommand(readCommand(entry), result)) {
+        await this.commandQueueClient.markRetry(entry.id, playerGuid);
+        this.options.onStatus?.('retry', `${entry.id}:${result.errorCode ?? 'COMMAND_FAILED'}`);
       } else {
         await this.commandQueueClient.markFailed(entry.id, playerGuid);
         this.options.onStatus?.('failed', `${entry.id}:${result.errorCode ?? 'COMMAND_FAILED'}`);
@@ -143,7 +147,10 @@ export class RemoteCommandService {
         return;
       }
 
-      const queueEntry = commandId ? await this.commandQueueClient.fetchCommandById(commandId) : null;
+      const queueEntry = commandId ? await this.resolveCurrentCommandEntry(commandId) : null;
+      if (commandId && !queueEntry) {
+        return;
+      }
       if (queueEntry?.id) {
         await this.commandQueueClient.markAttempt(queueEntry.id);
       }
@@ -163,17 +170,21 @@ export class RemoteCommandService {
           readEnvelopeBoolean(envelope, 'isUrgent'),
           commandId || null,
         );
-      if (!commandId) {
+      const statusCommandId = queueEntry?.id ?? commandId;
+      if (!statusCommandId) {
         return;
       }
 
       if (result.handled) {
-        await this.commandQueueClient.markAck(commandId, this.options.playerGuid);
-        this.options.onStatus?.('ack', commandId);
+        await this.commandQueueClient.markAck(statusCommandId, this.options.playerGuid);
+        this.options.onStatus?.('ack', statusCommandId);
         runAfterAck(result.afterAck, this.options.onStatus);
+      } else if (shouldRetryCommand(queueEntry ? readCommand(queueEntry) : command, result)) {
+        await this.commandQueueClient.markRetry(statusCommandId, this.options.playerGuid);
+        this.options.onStatus?.('retry', `${statusCommandId}:${result.errorCode ?? 'COMMAND_FAILED'}`);
       } else {
-        await this.commandQueueClient.markFailed(commandId, this.options.playerGuid);
-        this.options.onStatus?.('failed', `${commandId}:${result.errorCode ?? 'COMMAND_FAILED'}`);
+        await this.commandQueueClient.markFailed(statusCommandId, this.options.playerGuid);
+        this.options.onStatus?.('failed', `${statusCommandId}:${result.errorCode ?? 'COMMAND_FAILED'}`);
       }
     });
   }
@@ -312,6 +323,15 @@ export class RemoteCommandService {
     this.processing = next.catch(() => undefined);
     await next;
   }
+
+  private async resolveCurrentCommandEntry(commandId: string): Promise<CommandQueueEntry | null> {
+    const queueEntry = await this.commandQueueClient.fetchCommandById(commandId);
+    if (queueEntry && isCurrentCommand(queueEntry)) {
+      return queueEntry;
+    }
+
+    return this.commandQueueClient.fetchNextPending(this.options.playerGuid);
+  }
 }
 
 function toResult(result: RemoteCommandCallbackResult): CommandHandleResult {
@@ -332,6 +352,14 @@ function runAfterAck(afterAck: (() => void) | undefined, onStatus: RemoteCommand
   } catch (error) {
     onStatus?.('post-ack-failed', formatError(error));
   }
+}
+
+function shouldRetryCommand(command: string, result: CommandHandleResult): boolean {
+  if (result.handled || result.errorCode !== 'COMMAND_EXCEPTION') {
+    return false;
+  }
+
+  return command.trim().toLowerCase().startsWith('update');
 }
 
 function formatError(error: unknown): string {

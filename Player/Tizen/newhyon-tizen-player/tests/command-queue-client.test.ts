@@ -25,7 +25,7 @@ describe('CommandQueueClient', () => {
     horizonFactory.mockReset();
   });
 
-  it('플레이어 대상 pending 및 오래된 sent 명령만 CreatedAt 순서로 가져온다', async () => {
+  it('플레이어 대상 최신 pending 및 오래된 sent 명령만 가져오고 교체/만료 명령은 제외한다', async () => {
     const rows = [
       {
         id: 'cmd-new-sent',
@@ -34,6 +34,29 @@ describe('CommandQueueClient', () => {
         Status: { 'player-guid-1': 'sent' },
         CreatedAt: '2026-06-22 10:00:00',
         UpdatedAt: new Date().toISOString(),
+      },
+      {
+        id: 'cmd-replaced',
+        PlayerIds: ['player-guid-1'],
+        Command: 'updatelist',
+        Status: { 'player-guid-1': 'pending' },
+        CreatedAt: '2026-06-22 11:00:00',
+        ReplacedBy: 'cmd-latest',
+      },
+      {
+        id: 'cmd-expired',
+        PlayerIds: ['player-guid-1'],
+        Command: 'updatelist',
+        Status: { 'player-guid-1': 'pending' },
+        CreatedAt: '2026-06-22 10:30:00',
+        ExpiresAt: '2026-06-22 10:31:00',
+      },
+      {
+        id: 'cmd-latest',
+        PlayerIds: ['player-guid-1'],
+        Command: 'updatelist',
+        Status: { 'player-guid-1': 'pending' },
+        CreatedAt: '2026-06-22 10:15:00',
       },
       {
         id: 'cmd-pending',
@@ -70,7 +93,7 @@ describe('CommandQueueClient', () => {
     const client = new CommandQueueClient('turtlesrv.ddns.net');
     const commands = await client.fetchPendingCommands('player-guid-1');
 
-    expect(commands.map((entry) => entry.id)).toEqual(['cmd-old-sent', 'cmd-pending']);
+    expect(commands.map((entry) => entry.id)).toEqual(['cmd-latest', 'cmd-pending', 'cmd-old-sent']);
   });
 
   it('플레이어별 Status를 ack로 갱신한다', async () => {

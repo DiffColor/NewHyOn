@@ -3,9 +3,8 @@ import type { ContentsInfoClass, ElementInfoClass, PageInfoClass, PlayerManifest
 const DOWNLOAD_ROOT = 'downloads';
 const FTP_DOWNLOADER_APP_ID = 'NewHyOnFtpD01.Downloader';
 const FTP_DOWNLOAD_OPERATION = 'http://turtlelab.co.kr/appcontrol/newhyon/ftp-download';
-const IMAGE_OPTIMIZATION_QUALITY = 0.86;
 const FTP_DOWNLOAD_TIMEOUT_MS = 60000;
-const IMAGE_OPTIMIZATION_LOAD_TIMEOUT_MS = 8000;
+const TIZEN_DOWNLOAD_TIMEOUT_MS = 60000;
 
 export interface ContentCacheProgress {
   readonly completed: number;
@@ -25,15 +24,6 @@ interface DownloadTarget {
   readonly ftpSource?: FtpDownloadSource;
   readonly fileName: string;
   readonly virtualPath: string;
-  readonly optimizedImageVirtualPath?: string;
-  readonly imageOptimization?: ImageOptimizationTarget;
-}
-
-interface ImageOptimizationTarget {
-  readonly width: number;
-  readonly height: number;
-  readonly mimeType: 'image/jpeg' | 'image/png';
-  readonly extension: '.jpg' | '.png';
 }
 
 export interface FtpContentSource {
@@ -67,10 +57,8 @@ export async function cacheRemoteManifestContent(
           continue;
         }
 
-        const imageOptimization = resolveImageOptimizationTarget(content, page, element);
-        const target = buildDownloadTarget(source, content, options.cacheNamespace, imageOptimization);
+        const target = buildDownloadTarget(source, content, options.cacheNamespace);
         const downloadedPath = await downloadToTizenStorage(target);
-        const virtualPath = await optimizeDownloadedImageForDisplay(downloadedPath, target);
         completed += 1;
         options.onProgress?.({
           completed,
@@ -80,8 +68,8 @@ export async function cacheRemoteManifestContent(
 
         contents.push({
           ...content,
-          CIF_FileFullPath: virtualPath,
-          CIF_RelativePath: virtualPath,
+          CIF_FileFullPath: downloadedPath,
+          CIF_RelativePath: downloadedPath,
           CIF_FileExist: true,
         });
       }
@@ -201,7 +189,6 @@ function buildDownloadTarget(
   source: string | FtpDownloadSource,
   content: ContentsInfoClass,
   cacheNamespace: string | undefined,
-  imageOptimization: ImageOptimizationTarget | null = null,
 ): DownloadTarget {
   const sourceKeyInput = typeof source === 'string' ? source : [
     source.host,
@@ -225,17 +212,12 @@ function buildDownloadTarget(
   const sourceKey = stableHash(sourceKeyInput);
   const namespacePrefix = buildCacheNamespacePrefix(cacheNamespace);
   const fileName = `${namespacePrefix}${baseName}-${sourceKey}${extension}`;
-  const optimizedImageVirtualPath = imageOptimization
-    ? `${DOWNLOAD_ROOT}/${namespacePrefix}${baseName}-${sourceKey}-display-${imageOptimization.width}x${imageOptimization.height}${imageOptimization.extension}`
-    : undefined;
 
   return {
     sourceUrl: typeof source === 'string' ? source : '',
     ftpSource: typeof source === 'string' ? undefined : source,
     fileName,
     virtualPath: `${DOWNLOAD_ROOT}/${fileName}`,
-    optimizedImageVirtualPath,
-    imageOptimization: imageOptimization ?? undefined,
   };
 }
 
@@ -296,14 +278,34 @@ function downloadToTizenStorage(target: DownloadTarget): Promise<string> {
 
   return new Promise((resolve, reject) => {
     const request = new DownloadRequest(target.sourceUrl, DOWNLOAD_ROOT, target.fileName, 'ALL');
-    download.start(request, {
+    let settled = false;
+    let downloadId = 0;
+    const settle = (callback: () => void) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      window.clearTimeout(timeoutId);
+      callback();
+    };
+    const timeoutId = window.setTimeout(() => {
+      if (downloadId > 0) {
+        download.cancel?.(downloadId);
+      }
+      settle(() => reject(new Error(
+        `콘텐츠 다운로드 시간 초과: ${target.fileName} (${TIZEN_DOWNLOAD_TIMEOUT_MS}ms; url=${sanitizeDownloadUrl(target.sourceUrl)})`,
+      )));
+    }, TIZEN_DOWNLOAD_TIMEOUT_MS);
+
+    downloadId = download.start(request, {
       oncompleted: (_downloadId, path) => {
-        resolve(normalizeCompletedPath(path, target));
+        settle(() => resolve(normalizeCompletedPath(path, target)));
       },
       onfailed: (_downloadId, error) => {
-        reject(new Error(
+        settle(() => reject(new Error(
           `콘텐츠 다운로드 실패: ${target.fileName} (${formatDownloadError(error)}; url=${sanitizeDownloadUrl(target.sourceUrl)})`,
-        ));
+        )));
       },
     });
   });
@@ -315,186 +317,11 @@ function resolveCachedVirtualPath(target: DownloadTarget): string | null {
     return null;
   }
 
-  if (target.optimizedImageVirtualPath && pathExists(target.optimizedImageVirtualPath)) {
-    return target.optimizedImageVirtualPath;
-  }
-
   if (pathExists(target.virtualPath)) {
     return target.virtualPath;
   }
 
   return null;
-}
-
-async function optimizeDownloadedImageForDisplay(downloadedPath: string, target: DownloadTarget): Promise<string> {
-  const optimization = target.imageOptimization;
-  if (!optimization || downloadedPath === target.optimizedImageVirtualPath) {
-    return downloadedPath;
-  }
-
-  const optimizedPath = target.optimizedImageVirtualPath;
-  const filesystem = window.tizen?.filesystem;
-  if (!optimizedPath || !filesystem?.toURI || !filesystem.openFile) {
-    return downloadedPath;
-  }
-
-  const sourceUri = filesystem.toURI(downloadedPath);
-  let image: HTMLImageElement;
-  try {
-    image = await loadImageElement(sourceUri, IMAGE_OPTIMIZATION_LOAD_TIMEOUT_MS);
-  } catch (error) {
-    console.warn(`[download] 이미지 최적화 생략: ${downloadedPath} (${formatDownloadError(error)})`);
-    return downloadedPath;
-  }
-  const outputSize = calculateOptimizedImageSize(
-    image.naturalWidth || image.width,
-    image.naturalHeight || image.height,
-    optimization.width,
-    optimization.height,
-  );
-  if (!outputSize) {
-    return downloadedPath;
-  }
-
-  const canvas = document.createElement('canvas');
-  canvas.width = outputSize.width;
-  canvas.height = outputSize.height;
-  const context = canvas.getContext('2d', { alpha: optimization.mimeType === 'image/png' });
-  if (!context) {
-    return downloadedPath;
-  }
-
-  context.drawImage(image, 0, 0, outputSize.width, outputSize.height);
-  const blob = await canvasToBlob(canvas, optimization.mimeType, IMAGE_OPTIMIZATION_QUALITY);
-  await writeBlobToTizenStorage(optimizedPath, blob);
-  console.info(`[download] 이미지 최적화 완료: ${downloadedPath} -> ${optimizedPath} ${image.naturalWidth}x${image.naturalHeight} => ${outputSize.width}x${outputSize.height}`);
-  return optimizedPath;
-}
-
-function resolveImageOptimizationTarget(
-  content: ContentsInfoClass,
-  page: PageInfoClass,
-  element: ElementInfoClass,
-): ImageOptimizationTarget | null {
-  if (String(content.CIF_ContentType).toLowerCase() !== 'image') {
-    return null;
-  }
-
-  const extension = readExtension(content.CIF_FileName);
-  if (!isOptimizableImageExtension(extension)) {
-    return null;
-  }
-
-  const screenWidth = Math.max(1, Math.round(window.screen?.width || window.innerWidth || page.PIC_CanvasWidth || 1920));
-  const screenHeight = Math.max(1, Math.round(window.screen?.height || window.innerHeight || page.PIC_CanvasHeight || 1080));
-  const canvasWidth = Math.max(1, page.PIC_CanvasWidth || screenWidth);
-  const canvasHeight = Math.max(1, page.PIC_CanvasHeight || screenHeight);
-  const targetWidth = Math.max(1, Math.ceil((Math.max(1, element.EIF_Width) / canvasWidth) * screenWidth));
-  const targetHeight = Math.max(1, Math.ceil((Math.max(1, element.EIF_Height) / canvasHeight) * screenHeight));
-  const png = extension === '.png';
-  return {
-    width: targetWidth,
-    height: targetHeight,
-    mimeType: png ? 'image/png' : 'image/jpeg',
-    extension: png ? '.png' : '.jpg',
-  };
-}
-
-function isOptimizableImageExtension(extension: string): boolean {
-  return extension === '.jpg' || extension === '.jpeg' || extension === '.png' || extension === '.bmp';
-}
-
-function calculateOptimizedImageSize(
-  naturalWidth: number,
-  naturalHeight: number,
-  targetWidth: number,
-  targetHeight: number,
-): { width: number; height: number } | null {
-  if (!Number.isFinite(naturalWidth) || !Number.isFinite(naturalHeight) || naturalWidth <= 0 || naturalHeight <= 0) {
-    return null;
-  }
-
-  if (naturalWidth <= targetWidth && naturalHeight <= targetHeight) {
-    return null;
-  }
-
-  const scale = Math.min(targetWidth / naturalWidth, targetHeight / naturalHeight, 1);
-  return {
-    width: Math.max(1, Math.round(naturalWidth * scale)),
-    height: Math.max(1, Math.round(naturalHeight * scale)),
-  };
-}
-
-function loadImageElement(sourceUri: string, timeoutMs: number): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = document.createElement('img');
-    const timerId = window.setTimeout(() => {
-      image.onload = null;
-      image.onerror = null;
-      reject(new Error(`이미지 최적화 로드 시간 초과: ${sourceUri}`));
-    }, timeoutMs);
-    image.onload = () => {
-      window.clearTimeout(timerId);
-      resolve(image);
-    };
-    image.onerror = () => {
-      window.clearTimeout(timerId);
-      reject(new Error(`이미지 최적화 로드 실패: ${sourceUri}`));
-    };
-    image.src = sourceUri;
-  });
-}
-
-function canvasToBlob(canvas: HTMLCanvasElement, mimeType: string, quality: number): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        reject(new Error('이미지 최적화 blob 생성 실패'));
-        return;
-      }
-
-      resolve(blob);
-    }, mimeType, quality);
-  });
-}
-
-function writeBlobToTizenStorage(virtualPath: string, blob: Blob): Promise<void> {
-  const openFile = window.tizen?.filesystem?.openFile;
-  if (!openFile) {
-    throw new Error('Tizen FileSystem openFile API를 사용할 수 없습니다.');
-  }
-
-  return new Promise((resolve, reject) => {
-    openFile(
-      virtualPath,
-      'w',
-      (file) => {
-        const close = () => {
-          if (file.closeNonBlocking) {
-            file.closeNonBlocking(resolve, reject);
-            return;
-          }
-
-          file.close?.();
-          resolve();
-        };
-        const fail = (error: unknown) => {
-          file.close?.();
-          reject(error);
-        };
-
-        if (file.writeBlobNonBlocking) {
-          file.writeBlobNonBlocking(blob, close, fail);
-          return;
-        }
-
-        file.writeBlob?.(blob);
-        close();
-      },
-      reject,
-      true,
-    );
-  });
 }
 
 function downloadFtpToTizenStorage(target: DownloadTarget): Promise<string> {

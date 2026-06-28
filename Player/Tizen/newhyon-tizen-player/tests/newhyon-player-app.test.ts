@@ -720,7 +720,7 @@ describe('NewHyOnPlayerApp', () => {
     app.destroy();
   });
 
-  it('페이지 만료 전에는 다음 페이지 첫 영상도 미리 준비하고 만료 후 전환한다', async () => {
+  it('페이지 만료 후 다음 페이지 첫 영상으로 전환한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn();
     const players: AVPlayApi[] = [];
@@ -751,17 +751,17 @@ describe('NewHyOnPlayerApp', () => {
     await app.start();
     expect(document.querySelector('#status-page')?.textContent).toContain('first-page');
     expect(play).toHaveBeenCalledTimes(1);
-    expect(getPlayer).toHaveBeenCalledTimes(2);
+    expect(getPlayer).toHaveBeenCalledTimes(4);
     expect(players[0]?.prepareAsync).toHaveBeenCalledTimes(1);
-    expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
+    expect(players[1]?.prepareAsync).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(6499);
     await Promise.resolve();
     expect(document.querySelector('#status-page')?.textContent).toContain('first-page');
     expect(document.querySelectorAll('.slot')).toHaveLength(1);
     expect(play).toHaveBeenCalledTimes(1);
-    expect(getPlayer).toHaveBeenCalledTimes(2);
-    expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
+    expect(getPlayer).toHaveBeenCalledTimes(4);
+    expect(players[1]?.prepareAsync).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(3501);
     await vi.advanceTimersByTimeAsync(64);
@@ -770,7 +770,8 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelector('#status-page')?.textContent).toContain('second-page');
     expect(document.querySelectorAll('.slot')).toHaveLength(1);
     expect(play).toHaveBeenCalledTimes(2);
-    expect(getPlayer).toHaveBeenCalledTimes(2);
+    expect(getPlayer).toHaveBeenCalledTimes(4);
+    expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
     expect(window.NEWHYON_PLAYER_HEALTH?.diagnostics.pageStartCount).toBe(2);
     app.destroy();
   });
@@ -1621,15 +1622,15 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelector('#status-update')?.textContent).toContain('100%');
     expect(window.NEWHYON_PLAYER_HEALTH?.diagnostics.updateProgress).toBe(100);
     expect(play).toHaveBeenCalledTimes(2);
-    expect(getPlayer).toHaveBeenCalledTimes(2);
+    expect(getPlayer).toHaveBeenCalledTimes(4);
     expect(loadRemoteManifest()?.playlistName).toBe('updated-list');
     app.destroy();
   });
 
-  it('surface 재사용 전환은 추가 AVPlay 세션 없이 기존 콘텐츠를 유지하고 업데이트를 적용한다', async () => {
+  it('콘텐츠 전환은 추가 AVPlay 페어 없이 기존 콘텐츠를 유지하고 업데이트를 적용한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn();
-    const initialPlayers = [createPlayer(play), createPlayer(play)];
+    const initialPlayers = [createPlayer(play), createPlayer(play), createPlayer(play), createPlayer(play)];
     const getPlayer = vi.fn(() => initialPlayers.shift() as AVPlayApi);
     window.webapis = createWebApis(createPlayer(play), vi.fn(), { getPlayer });
 
@@ -1704,7 +1705,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelector('#status-update')?.textContent).toContain('완료');
     expect(document.querySelectorAll('.slot')).toHaveLength(1);
     expect(play).toHaveBeenCalledTimes(2);
-    expect(getPlayer).toHaveBeenCalledTimes(2);
+    expect(getPlayer).toHaveBeenCalledTimes(4);
     expect(loadRemoteManifest()?.playlistName).toBe('updated-list');
     app.destroy();
   });
