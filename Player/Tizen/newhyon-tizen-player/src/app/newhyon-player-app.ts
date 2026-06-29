@@ -1575,7 +1575,7 @@ export class NewHyOnPlayerApp {
 
     target.page.slots.forEach((slot, slotIndex) => {
       const item = this.firstPlayableContentItem(slot);
-      if (!item) {
+      if (!item || item.contentType !== 'Image') {
         return;
       }
 
