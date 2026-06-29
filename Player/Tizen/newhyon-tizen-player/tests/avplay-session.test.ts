@@ -399,7 +399,7 @@ describe('AvplaySession', () => {
     expect(playerA.play).toHaveBeenCalledTimes(2);
   });
 
-  it('첫 프레임 대기 옵션은 재생 시간 이벤트 전까지 play 완료를 보류한다', async () => {
+  it('첫 프레임 대기 옵션은 재생 시간이 실제로 증가하기 전까지 play 완료를 보류한다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
     const listenerRef: { current: AVPlayListener | null } = { current: null };
@@ -432,6 +432,11 @@ describe('AvplaySession', () => {
     expect(playerA.play).toHaveBeenCalledTimes(1);
     expect(laneA.style.visibility).toBe('hidden');
     listenerRef.current?.oncurrentplaytime?.(0);
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+    expect(laneA.style.visibility).toBe('hidden');
+
+    listenerRef.current?.oncurrentplaytime?.(16);
     await playPromise;
 
     expect(resolved).toBe(true);
@@ -476,6 +481,8 @@ describe('AvplaySession', () => {
     );
     await Promise.resolve();
 
+    listenerRef.current?.oncurrentplaytime?.(0);
+    await Promise.resolve();
     listenerRef.current?.oncurrentplaytime?.(1);
     await expect(playPromise).resolves.toEqual({ durationMs: null });
 

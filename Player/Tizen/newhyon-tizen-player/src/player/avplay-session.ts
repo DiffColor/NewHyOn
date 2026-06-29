@@ -7,6 +7,8 @@ const DISPLAY_METHOD_CONTAIN = 'PLAYER_DISPLAY_MODE_LETTER_BOX';
 const AVPLAY_BASE_WIDTH = 1920;
 const AVPLAY_BASE_HEIGHT = 1080;
 const FIRST_FRAME_READY_TIMEOUT_MS = 5000;
+const FIRST_FRAME_PRESENTABLE_PLAYTIME_MS = 33;
+const FIRST_FRAME_PRESENTABLE_PLAYTIME_DELTA_MS = 1;
 const STOPPABLE_STATES = new Set(['READY', 'PLAYING', 'PAUSED']);
 const VIDEO_DURATION_MATCH_TOLERANCE_MS = 250;
 const AVPLAY_LAYER_BELOW_SLOT_OFFSET = -1;
@@ -356,12 +358,19 @@ export class AvplaySession {
   }
 
   private createLaneListener(laneIndex: number, firstFrameReady: FirstFrameReadyGate | null): AVPlayListener {
+    let firstFrameObservedPlaytime: number | null = null;
     return {
       onbufferingcomplete: () => {
         this.logger.debug('avplay', `slot ${this.index} lane ${laneIndex + 1} buffering complete`);
       },
       oncurrentplaytime: (currentTime) => {
-        firstFrameReady?.markReady(`currentplaytime=${currentTime}`);
+        const nextObservedPlaytime = this.markFirstPresentableFrameReady(
+          laneIndex,
+          firstFrameReady,
+          currentTime,
+          firstFrameObservedPlaytime,
+        );
+        firstFrameObservedPlaytime = nextObservedPlaytime;
       },
       onstreamcompleted: () => {
         this.logger.info('avplay-trace', `event onstreamcompleted slot ${this.index} lane ${laneIndex + 1} state=${this.laneState(laneIndex)} ${this.traceContext()}`);
@@ -472,6 +481,41 @@ export class AvplaySession {
         resolvePromise?.();
       },
     };
+  }
+
+  private markFirstPresentableFrameReady(
+    laneIndex: number,
+    firstFrameReady: FirstFrameReadyGate | null,
+    currentTime: number,
+    observedPlaytime: number | null,
+  ): number | null {
+    if (!firstFrameReady) {
+      return observedPlaytime;
+    }
+
+    if (!Number.isFinite(currentTime)) {
+      this.logger.debug('avplay', `slot ${this.index} lane ${laneIndex + 1} first frame pending: currentplaytime=${currentTime}`);
+      return observedPlaytime;
+    }
+
+    if (currentTime >= FIRST_FRAME_PRESENTABLE_PLAYTIME_MS) {
+      firstFrameReady.markReady(`currentplaytime=${currentTime}`);
+      return currentTime;
+    }
+
+    if (observedPlaytime === null) {
+      this.logger.debug('avplay', `slot ${this.index} lane ${laneIndex + 1} first frame pending: currentplaytime=${currentTime}`);
+      return currentTime;
+    }
+
+    const playtimeDelta = currentTime - observedPlaytime;
+    if (playtimeDelta >= FIRST_FRAME_PRESENTABLE_PLAYTIME_DELTA_MS) {
+      firstFrameReady.markReady(`currentplaytime=${currentTime} delta=${playtimeDelta}`);
+      return currentTime;
+    }
+
+    this.logger.debug('avplay', `slot ${this.index} lane ${laneIndex + 1} first frame pending: currentplaytime=${currentTime} delta=${playtimeDelta}`);
+    return currentTime;
   }
 
   private currentLane(): AvplayLane | null {

@@ -48,6 +48,7 @@ function createPlayer(play: () => void, onListener?: (listener: AVPlayListener) 
     play: vi.fn(() => {
       play();
       listener?.oncurrentplaytime?.(0);
+      listener?.oncurrentplaytime?.(16);
     }),
     pause: vi.fn(),
     stop: vi.fn(),
