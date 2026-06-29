@@ -11,6 +11,9 @@ const VIDEO_DURATION_MATCH_TOLERANCE_MS = 250;
 const PAGE_END_VIDEO_COMPLETION_GRACE_MS = 2000;
 const IMAGE_MAIN_THREAD_GAP_WARN_MS = 250;
 const PREPARATION_PRIORITY_TOLERANCE_MS = 250;
+const IMAGE_LAYER_BOTTOM = '0';
+const IMAGE_LAYER_TOP = '2';
+const IMAGE_LAYER_PROMOTED = '4';
 
 export interface SlotPlayerTimelineSnapshot {
   readonly slotIndex: number;
@@ -81,8 +84,11 @@ export class SlotPlayer {
     this.currentImage = this.imageA;
     this.standbyImage = this.imageB;
     this.imageA.className = 'slot-image slot-image--visible';
+    this.imageA.style.zIndex = IMAGE_LAYER_TOP;
     this.imageB.className = 'slot-image';
+    this.imageB.style.zIndex = IMAGE_LAYER_BOTTOM;
     this.boundaryImage.className = 'slot-image';
+    this.boundaryImage.style.zIndex = IMAGE_LAYER_BOTTOM;
     this.videoMask.className = 'slot-video-mask';
     this.element.append(this.videoMask, this.imageA, this.imageB, this.boundaryImage);
   }
@@ -220,6 +226,12 @@ export class SlotPlayer {
     this.currentImage.classList.remove('slot-image--prepared');
     this.standbyImage.classList.remove('slot-image--prepared');
     this.boundaryImage.classList.remove('slot-image--prepared');
+    this.currentImage.classList.remove('slot-image--under-video');
+    this.standbyImage.classList.remove('slot-image--under-video');
+    this.boundaryImage.classList.remove('slot-image--under-video');
+    this.currentImage.style.zIndex = IMAGE_LAYER_TOP;
+    this.standbyImage.style.zIndex = IMAGE_LAYER_BOTTOM;
+    this.boundaryImage.style.zIndex = IMAGE_LAYER_BOTTOM;
     this.element.classList.remove('slot--video-active');
     this.failureMessage = null;
   }
@@ -524,18 +536,31 @@ export class SlotPlayer {
       if (item.contentType === 'Image') {
         const hasActiveVideoSurface = this.videoSession !== null;
         const keepPreparedVideo = this.hasPreparedUpcomingVideo();
-        let releaseAfterVisible: Promise<void> | null = null;
+        let videoSurfaceHidden = false;
+        let visiblePaintPromise: Promise<void> = Promise.resolve();
+        const hideActiveVideoSurface = () => {
+          if (!hasActiveVideoSurface || videoSurfaceHidden) {
+            return;
+          }
+
+          this.hideCurrentVideoSurface(keepPreparedVideo);
+          videoSurfaceHidden = true;
+        };
         await this.showImage(item, {
+          onPromoted: hideActiveVideoSurface,
           onVisibleApplied: () => {
             if (!hasActiveVideoSurface) {
               this.element.classList.remove('slot--video-active');
               return;
             }
 
-            this.element.classList.remove('slot--video-active');
-            releaseAfterVisible = this.releaseCurrentVideoSession({
-              deferStopUntilNextFrame: true,
-              keepPrepared: keepPreparedVideo,
+            hideActiveVideoSurface();
+          },
+          onVisiblePaintPromise: (promise) => {
+            visiblePaintPromise = promise.then(() => {
+              if (hasActiveVideoSurface) {
+                this.element.classList.remove('slot--video-active');
+              }
             });
           },
         });
@@ -543,10 +568,9 @@ export class SlotPlayer {
           return false;
         }
         if (hasActiveVideoSurface) {
-          releaseBeforePrepareNext = releaseAfterVisible ?? this.releaseCurrentVideoSession({
-            deferStopUntilNextFrame: true,
+          releaseBeforePrepareNext = visiblePaintPromise.then(() => this.releaseCurrentVideoSession({
             keepPrepared: keepPreparedVideo,
-          });
+          }));
         }
       } else {
         this.element.classList.add('slot--video-active');
@@ -567,7 +591,7 @@ export class SlotPlayer {
         this.videoSession = nextVideoSession;
         this.currentVideoLoopState = null;
         this.updateCurrentVideoLoopState(item, true);
-        this.hideImages();
+        this.hideImages({ preservePreparedBoundaryImage: true });
         if (this.preparedItemIndex === this.itemIndex) {
           this.clearPreparedContent();
         }
@@ -691,6 +715,7 @@ export class SlotPlayer {
     item: SeamlessContentItem,
     options: {
       readonly waitForVisiblePaint?: boolean;
+      readonly onPromoted?: () => void;
       readonly onVisibleApplied?: () => void;
       readonly onVisiblePaintPromise?: (promise: Promise<void>) => void;
     } = {},
@@ -717,23 +742,30 @@ export class SlotPlayer {
     }
 
     const visibleStartedAt = performance.now();
-    previousImage.style.zIndex = '1';
-    image.style.zIndex = '2';
+    image.style.zIndex = IMAGE_LAYER_PROMOTED;
     image.classList.remove('slot-image--prepared');
     image.classList.remove('slot-image--under-video');
     image.classList.add('slot-image--visible');
-    previousImage.classList.remove('slot-image--visible');
-    previousImage.classList.remove('slot-image--prepared');
-    previousImage.classList.remove('slot-image--under-video');
-    previousImage.style.zIndex = '0';
-    image.style.zIndex = '1';
+    this.logImageTiming(item, 'visible promoted', visibleStartedAt, `total=${this.elapsed(showStartedAt)}ms`);
+    if (image.classList.contains('slot-image--visible')) {
+      options.onPromoted?.();
+    }
+    options.onVisibleApplied?.();
+    const normalizeLayer = () => {
+      previousImage.classList.remove('slot-image--visible');
+      previousImage.classList.remove('slot-image--prepared');
+      previousImage.classList.remove('slot-image--under-video');
+      previousImage.style.zIndex = IMAGE_LAYER_BOTTOM;
+      image.style.zIndex = IMAGE_LAYER_TOP;
+      this.logImageTiming(item, 'visible layer normalized', visibleStartedAt, `total=${this.elapsed(showStartedAt)}ms`);
+    };
     this.currentImage = image;
     this.standbyImage = previousImage;
     this.consumePreparedImage(item.id);
     this.consumePreparedBoundaryImage(item.id);
     this.logImageTiming(item, 'visible class applied', visibleStartedAt, `total=${this.elapsed(showStartedAt)}ms`);
-    options.onVisibleApplied?.();
     const visiblePaintPromise = this.waitForPaint().then(() => {
+      normalizeLayer();
       this.logImageTiming(item, 'visible paint', visibleStartedAt, `total=${this.elapsed(showStartedAt)}ms`);
     });
     options.onVisiblePaintPromise?.(visiblePaintPromise);
@@ -787,6 +819,7 @@ export class SlotPlayer {
     }
     this.logImageTiming(item, `decode complete ${reason}`, decodeStartedAt, `total=${this.elapsed(prepareStartedAt)}ms`);
     const preparedClassStartedAt = performance.now();
+    image.style.zIndex = IMAGE_LAYER_BOTTOM;
     image.classList.add('slot-image--prepared');
     if (options.underVideo === true) {
       image.classList.add('slot-image--under-video');
@@ -811,16 +844,27 @@ export class SlotPlayer {
     this.boundaryImage.style.objectFit = objectFit;
   }
 
-  private hideImages(): void {
+  private hideImages(options: { readonly preservePreparedBoundaryImage?: boolean } = {}): void {
     this.imageA.classList.remove('slot-image--visible');
     this.imageB.classList.remove('slot-image--visible');
-    this.boundaryImage.classList.remove('slot-image--visible');
     this.imageA.classList.remove('slot-image--prepared');
     this.imageB.classList.remove('slot-image--prepared');
-    this.boundaryImage.classList.remove('slot-image--prepared');
     this.imageA.classList.remove('slot-image--under-video');
     this.imageB.classList.remove('slot-image--under-video');
+    this.imageA.style.zIndex = IMAGE_LAYER_BOTTOM;
+    this.imageB.style.zIndex = IMAGE_LAYER_BOTTOM;
+    if (options.preservePreparedBoundaryImage === true && this.preparedBoundaryImageId !== null) {
+      this.boundaryImage.classList.remove('slot-image--visible');
+      this.boundaryImage.classList.add('slot-image--prepared');
+      this.boundaryImage.classList.add('slot-image--under-video');
+      this.boundaryImage.style.zIndex = IMAGE_LAYER_BOTTOM;
+      return;
+    }
+
+    this.boundaryImage.classList.remove('slot-image--visible');
+    this.boundaryImage.classList.remove('slot-image--prepared');
     this.boundaryImage.classList.remove('slot-image--under-video');
+    this.boundaryImage.style.zIndex = IMAGE_LAYER_BOTTOM;
   }
 
   private startPassiveItemClock(item: SeamlessContentItem, elapsedMs = 0): void {
@@ -924,7 +968,7 @@ export class SlotPlayer {
       return;
     }
 
-    const nextIndex = this.findNextPlayableIndex(this.itemIndex);
+    const nextIndex = this.resolvePreparedItemIndex();
     const nextItem = nextIndex !== null ? this.slot.items[nextIndex] ?? null : null;
     if (nextItem?.contentType !== 'Image') {
       return;
@@ -1079,7 +1123,7 @@ export class SlotPlayer {
     image.classList.remove('slot-image--visible');
     image.classList.remove('slot-image--prepared');
     image.classList.remove('slot-image--under-video');
-    image.style.zIndex = '0';
+    image.style.zIndex = IMAGE_LAYER_BOTTOM;
   }
 
   private clearPreparedBoundaryImage(itemId?: string): void {
@@ -1096,7 +1140,7 @@ export class SlotPlayer {
     this.boundaryImage.classList.remove('slot-image--visible');
     this.boundaryImage.classList.remove('slot-image--prepared');
     this.boundaryImage.classList.remove('slot-image--under-video');
-    this.boundaryImage.style.zIndex = '0';
+    this.boundaryImage.style.zIndex = IMAGE_LAYER_BOTTOM;
   }
 
   private consumePreparedImage(itemId: string): void {

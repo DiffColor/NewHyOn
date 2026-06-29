@@ -9,6 +9,9 @@ const AVPLAY_BASE_HEIGHT = 1080;
 const FIRST_FRAME_READY_TIMEOUT_MS = 5000;
 const STOPPABLE_STATES = new Set(['READY', 'PLAYING', 'PAUSED']);
 const VIDEO_DURATION_MATCH_TOLERANCE_MS = 250;
+const AVPLAY_LAYER_BELOW_SLOT_OFFSET = -1;
+const AVPLAY_LAYER_HELD_OFFSET = 1;
+const AVPLAY_LAYER_CURRENT_OFFSET = 2;
 
 export interface VideoSessionEvents {
   readonly onEnded: () => void;
@@ -227,12 +230,14 @@ export class AvplaySession {
   hide(): void {
     this.nextOperationId();
     this.logger.info('avplay-trace', `session ${this.index} hide ${this.traceContext()}`);
-    if (this.currentLaneIndex !== null) {
-      this.hideLaneSurface(this.currentLaneIndex, 'hide');
-    }
+    const lanesToHide: Array<{ readonly laneIndex: number; readonly reason: string }> = [];
     if (this.heldLaneIndex !== null && this.heldLaneIndex !== this.currentLaneIndex) {
-      this.hideLaneSurface(this.heldLaneIndex, 'hide-held');
+      lanesToHide.push({ laneIndex: this.heldLaneIndex, reason: 'hide-held' });
     }
+    if (this.currentLaneIndex !== null) {
+      lanesToHide.push({ laneIndex: this.currentLaneIndex, reason: 'hide' });
+    }
+    this.hideLaneSurfaces(lanesToHide);
     this.currentItem = null;
     this.currentEndedHandler = null;
     this.currentLaneIndex = null;
@@ -245,6 +250,9 @@ export class AvplaySession {
   hideCurrentKeepPrepared(options: { readonly deferStopUntilNextFrame?: boolean } = {}): Promise<void> {
     const laneToStop = this.currentLaneIndex;
     this.logger.info('avplay-trace', `session ${this.index} hideCurrentKeepPrepared lane=${laneToStop !== null ? laneToStop + 1 : '-'} ${this.traceContext()}`);
+    if (laneToStop !== null) {
+      this.hideLaneSurface(laneToStop, 'hide-current-keep-prepared');
+    }
     this.currentItem = null;
     this.currentEndedHandler = null;
     this.currentLaneIndex = null;
@@ -711,21 +719,24 @@ export class AvplaySession {
   }
 
   private hideLaneSurface(laneIndex: number, reason: string): void {
-    const lane = this.lanes[laneIndex];
-    const state = this.laneState(laneIndex);
-    lane.objectElement.style.visibility = 'hidden';
-    lane.objectElement.style.left = '0px';
-    lane.objectElement.style.top = '0px';
-    lane.objectElement.style.width = '1px';
-    lane.objectElement.style.height = '1px';
-    if (state !== 'IDLE' && state !== 'READY' && state !== 'PLAYING' && state !== 'PAUSED') {
-      this.logger.info('avplay-trace', `slot ${this.index} lane ${laneIndex + 1} hide rect skipped state=${state} ${this.traceContext()}`);
+    this.hideLaneSurfaces([{ laneIndex, reason }]);
+  }
+
+  private hideLaneSurfaces(lanesToHide: ReadonlyArray<{ readonly laneIndex: number; readonly reason: string }>): void {
+    if (lanesToHide.length === 0) {
       return;
     }
 
-    this.callLaneSafe(laneIndex, 'setDisplayRect.hide', () => {
-      lane.player.setDisplayRect(0, 0, 1, 1);
-    }, reason);
+    lanesToHide.forEach(({ laneIndex }) => {
+      const lane = this.lanes[laneIndex];
+      lane.objectElement.style.visibility = 'hidden';
+      lane.objectElement.setAttribute('aria-hidden', 'true');
+    });
+    lanesToHide.forEach(({ laneIndex, reason }) => {
+      const lane = this.lanes[laneIndex];
+      lane.objectElement.style.zIndex = String(this.avplayLayerBelowSlot());
+      this.logger.info('avplay-trace', `slot ${this.index} lane ${laneIndex + 1} surface hidden lowered ${this.traceContext()}${this.formatTraceDetail(reason)}`);
+    });
   }
 
   private callLane<T>(laneIndex: number, operation: string, callback: () => T, detail = ''): T {
@@ -836,14 +847,19 @@ export class AvplaySession {
     this.lanes.forEach((lane, laneIndex) => {
       const shouldShow = !slotHidden && (laneIndex === this.currentLaneIndex || laneIndex === this.heldLaneIndex);
       if (laneIndex === this.currentLaneIndex) {
-        lane.objectElement.style.zIndex = String(slotZIndex + 2);
+        lane.objectElement.style.zIndex = String(slotZIndex + AVPLAY_LAYER_CURRENT_OFFSET);
       } else if (laneIndex === this.heldLaneIndex) {
-        lane.objectElement.style.zIndex = String(slotZIndex + 1);
+        lane.objectElement.style.zIndex = String(slotZIndex + AVPLAY_LAYER_HELD_OFFSET);
       } else {
-        lane.objectElement.style.zIndex = String(slotZIndex);
+        lane.objectElement.style.zIndex = String(slotZIndex + AVPLAY_LAYER_BELOW_SLOT_OFFSET);
       }
       lane.objectElement.style.visibility = shouldShow ? 'visible' : 'hidden';
+      lane.objectElement.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
     });
+  }
+
+  private avplayLayerBelowSlot(): number {
+    return (this.displayContext?.slot.zIndex ?? 0) + AVPLAY_LAYER_BELOW_SLOT_OFFSET;
   }
 }
 

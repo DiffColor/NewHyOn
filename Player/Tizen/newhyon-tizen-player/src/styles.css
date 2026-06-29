@@ -336,9 +336,12 @@ body {
   visibility: visible;
 }
 
-.slot-image--prepared,
+.slot-image--prepared {
+  opacity: 1;
+}
+
 .slot-image--under-video {
-  opacity: 0;
+  opacity: 1;
 }
 
 .slot-image--visible {
@@ -346,7 +349,8 @@ body {
 }
 
 .slot-video-mask {
-  background: transparent;
+  z-index: 1;
+  background: #000;
 }
 
 .slot--empty {
