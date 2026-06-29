@@ -136,8 +136,9 @@ describe('SlotPlayer', () => {
 
   it('영상 재생 중에는 슬롯 배경이 AVPlay 화면을 가리지 않도록 영상 활성 상태를 표시한다', async () => {
     const element = document.createElement('section');
+    const play = vi.fn(async (..._args: unknown[]) => undefined);
     const session = {
-      play: vi.fn(async () => undefined),
+      play,
       pause: vi.fn(),
       resume: vi.fn(),
       stop: vi.fn(),
@@ -149,6 +150,7 @@ describe('SlotPlayer', () => {
     await slot.start();
 
     expect(element.classList.contains('slot--video-active')).toBe(true);
+    expect(play.mock.calls[0]?.[5]).toMatchObject({ waitForFirstFrame: true });
 
     slot.stop();
     expect(element.classList.contains('slot--video-active')).toBe(false);
@@ -1321,12 +1323,16 @@ describe('SlotPlayer', () => {
       await vi.runAllTicks();
       await syncPromise;
       expect(syncResolved).toBe(true);
-      expect(session.hide).not.toHaveBeenCalled();
+      expect(session.hide).toHaveBeenCalledTimes(1);
+      expect(session.stop).not.toHaveBeenCalled();
       await vi.runAllTicks();
+      expect(callOrder).toEqual(['hide']);
+      await vi.runOnlyPendingTimersAsync();
+      await vi.runOnlyPendingTimersAsync();
       expect(session.stop).toHaveBeenCalledTimes(1);
       expect(release).toHaveBeenCalledWith(session);
       expect(slot.snapshot()).toContain('second.png (IMAGE)');
-      expect(callOrder).toEqual(['stop']);
+      expect(callOrder).toEqual(['hide', 'stop']);
     } finally {
       if (descriptor) {
         Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
@@ -1524,11 +1530,12 @@ describe('SlotPlayer', () => {
 
       expect(slot.snapshot()).toContain('second.png (IMAGE)');
       expect(session.prepare).not.toHaveBeenCalled();
+      expect(callOrder).toEqual(['hide']);
       await vi.runOnlyPendingTimersAsync();
       await vi.runOnlyPendingTimersAsync();
       await vi.runAllTicks();
       expect(session.prepare).toHaveBeenCalledTimes(1);
-      expect(callOrder).toEqual(['stop', 'prepare']);
+      expect(callOrder).toEqual(['hide', 'stop', 'prepare']);
     } finally {
       if (descriptor) {
         Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);

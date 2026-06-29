@@ -242,7 +242,7 @@ export class AvplaySession {
     this.updateObjectVisibility();
   }
 
-  hideCurrentKeepPrepared(): Promise<void> {
+  hideCurrentKeepPrepared(options: { readonly deferStopUntilNextFrame?: boolean } = {}): Promise<void> {
     const laneToStop = this.currentLaneIndex;
     this.logger.info('avplay-trace', `session ${this.index} hideCurrentKeepPrepared lane=${laneToStop !== null ? laneToStop + 1 : '-'} ${this.traceContext()}`);
     this.currentItem = null;
@@ -251,8 +251,14 @@ export class AvplaySession {
     this.heldLaneIndex = null;
     this.updateObjectVisibility();
     if (laneToStop !== null && this.preparedLane?.laneIndex !== laneToStop) {
-      this.stopLane(laneToStop);
-      this.closeLane(laneToStop);
+      const stopCurrentLane = () => {
+        this.stopLane(laneToStop);
+        this.closeLane(laneToStop);
+      };
+      if (options.deferStopUntilNextFrame === true) {
+        return this.afterNextFrame(stopCurrentLane);
+      }
+      stopCurrentLane();
     }
     return Promise.resolve();
   }
@@ -639,6 +645,17 @@ export class AvplaySession {
     }
 
     this.freezeAndStopLane(this.heldLaneIndex);
+  }
+
+  private afterNextFrame(action: () => void): Promise<void> {
+    return new Promise((resolve) => {
+      window.requestAnimationFrame(() => {
+        window.setTimeout(() => {
+          action();
+          resolve();
+        }, 0);
+      });
+    });
   }
 
   private stopLane(laneIndex: number): void {

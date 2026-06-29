@@ -48,7 +48,9 @@ function createManifest(): PlayerManifest {
 
 describe('cacheRemoteManifestContent', () => {
   beforeEach(() => {
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    window.localStorage.clear();
     window.tizen = {
       filesystem: {
         toURI: (path) => `file:///opt/usr/home/owner/content/${path}`,
@@ -163,7 +165,7 @@ describe('cacheRemoteManifestContent', () => {
       .toMatch(/^downloads\/content-guid-1-/);
   });
 
-  it('최적화 산출물만 남아 있으면 다운로드 완료 캐시로 간주하지 않는다', async () => {
+  it('HTTP 이미지는 Contents/tizen 리사이즈 이미지를 먼저 받아 같은 로컬 캐시 파일명으로 저장한다', async () => {
     const manifest = createManifest();
     manifest.pages[0]!.PIC_Elements![0]!.EIF_ContentsInfoClassList = [
       {
@@ -179,21 +181,31 @@ describe('cacheRemoteManifestContent', () => {
       ...window.tizen,
       filesystem: {
         toURI: (path) => `file:///opt/usr/home/owner/content/${path}`,
-        pathExists: (path) => path.includes('-display-1920x1080.'),
+        pathExists: () => false,
       },
       download: {
-        start: vi.fn((_request, callback) => {
-          callback?.oncompleted?.(1, 'downloads/image-guid-1-source.jpg');
+        start: vi.fn((request, callback) => {
+          callback?.oncompleted?.(1, `downloads/${request.fileName}`);
           return 1;
         }),
       },
     };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, {
+      status: 200,
+      headers: { 'content-length': '12345' },
+    })));
 
     const cached = await cacheRemoteManifestContent(manifest);
+    const request = vi.mocked(window.tizen!.DownloadRequest!).mock.calls[0];
 
+    expect(fetch).toHaveBeenCalledWith('https://cdn.example.com/Contents/tizen/hero.jpg', {
+      method: 'HEAD',
+      cache: 'no-store',
+    });
+    expect(request?.[0]).toBe('https://cdn.example.com/Contents/tizen/hero.jpg');
     expect(window.tizen?.download?.start).toHaveBeenCalledTimes(1);
     expect(cached.pages[0]?.PIC_Elements?.[0]?.EIF_ContentsInfoClassList?.[0]?.CIF_FileFullPath)
-      .toBe('downloads/image-guid-1-source.jpg');
+      .toMatch(/^downloads\/image-guid-1-/);
   });
 
   it('업데이트 네임스페이스가 있으면 기존 재생 파일과 다른 캐시 파일명으로 다운로드한다', async () => {
@@ -213,7 +225,83 @@ describe('cacheRemoteManifestContent', () => {
     expect(request?.[2]).toMatch(/^cmd-1-[0-9a-f]{8}-content-guid-1-/);
   });
 
-  it('원격 이미지는 다운로드 단계에서 최적화하지 않고 원본 캐시 경로로 manifest를 바꾼다', async () => {
+  it('리사이즈 원격 크기와 저장된 리사이즈 캐시 크기가 같으면 다운로드를 건너뛴다', async () => {
+    const manifest = createManifest();
+    manifest.pages[0]!.PIC_Elements![0]!.EIF_ContentsInfoClassList = [
+      {
+        CIF_FileName: 'hero.jpg',
+        CIF_FileFullPath: 'https://cdn.example.com/media/hero.jpg',
+        CIF_ContentType: 'Image',
+        CIF_PlayMinute: '00',
+        CIF_PlaySec: '05',
+        CIF_StrGUID: 'image-guid-1',
+      },
+    ];
+    window.tizen = {
+      ...window.tizen,
+      filesystem: {
+        toURI: (path) => `file:///opt/usr/home/owner/content/${path}`,
+        pathExists: (path) => path.startsWith('downloads/image-guid-1-'),
+      },
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, {
+      status: 200,
+      headers: { 'content-length': '12345' },
+    })));
+    window.localStorage.setItem(
+      'newhyon-tizen-player.tizen-image-cache.v1',
+      JSON.stringify({ 'downloads/image-guid-1-f5607053.jpg': { size: 12345 } }),
+    );
+
+    const cached = await cacheRemoteManifestContent(manifest);
+
+    expect(window.tizen?.download?.start).not.toHaveBeenCalled();
+    expect(cached.pages[0]?.PIC_Elements?.[0]?.EIF_ContentsInfoClassList?.[0]?.CIF_FileFullPath)
+      .toBe('downloads/image-guid-1-f5607053.jpg');
+  });
+
+  it('같은 로컬 캐시 파일명이 있어도 리사이즈 원격 크기가 다르면 다시 다운로드해 교체한다', async () => {
+    const manifest = createManifest();
+    manifest.pages[0]!.PIC_Elements![0]!.EIF_ContentsInfoClassList = [
+      {
+        CIF_FileName: 'hero.jpg',
+        CIF_FileFullPath: 'https://cdn.example.com/media/hero.jpg',
+        CIF_ContentType: 'Image',
+        CIF_PlayMinute: '00',
+        CIF_PlaySec: '05',
+        CIF_StrGUID: 'image-guid-1',
+      },
+    ];
+    window.tizen = {
+      ...window.tizen,
+      filesystem: {
+        toURI: (path) => `file:///opt/usr/home/owner/content/${path}`,
+        pathExists: (path) => path.startsWith('downloads/image-guid-1-'),
+      },
+      download: {
+        start: vi.fn((request, callback) => {
+          callback?.oncompleted?.(1, `downloads/${request.fileName}`);
+          return 1;
+        }),
+      },
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, {
+      status: 200,
+      headers: { 'content-length': '12345' },
+    })));
+    window.localStorage.setItem(
+      'newhyon-tizen-player.tizen-image-cache.v1',
+      JSON.stringify({ 'downloads/image-guid-1-f5607053.jpg': { size: 54321 } }),
+    );
+
+    await cacheRemoteManifestContent(manifest);
+
+    expect(window.tizen?.download?.start).toHaveBeenCalledTimes(1);
+    expect(window.localStorage.getItem('newhyon-tizen-player.tizen-image-cache.v1'))
+      .toContain('"size":12345');
+  });
+
+  it('리사이즈 이미지가 없으면 원본 캐시 경로로 manifest를 바꾼다', async () => {
     const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext');
     const toBlob = vi.spyOn(HTMLCanvasElement.prototype, 'toBlob');
     const openFile = vi.fn();
@@ -242,10 +330,16 @@ describe('cacheRemoteManifestContent', () => {
         }),
       },
     };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, {
+      status: 404,
+      statusText: 'Not Found',
+    })));
 
     const cached = await cacheRemoteManifestContent(manifest);
     const content = cached.pages[0]?.PIC_Elements?.[0]?.EIF_ContentsInfoClassList?.[0];
+    const request = vi.mocked(window.tizen!.DownloadRequest!).mock.calls[0];
 
+    expect(request?.[0]).toBe('https://cdn.example.com/media/hero.jpg');
     expect(content?.CIF_FileFullPath).toBe('downloads/image-guid-1-source.jpg');
     expect(content?.CIF_RelativePath).toBe('downloads/image-guid-1-source.jpg');
     expect(openFile).not.toHaveBeenCalled();

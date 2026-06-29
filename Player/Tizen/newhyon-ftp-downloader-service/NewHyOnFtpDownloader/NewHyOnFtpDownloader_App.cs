@@ -31,12 +31,17 @@ namespace NewHyOnFtpDownloader
                 var userName = ReadExtra(control, "userName");
                 var password = ReadExtra(control, "password");
                 var remotePath = NormalizeRemotePath(ReadExtra(control, "remotePath"));
+                var action = ReadExtra(control, "action");
+                if (string.IsNullOrWhiteSpace(action))
+                {
+                    action = "download";
+                }
                 var fileName = SanitizeFileName(ReadExtra(control, "fileName"));
                 if (string.IsNullOrWhiteSpace(host)
                     || string.IsNullOrWhiteSpace(portText)
                     || string.IsNullOrWhiteSpace(userName)
                     || string.IsNullOrWhiteSpace(remotePath)
-                    || string.IsNullOrWhiteSpace(fileName))
+                    || (action == "download" && string.IsNullOrWhiteSpace(fileName)))
                 {
                     throw new InvalidOperationException("REQUEST_EMPTY");
                 }
@@ -46,6 +51,20 @@ namespace NewHyOnFtpDownloader
                     || port > 65535)
                 {
                     throw new InvalidOperationException("FTP_PORT_INVALID");
+                }
+
+                if (action == "stat")
+                {
+                    var size = QueryFtpFileSize(host, port, userName, password, remotePath);
+                    reply.ExtraData.Add("status", "ok");
+                    reply.ExtraData.Add("size", size.ToString(CultureInfo.InvariantCulture));
+                    control.ReplyToLaunchRequest(reply, AppControlReplyResult.Succeeded);
+                    return;
+                }
+
+                if (action != "download")
+                {
+                    throw new InvalidOperationException("UNSUPPORTED_ACTION");
                 }
 
                 var sharedDataPath = Current.ApplicationInfo.SharedDataPath;
@@ -67,6 +86,7 @@ namespace NewHyOnFtpDownloader
                 File.Move(tempPath, finalPath);
                 reply.ExtraData.Add("status", "ok");
                 reply.ExtraData.Add("path", new Uri(finalPath).AbsoluteUri);
+                reply.ExtraData.Add("size", new FileInfo(finalPath).Length.ToString(CultureInfo.InvariantCulture));
                 control.ReplyToLaunchRequest(reply, AppControlReplyResult.Succeeded);
             }
             catch (Exception ex)
@@ -149,6 +169,46 @@ namespace NewHyOnFtpDownloader
 
                     ExpectPositive(reader);
                     writer.WriteLine("QUIT");
+                }
+            }
+        }
+
+        private static long QueryFtpFileSize(
+            string host,
+            int port,
+            string userName,
+            string password,
+            string remotePath)
+        {
+            using (var control = new TcpClient())
+            {
+                control.ReceiveTimeout = 30000;
+                control.SendTimeout = 30000;
+                control.Connect(host, port);
+                using (var stream = control.GetStream())
+                using (var reader = new StreamReader(stream, ControlEncoding, false, 4096, true))
+                using (var writer = new StreamWriter(stream, ControlEncoding, 4096, true) { NewLine = "\r\n", AutoFlush = true })
+                {
+                    ExpectPositive(reader);
+                    SendCommand(writer, reader, "USER " + userName);
+                    SendCommand(writer, reader, "PASS " + password);
+                    SendCommand(writer, reader, "TYPE I");
+                    var response = SendCommand(writer, reader, "SIZE " + remotePath);
+                    writer.WriteLine("QUIT");
+
+                    if (response.Length <= 4 || !response.StartsWith("213 ", StringComparison.Ordinal))
+                    {
+                        throw new IOException("FTP_SIZE_UNSUPPORTED:" + response);
+                    }
+
+                    long size;
+                    if (!long.TryParse(response.Substring(4).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out size)
+                        || size <= 0)
+                    {
+                        throw new IOException("FTP_SIZE_PARSE_FAIL:" + response);
+                    }
+
+                    return size;
                 }
             }
         }

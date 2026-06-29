@@ -524,25 +524,29 @@ export class SlotPlayer {
       if (item.contentType === 'Image') {
         const hasActiveVideoSurface = this.videoSession !== null;
         const keepPreparedVideo = this.hasPreparedUpcomingVideo();
-        let visiblePaintPromise: Promise<void> = Promise.resolve();
+        let releaseAfterVisible: Promise<void> | null = null;
         await this.showImage(item, {
-          onVisiblePaintPromise: (promise) => {
-            visiblePaintPromise = promise;
+          onVisibleApplied: () => {
+            if (!hasActiveVideoSurface) {
+              this.element.classList.remove('slot--video-active');
+              return;
+            }
+
+            this.element.classList.remove('slot--video-active');
+            releaseAfterVisible = this.releaseCurrentVideoSession({
+              deferStopUntilNextFrame: true,
+              keepPrepared: keepPreparedVideo,
+            });
           },
         });
         if (!this.isContentGenerationCurrent(generation)) {
           return false;
         }
         if (hasActiveVideoSurface) {
-          releaseBeforePrepareNext = visiblePaintPromise
-            .then(() => this.releaseCurrentVideoSession({
-              keepPrepared: keepPreparedVideo,
-            }))
-            .then(() => {
-              this.element.classList.remove('slot--video-active');
-            });
-        } else {
-          this.element.classList.remove('slot--video-active');
+          releaseBeforePrepareNext = releaseAfterVisible ?? this.releaseCurrentVideoSession({
+            deferStopUntilNextFrame: true,
+            keepPrepared: keepPreparedVideo,
+          });
         }
       } else {
         this.element.classList.add('slot--video-active');
@@ -551,11 +555,10 @@ export class SlotPlayer {
           await this.preparePromise;
           this.logger.info('avplay', `slot ${this.slotIndex + 1} prepared video wait: ${item.name} +${this.elapsed(waitStartedAt)}ms`);
         }
-        const shouldWaitForFirstFrame = this.waitForVideoFirstFrame || this.canAdvanceContent() || this.videoSession !== null;
         const nextVideoSession = this.videoSession ?? this.getVideoSession();
         this.prepareNextImageForCurrentVideo(generation);
         const playbackInfo = await nextVideoSession.play(item, this.slot, this.element, this.preserveAspectRatio, () => this.handleVideoEnded(item.id), {
-          waitForFirstFrame: shouldWaitForFirstFrame,
+          waitForFirstFrame: true,
         });
         if (!this.isContentGenerationCurrent(generation)) {
           return false;
@@ -792,11 +795,13 @@ export class SlotPlayer {
     }
     this.logImageTiming(item, `prepared class applied ${reason}`, preparedClassStartedAt, `total=${this.elapsed(prepareStartedAt)}ms`);
     const stopPreparedPaintProbe = this.startImageMainThreadProbe(item, `prepared paint ${reason}`, preparedClassStartedAt);
-    void this.waitForPaint().then(() => {
+    try {
+      image.getBoundingClientRect();
+      await this.waitForPaint();
       this.logImageTiming(item, `prepared paint ${reason}`, preparedClassStartedAt, `total=${this.elapsed(prepareStartedAt)}ms`);
-    }).finally(() => {
+    } finally {
       stopPreparedPaintProbe();
-    });
+    }
   }
 
   private applyImageDisplayMode(): void {
@@ -1203,7 +1208,9 @@ export class SlotPlayer {
     const session = this.videoSession;
     if (options.keepPrepared === true) {
       this.currentVideoLoopState = null;
-      return session.hideCurrentKeepPrepared?.() ?? Promise.resolve();
+      return session.hideCurrentKeepPrepared?.({
+        deferStopUntilNextFrame: options.deferStopUntilNextFrame,
+      }) ?? Promise.resolve();
     }
 
     this.videoSession = null;

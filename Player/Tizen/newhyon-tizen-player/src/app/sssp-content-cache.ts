@@ -1,10 +1,13 @@
 import type { ContentsInfoClass, ElementInfoClass, PageInfoClass, PlayerManifest } from '../domain/models';
 
 const DOWNLOAD_ROOT = 'downloads';
+const TIZEN_IMAGE_REMOTE_DIR = 'Contents/tizen';
 const FTP_DOWNLOADER_APP_ID = 'NewHyOnFtpD01.Downloader';
 const FTP_DOWNLOAD_OPERATION = 'http://turtlelab.co.kr/appcontrol/newhyon/ftp-download';
 const FTP_DOWNLOAD_TIMEOUT_MS = 60000;
 const TIZEN_DOWNLOAD_TIMEOUT_MS = 60000;
+const TIZEN_IMAGE_CACHE_STATE_KEY = 'newhyon-tizen-player.tizen-image-cache.v1';
+const IMAGE_EXTENSION_SET = new Set(['.jpg', '.jpeg', '.bmp', '.png', '.gif', '.webp']);
 
 export interface ContentCacheProgress {
   readonly completed: number;
@@ -25,6 +28,16 @@ interface DownloadTarget {
   readonly fileName: string;
   readonly virtualPath: string;
 }
+
+interface DownloadOptions {
+  readonly skipCache?: boolean;
+}
+
+interface PreferredTizenImageCacheEntry {
+  readonly size: number;
+}
+
+type PreferredTizenImageCacheState = Record<string, PreferredTizenImageCacheEntry>;
 
 export interface FtpContentSource {
   readonly host: string;
@@ -57,8 +70,7 @@ export async function cacheRemoteManifestContent(
           continue;
         }
 
-        const target = buildDownloadTarget(source, content, options.cacheNamespace);
-        const downloadedPath = await downloadToTizenStorage(target);
+        const target = await downloadContentToTizenStorage(source, content, options);
         completed += 1;
         options.onProgress?.({
           completed,
@@ -68,8 +80,8 @@ export async function cacheRemoteManifestContent(
 
         contents.push({
           ...content,
-          CIF_FileFullPath: downloadedPath,
-          CIF_RelativePath: downloadedPath,
+          CIF_FileFullPath: target.downloadedPath,
+          CIF_RelativePath: target.downloadedPath,
           CIF_FileExist: true,
         });
       }
@@ -221,6 +233,255 @@ function buildDownloadTarget(
   };
 }
 
+async function downloadContentToTizenStorage(
+  source: string | FtpDownloadSource,
+  content: ContentsInfoClass,
+  options: ContentCacheOptions,
+): Promise<{ readonly downloadedPath: string; readonly target: DownloadTarget }> {
+  const target = buildDownloadTarget(source, content, options.cacheNamespace);
+  const preferredSource = buildPreferredTizenImageSource(source, content);
+  if (preferredSource) {
+    const preferredTarget = withDownloadSource(target, preferredSource);
+    try {
+      const remoteSize = await queryRemoteContentSize(preferredTarget);
+      const preferredCachedPath = await resolvePreferredTizenImageCachedPath(target, remoteSize);
+      if (preferredCachedPath) {
+        return {
+          downloadedPath: preferredCachedPath,
+          target,
+        };
+      }
+
+      const downloadedPath = await downloadToTizenStorage(preferredTarget, { skipCache: true });
+      markPreferredTizenImageCached(target, remoteSize);
+      return {
+        downloadedPath,
+        target,
+      };
+    } catch {
+      // 리사이즈 이미지가 없으면 원본 캐시/다운로드 경로로 진행한다.
+    }
+  }
+
+  return {
+    downloadedPath: await downloadToTizenStorage(target),
+    target,
+  };
+}
+
+function withDownloadSource(target: DownloadTarget, source: string | FtpDownloadSource): DownloadTarget {
+  return {
+    ...target,
+    sourceUrl: typeof source === 'string' ? source : '',
+    ftpSource: typeof source === 'string' ? undefined : source,
+  };
+}
+
+function buildPreferredTizenImageSource(
+  source: string | FtpDownloadSource,
+  content: ContentsInfoClass,
+): string | FtpDownloadSource | null {
+  if (!isImageContent(content)) {
+    return null;
+  }
+
+  if (typeof source === 'string') {
+    return buildPreferredTizenImageUrl(source, content);
+  }
+
+  const remotePath = buildPreferredTizenImageRemotePath(source.remotePath, content);
+  if (!remotePath || remotePath === source.remotePath) {
+    return null;
+  }
+
+  return {
+    ...source,
+    remotePath,
+  };
+}
+
+function buildPreferredTizenImageUrl(sourceUrl: string, content: ContentsInfoClass): string | null {
+  let url: URL;
+  try {
+    url = new URL(sourceUrl);
+  } catch {
+    return null;
+  }
+
+  const remotePath = buildPreferredTizenImageRemotePath(decodeURIComponent(url.pathname), content);
+  if (!remotePath || remotePath === decodeURIComponent(url.pathname)) {
+    return null;
+  }
+
+  url.pathname = remotePath;
+  return url.toString();
+}
+
+function buildPreferredTizenImageRemotePath(remotePath: string, content: ContentsInfoClass): string | null {
+  const fileName = sanitizeRemoteFileName(content.CIF_FileName);
+  if (!fileName || !IMAGE_EXTENSION_SET.has(readExtension(fileName))) {
+    return null;
+  }
+
+  const normalized = normalizeRemotePath(remotePath, '/');
+  const lower = normalized.toLowerCase();
+  if (lower.includes('/contents/tizen/')) {
+    return null;
+  }
+
+  const tizenRelativePath = `${TIZEN_IMAGE_REMOTE_DIR}/${fileName}`;
+  const contentsIndex = lower.lastIndexOf('/contents/');
+  if (contentsIndex >= 0) {
+    const root = normalized.slice(0, contentsIndex).replace(/\/+$/, '');
+    return `${root}/${tizenRelativePath}`;
+  }
+
+  return normalizeRemotePath(tizenRelativePath, '/');
+}
+
+function sanitizeRemoteFileName(fileName: string): string {
+  return fileName.replace(/\\/g, '/').split('/').pop()?.trim() ?? '';
+}
+
+function isImageContent(content: ContentsInfoClass): boolean {
+  const declaredType = content.CIF_ContentType?.trim().toLowerCase() ?? '';
+  if (declaredType === 'image') {
+    return true;
+  }
+  if (declaredType === 'video') {
+    return false;
+  }
+
+  return IMAGE_EXTENSION_SET.has(readExtension(
+    content.CIF_FileName
+    || content.CIF_RelativePath
+    || content.CIF_FileFullPath
+    || '',
+  ));
+}
+
+async function resolvePreferredTizenImageCachedPath(target: DownloadTarget, remoteSize: number): Promise<string | null> {
+  const cachedVirtualPath = resolveCachedVirtualPath(target);
+  if (!cachedVirtualPath) {
+    return null;
+  }
+
+  const localSize = await queryLocalVirtualPathSize(cachedVirtualPath);
+  if (localSize !== null) {
+    return localSize === remoteSize ? cachedVirtualPath : null;
+  }
+
+  return isPreferredTizenImageCached(target, remoteSize) ? cachedVirtualPath : null;
+}
+
+function isPreferredTizenImageCached(target: DownloadTarget, remoteSize: number): boolean {
+  return readPreferredTizenImageCacheState()[target.virtualPath]?.size === remoteSize;
+}
+
+function markPreferredTizenImageCached(target: DownloadTarget, remoteSize: number): void {
+  const state = readPreferredTizenImageCacheState();
+  state[target.virtualPath] = { size: remoteSize };
+  try {
+    window.localStorage.setItem(TIZEN_IMAGE_CACHE_STATE_KEY, JSON.stringify(state));
+  } catch {
+    // 캐시 상태 저장 실패는 재생 실패 사유가 아니다. 다음 업데이트 때 리사이즈 후보를 다시 확인한다.
+  }
+}
+
+function queryLocalVirtualPathSize(virtualPath: string): Promise<number | null> {
+  const filesystem = window.tizen?.filesystem;
+  if (!filesystem?.resolve) {
+    return Promise.resolve(null);
+  }
+
+  return new Promise((resolve) => {
+    filesystem.resolve?.(
+      virtualPath,
+      (file) => {
+        const size = Number(file.fileSize);
+        resolve(Number.isFinite(size) && size >= 0 ? Math.round(size) : null);
+      },
+      () => resolve(null),
+      'r',
+    );
+  });
+}
+
+function readPreferredTizenImageCacheState(): PreferredTizenImageCacheState {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(window.localStorage.getItem(TIZEN_IMAGE_CACHE_STATE_KEY) ?? '{}');
+  } catch {
+    return {};
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(parsed)
+      .map(([key, value]) => {
+        if (value === true) {
+          return [key, { size: -1 }] as const;
+        }
+        if (!value || typeof value !== 'object') {
+          return null;
+        }
+        const size = Number((value as Record<string, unknown>).size);
+        return Number.isFinite(size) && size >= 0
+          ? [key, { size: Math.round(size) }] as const
+          : null;
+      })
+      .filter((entry): entry is readonly [string, PreferredTizenImageCacheEntry] => entry !== null),
+  );
+}
+
+async function queryRemoteContentSize(target: DownloadTarget): Promise<number> {
+  if (target.ftpSource) {
+    return queryFtpContentSize(target);
+  }
+
+  const response = await fetch(target.sourceUrl, {
+    method: 'HEAD',
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    throw new Error(`원격 콘텐츠 크기 확인 실패: ${response.status} ${response.statusText}`);
+  }
+
+  const contentLength = Number(response.headers.get('content-length') ?? '');
+  if (!Number.isFinite(contentLength) || contentLength <= 0) {
+    throw new Error('원격 콘텐츠 크기 확인 실패: content-length 없음');
+  }
+
+  return Math.round(contentLength);
+}
+
+function queryFtpContentSize(target: DownloadTarget): Promise<number> {
+  const ftpSource = target.ftpSource;
+  if (!ftpSource) {
+    throw new Error('FTP 크기 확인 요청 정보가 없습니다.');
+  }
+
+  return launchFtpDownloaderService(target, 'stat').then((reply) => {
+    if (reply.status !== 'ok') {
+      throw new Error(
+        `FTP 콘텐츠 크기 확인 실패: ${target.fileName} (${reply.error || 'unknown'}; path=${sanitizeFtpPath(ftpSource)})`,
+      );
+    }
+
+    const size = Number(reply.size ?? '');
+    if (!Number.isFinite(size) || size <= 0) {
+      throw new Error(
+        `FTP 콘텐츠 크기 확인 실패: ${target.fileName} (invalid size; path=${sanitizeFtpPath(ftpSource)})`,
+      );
+    }
+
+    return Math.round(size);
+  });
+}
+
 function buildCacheNamespacePrefix(cacheNamespace: string | undefined): string {
   const trimmed = cacheNamespace?.trim() ?? '';
   if (!trimmed) {
@@ -259,11 +520,13 @@ function stableHash(value: string): string {
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
-function downloadToTizenStorage(target: DownloadTarget): Promise<string> {
+function downloadToTizenStorage(target: DownloadTarget, options: DownloadOptions = {}): Promise<string> {
   const tizen = window.tizen;
-  const cachedVirtualPath = resolveCachedVirtualPath(target);
-  if (cachedVirtualPath) {
-    return Promise.resolve(cachedVirtualPath);
+  if (options.skipCache !== true) {
+    const cachedVirtualPath = resolveCachedVirtualPath(target);
+    if (cachedVirtualPath) {
+      return Promise.resolve(cachedVirtualPath);
+    }
   }
 
   if (target.ftpSource) {
@@ -329,6 +592,26 @@ function downloadFtpToTizenStorage(target: DownloadTarget): Promise<string> {
   if (!ftpSource) {
     throw new Error('FTP 다운로드 요청 정보가 없습니다.');
   }
+
+  return launchFtpDownloaderService(target, 'download').then((reply) => {
+    if (reply.status === 'ok' && reply.path) {
+      return reply.path;
+    }
+
+    throw new Error(
+      `FTP 콘텐츠 다운로드 실패: ${target.fileName} (${reply.error || 'unknown'}; path=${sanitizeFtpPath(ftpSource)})`,
+    );
+  });
+}
+
+function launchFtpDownloaderService(
+  target: DownloadTarget,
+  action: 'download' | 'stat',
+): Promise<Record<string, string>> {
+  const ftpSource = target.ftpSource;
+  if (!ftpSource) {
+    throw new Error('FTP 다운로드 요청 정보가 없습니다.');
+  }
   const tizen = window.tizen;
   const application = tizen?.application;
   const ApplicationControl = tizen?.ApplicationControl;
@@ -366,6 +649,7 @@ function downloadFtpToTizenStorage(target: DownloadTarget): Promise<string> {
         new ApplicationControlData('password', [ftpSource.password]),
         new ApplicationControlData('remotePath', [ftpSource.remotePath]),
         new ApplicationControlData('fileName', [target.fileName]),
+        new ApplicationControlData('action', [action]),
       ],
       'SINGLE',
     );
@@ -379,15 +663,7 @@ function downloadFtpToTizenStorage(target: DownloadTarget): Promise<string> {
       ))),
       {
         onsuccess: (data) => {
-          const reply = readApplicationControlData(data);
-          if (reply.status === 'ok' && reply.path) {
-            settle(() => resolve(reply.path));
-            return;
-          }
-
-          settle(() => reject(new Error(
-            `FTP 콘텐츠 다운로드 실패: ${target.fileName} (${reply.error || 'unknown'}; path=${sanitizeFtpPath(ftpSource)})`,
-          )));
+          settle(() => resolve(readApplicationControlData(data)));
         },
         onfailure: () => settle(() => reject(new Error(
           `FTP 콘텐츠 다운로드 실패: ${target.fileName} (service failure; path=${sanitizeFtpPath(ftpSource)})`,
