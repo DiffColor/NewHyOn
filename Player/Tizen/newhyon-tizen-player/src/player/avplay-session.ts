@@ -6,6 +6,8 @@ const DISPLAY_METHOD_FILL = 'PLAYER_DISPLAY_MODE_FULL_SCREEN';
 const DISPLAY_METHOD_CONTAIN = 'PLAYER_DISPLAY_MODE_LETTER_BOX';
 const AVPLAY_BASE_WIDTH = 1920;
 const AVPLAY_BASE_HEIGHT = 1080;
+const AVPLAY_PREPARED_HIDDEN_WIDTH = 1;
+const AVPLAY_PREPARED_HIDDEN_HEIGHT = 1;
 const FIRST_FRAME_READY_TIMEOUT_MS = 5000;
 const FIRST_FRAME_PRESENTABLE_PLAYTIME_MS = 33;
 const FIRST_FRAME_PRESENTABLE_PLAYTIME_DELTA_MS = 1;
@@ -125,7 +127,7 @@ export class AvplaySession {
       if (preparedLaneIndex === null) {
         this.clearPreparedLane();
         this.resetLaneForPlayback(nextLaneIndex);
-        this.configureLaneForItem(nextLaneIndex, item, sourceUrl, slot, slotElement, preserveAspectRatio, firstFrameReady);
+        this.configureLaneForItem(nextLaneIndex, item, sourceUrl, slot, slotElement, preserveAspectRatio, firstFrameReady, 'slot');
         await this.prepareLaneAsync(nextLaneIndex, item.name);
         this.assertOperationCurrent(operationId, nextLaneIndex, 'play.prepareAsync', item.name);
         durationMs = this.readDurationMs(nextLaneIndex, item.name);
@@ -134,7 +136,9 @@ export class AvplaySession {
         this.callLane(nextLaneIndex, 'setListener', () => {
           lane.player.setListener(this.createLaneListener(nextLaneIndex, firstFrameReady));
         }, item.name);
-        this.applyDisplayRectToLane(nextLaneIndex, slot, slotElement);
+        if (!firstFrameReady) {
+          this.applyDisplayRectToLane(nextLaneIndex, slot, slotElement);
+        }
         this.setLaneDisplayMethod(nextLaneIndex, preserveAspectRatio ? DISPLAY_METHOD_CONTAIN : DISPLAY_METHOD_FILL);
       }
       this.setLaneLooping(nextLaneIndex, this.shouldLoopForDuration(item, durationMs));
@@ -154,6 +158,7 @@ export class AvplaySession {
         await firstFrameReady.promise;
         this.assertCurrentPlaybackFirstFrame(operationId, nextLaneIndex, item);
       }
+      this.applyDisplayRectToLane(nextLaneIndex, slot, slotElement);
       this.updateObjectVisibility();
       this.freezeAndStopHeldLane();
       return { durationMs };
@@ -194,7 +199,7 @@ export class AvplaySession {
       const sourceUrl = resolveAvplaySourceUrl(item.sourceUrl);
       this.clearPreparedLane();
       this.resetLaneForPlayback(laneIndex);
-      this.configureLaneForItem(laneIndex, item, sourceUrl, slot, slotElement, preserveAspectRatio, null);
+      this.configureLaneForItem(laneIndex, item, sourceUrl, slot, slotElement, preserveAspectRatio, null, 'prepared-hidden');
       await this.prepareLaneAsync(laneIndex, item.name);
       this.assertOperationCurrent(operationId, laneIndex, 'prepare.prepareAsync', item.name);
       const durationMs = this.readDurationMs(laneIndex, item.name);
@@ -629,6 +634,7 @@ export class AvplaySession {
     slotElement: HTMLElement,
     preserveAspectRatio: boolean,
     firstFrameReady: FirstFrameReadyGate | null,
+    displayRectMode: 'slot' | 'prepared-hidden',
   ): void {
     const lane = this.lanes[laneIndex];
     this.callLane(laneIndex, 'open', () => {
@@ -637,7 +643,11 @@ export class AvplaySession {
     this.callLane(laneIndex, 'setListener', () => {
       lane.player.setListener(this.createLaneListener(laneIndex, firstFrameReady));
     }, item.name);
-    this.applyDisplayRectToLane(laneIndex, slot, slotElement);
+    if (displayRectMode === 'prepared-hidden') {
+      this.applyPreparedHiddenDisplayRectToLane(laneIndex);
+    } else {
+      this.applyDisplayRectToLane(laneIndex, slot, slotElement);
+    }
     this.setLaneDisplayMethod(laneIndex, preserveAspectRatio ? DISPLAY_METHOD_CONTAIN : DISPLAY_METHOD_FILL);
     this.callLaneSafe(laneIndex, 'setTimeoutForBuffering', () => {
       lane.player.setTimeoutForBuffering?.(30);
@@ -760,6 +770,27 @@ export class AvplaySession {
       lane.player.setDisplayRect(left, top, width, height);
     }, `${left},${top},${width}x${height}`);
     this.logger.debug('avplay', `slot ${this.index} lane ${laneIndex + 1} rect ${slot.left},${slot.top},${slot.width}x${slot.height}`);
+  }
+
+  private applyPreparedHiddenDisplayRectToLane(laneIndex: number): void {
+    const lane = this.lanes[laneIndex];
+    const state = this.laneState(laneIndex);
+    if (state !== 'IDLE' && state !== 'READY' && state !== 'PLAYING' && state !== 'PAUSED') {
+      this.logger.info('avplay-trace', `slot ${this.index} lane ${laneIndex + 1} setPreparedDisplayRect skipped state=${state} ${this.traceContext()}`);
+      return;
+    }
+
+    lane.objectElement.style.left = '0px';
+    lane.objectElement.style.top = '0px';
+    lane.objectElement.style.width = `${AVPLAY_PREPARED_HIDDEN_WIDTH}px`;
+    lane.objectElement.style.height = `${AVPLAY_PREPARED_HIDDEN_HEIGHT}px`;
+    lane.objectElement.style.visibility = 'hidden';
+    lane.objectElement.style.zIndex = String(this.avplayLayerBelowSlot());
+    lane.objectElement.setAttribute('aria-hidden', 'true');
+    this.callLane(laneIndex, 'setPreparedDisplayRect', () => {
+      lane.player.setDisplayRect(0, 0, AVPLAY_PREPARED_HIDDEN_WIDTH, AVPLAY_PREPARED_HIDDEN_HEIGHT);
+    }, `0,0,${AVPLAY_PREPARED_HIDDEN_WIDTH}x${AVPLAY_PREPARED_HIDDEN_HEIGHT}`);
+    this.logger.debug('avplay', `slot ${this.index} lane ${laneIndex + 1} prepared hidden rect`);
   }
 
   private hideLaneSurface(laneIndex: number, reason: string): void {
