@@ -14,6 +14,7 @@ const PREPARATION_PRIORITY_TOLERANCE_MS = 250;
 const IMAGE_LAYER_BOTTOM = '0';
 const IMAGE_LAYER_TOP = '2';
 const IMAGE_LAYER_PROMOTED = '4';
+const SLOT_LAYER_PROMOTED_OFFSET = 4;
 
 export interface SlotPlayerTimelineSnapshot {
   readonly slotIndex: number;
@@ -547,14 +548,12 @@ export class SlotPlayer {
           videoSurfaceHidden = true;
         };
         await this.showImage(item, {
-          onPromoted: hideActiveVideoSurface,
+          promoteSlotLayer: hasActiveVideoSurface,
+          onPromotedPaint: hideActiveVideoSurface,
           onVisibleApplied: () => {
             if (!hasActiveVideoSurface) {
               this.element.classList.remove('slot--video-active');
-              return;
             }
-
-            hideActiveVideoSurface();
           },
           onVisiblePaintPromise: (promise) => {
             visiblePaintPromise = promise.then(() => {
@@ -715,7 +714,8 @@ export class SlotPlayer {
     item: SeamlessContentItem,
     options: {
       readonly waitForVisiblePaint?: boolean;
-      readonly onPromoted?: () => void;
+      readonly promoteSlotLayer?: boolean;
+      readonly onPromotedPaint?: () => void | Promise<void>;
       readonly onVisibleApplied?: () => void;
       readonly onVisiblePaintPromise?: (promise: Promise<void>) => void;
     } = {},
@@ -742,14 +742,15 @@ export class SlotPlayer {
     }
 
     const visibleStartedAt = performance.now();
+    if (options.promoteSlotLayer === true) {
+      this.element.style.zIndex = String(this.slot.zIndex + SLOT_LAYER_PROMOTED_OFFSET);
+      this.logImageTiming(item, 'slot layer promoted', visibleStartedAt, `z=${this.element.style.zIndex} total=${this.elapsed(showStartedAt)}ms`);
+    }
     image.style.zIndex = IMAGE_LAYER_PROMOTED;
     image.classList.remove('slot-image--prepared');
     image.classList.remove('slot-image--under-video');
     image.classList.add('slot-image--visible');
     this.logImageTiming(item, 'visible promoted', visibleStartedAt, `total=${this.elapsed(showStartedAt)}ms`);
-    if (image.classList.contains('slot-image--visible')) {
-      options.onPromoted?.();
-    }
     options.onVisibleApplied?.();
     const normalizeLayer = () => {
       previousImage.classList.remove('slot-image--visible');
@@ -757,6 +758,9 @@ export class SlotPlayer {
       previousImage.classList.remove('slot-image--under-video');
       previousImage.style.zIndex = IMAGE_LAYER_BOTTOM;
       image.style.zIndex = IMAGE_LAYER_TOP;
+      if (options.promoteSlotLayer === true) {
+        this.element.style.zIndex = String(this.slot.zIndex);
+      }
       this.logImageTiming(item, 'visible layer normalized', visibleStartedAt, `total=${this.elapsed(showStartedAt)}ms`);
     };
     this.currentImage = image;
@@ -764,10 +768,18 @@ export class SlotPlayer {
     this.consumePreparedImage(item.id);
     this.consumePreparedBoundaryImage(item.id);
     this.logImageTiming(item, 'visible class applied', visibleStartedAt, `total=${this.elapsed(showStartedAt)}ms`);
-    const visiblePaintPromise = this.waitForPaint().then(() => {
+    image.getBoundingClientRect();
+    this.element.getBoundingClientRect();
+    const visiblePaintPromise = (async () => {
+      await this.waitForPaint();
+      this.logImageTiming(item, 'promoted paint', visibleStartedAt, `total=${this.elapsed(showStartedAt)}ms`);
+      if (options.onPromotedPaint) {
+        await options.onPromotedPaint();
+        await this.waitForPaint();
+      }
       normalizeLayer();
       this.logImageTiming(item, 'visible paint', visibleStartedAt, `total=${this.elapsed(showStartedAt)}ms`);
-    });
+    })();
     options.onVisiblePaintPromise?.(visiblePaintPromise);
     if (options.waitForVisiblePaint === true) {
       await visiblePaintPromise;
