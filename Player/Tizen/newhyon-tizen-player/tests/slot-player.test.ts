@@ -1411,7 +1411,7 @@ describe('SlotPlayer', () => {
     }
   });
 
-  it('영상 play가 첫 프레임을 기다려도 다음 이미지는 먼저 준비한다', async () => {
+  it('영상 첫 프레임이 표시된 뒤 다음 이미지를 준비한다', async () => {
     vi.useFakeTimers();
     const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
     const loadedSources: string[] = [];
@@ -1460,13 +1460,17 @@ describe('SlotPlayer', () => {
       await vi.runAllTicks();
       await vi.advanceTimersByTimeAsync(32);
 
-      expect(loadedSources.some((source) => source.includes('second.png'))).toBe(true);
+      expect(loadedSources.some((source) => source.includes('second.png'))).toBe(false);
 
       if (!playGate.release) {
         throw new Error('영상 play 대기 해제 함수가 등록되지 않았습니다.');
       }
       playGate.release();
       await startPromise;
+      await vi.runAllTicks();
+      await vi.advanceTimersByTimeAsync(32);
+
+      expect(loadedSources.some((source) => source.includes('second.png'))).toBe(true);
     } finally {
       if (descriptor) {
         Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);

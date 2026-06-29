@@ -28,6 +28,7 @@ namespace AndoW_Manager
             public string RemoteRelativePath { get; set; }
             public string DisplayName { get; set; }
             public long SizeBytes { get; set; }
+            public bool ForceUpload { get; set; }
         }
 
         public SavingFileWindow()
@@ -273,11 +274,7 @@ namespace AndoW_Manager
 
             SetStage("서버 전송 중입니다.", "플레이어용 콘텐츠를 서버로 전송합니다.");
 
-            HashSet<string> remoteNames = await FtpTransferTools.GetRemoteFileNameSetAsync("Contents", uploadCancellation.Token);
-            if (remoteNames == null)
-            {
-                remoteNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            }
+            Dictionary<string, HashSet<string>> remoteNamesByDir = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
 
             long totalBytes = uploadJobs.Sum(x => x.SizeBytes);
             long uploadedBytes = 0;
@@ -287,7 +284,15 @@ namespace AndoW_Manager
             foreach (UploadJob job in uploadJobs)
             {
                 string remoteName = Path.GetFileName(job.RemoteRelativePath);
-                if (!string.IsNullOrWhiteSpace(remoteName) && remoteNames.Contains(remoteName))
+                string remoteDir = GetRemoteRelativeDir(job.RemoteRelativePath);
+                if (!remoteNamesByDir.TryGetValue(remoteDir, out HashSet<string> remoteNames))
+                {
+                    remoteNames = await FtpTransferTools.GetRemoteFileNameSetAsync(remoteDir, uploadCancellation.Token)
+                        ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    remoteNamesByDir[remoteDir] = remoteNames;
+                }
+
+                if (!job.ForceUpload && !string.IsNullOrWhiteSpace(remoteName) && remoteNames.Contains(remoteName))
                 {
                     uploadedBytes += job.SizeBytes;
                     completed++;
@@ -376,7 +381,9 @@ namespace AndoW_Manager
                     continue;
                 }
 
-                string remoteRelativePath = BuildRemoteRelativePath(fileName);
+                string remoteRelativePath = string.IsNullOrWhiteSpace(item.CFI_RemoteRelativePath)
+                    ? BuildRemoteRelativePath(fileName)
+                    : BuildRemoteRelativePath(item.CFI_RemoteRelativePath);
                 if (!dedupe.Add(remoteRelativePath))
                 {
                     continue;
@@ -394,11 +401,25 @@ namespace AndoW_Manager
                     LocalPath = localPath,
                     RemoteRelativePath = remoteRelativePath,
                     DisplayName = fileName,
-                    SizeBytes = size
+                    SizeBytes = size,
+                    ForceUpload = item.CFI_ForceFtpUpload
                 });
             }
 
             return jobs;
+        }
+
+        private static string GetRemoteRelativeDir(string remoteRelativePath)
+        {
+            string normalized = string.IsNullOrWhiteSpace(remoteRelativePath)
+                ? string.Empty
+                : remoteRelativePath.Replace("\\", "/").Trim('/');
+            int slashIndex = normalized.LastIndexOf('/');
+            if (slashIndex <= 0)
+            {
+                return "Contents";
+            }
+            return normalized.Substring(0, slashIndex);
         }
 
         private static string BuildRemoteRelativePath(string fileName)
@@ -409,6 +430,10 @@ namespace AndoW_Manager
             }
 
             string normalized = fileName.Replace("\\", "/").TrimStart('/');
+            if (normalized.StartsWith("Contents/tizen/", StringComparison.OrdinalIgnoreCase))
+            {
+                return normalized;
+            }
             if (normalized.StartsWith("Contents/", StringComparison.OrdinalIgnoreCase))
             {
                 return normalized;

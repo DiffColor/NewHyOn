@@ -10,7 +10,7 @@ type VideoTransitionMode = 'timer' | 'event';
 const VIDEO_DURATION_MATCH_TOLERANCE_MS = 250;
 const PAGE_END_VIDEO_COMPLETION_GRACE_MS = 2000;
 const IMAGE_MAIN_THREAD_GAP_WARN_MS = 250;
-const PREPARATION_PRIORITY_TOLERANCE_MS = 250;
+const PREPARATION_PRIORITY_TOLERANCE_MS = 2000;
 const IMAGE_LAYER_BOTTOM = '0';
 const IMAGE_LAYER_TOP = '2';
 const IMAGE_LAYER_PROMOTED = '4';
@@ -579,7 +579,6 @@ export class SlotPlayer {
           this.logger.info('avplay', `slot ${this.slotIndex + 1} prepared video wait: ${item.name} +${this.elapsed(waitStartedAt)}ms`);
         }
         const nextVideoSession = this.videoSession ?? this.getVideoSession();
-        this.prepareNextImageForCurrentVideo(generation);
         const playbackInfo = await nextVideoSession.play(item, this.slot, this.element, this.preserveAspectRatio, () => this.handleVideoEnded(item.id), {
           waitForFirstFrame: true,
         });
@@ -594,6 +593,7 @@ export class SlotPlayer {
         if (this.preparedItemIndex === this.itemIndex) {
           this.clearPreparedContent();
         }
+        this.prepareNextImageForCurrentVideo(generation);
       }
       this.onContentShown(this.slotIndex, item);
       if (releaseBeforePrepareNext) {
@@ -813,6 +813,10 @@ export class SlotPlayer {
     } else {
       this.logImageTiming(item, `prepare cache-hit ${reason}`, prepareStartedAt, sourceUrl);
     }
+    const shouldYieldPreparation = this.shouldYieldImagePreparation(reason);
+    if (shouldYieldPreparation) {
+      await this.yieldImagePreparationFrame(item, `source ready ${reason}`, prepareStartedAt);
+    }
     const decodeStartedAt = performance.now();
     this.logImageTiming(item, `decode start ${reason}`, decodeStartedAt, `total=${this.elapsed(prepareStartedAt)}ms`);
     const stopDecodeProbe = this.startImageMainThreadProbe(item, `decode ${reason}`, decodeStartedAt);
@@ -830,6 +834,9 @@ export class SlotPlayer {
       stopDecodeProbe();
     }
     this.logImageTiming(item, `decode complete ${reason}`, decodeStartedAt, `total=${this.elapsed(prepareStartedAt)}ms`);
+    if (shouldYieldPreparation) {
+      await this.yieldImagePreparationFrame(item, `after decode ${reason}`, prepareStartedAt);
+    }
     const preparedClassStartedAt = performance.now();
     image.style.zIndex = IMAGE_LAYER_BOTTOM;
     image.classList.add('slot-image--prepared');
@@ -839,9 +846,15 @@ export class SlotPlayer {
       image.classList.remove('slot-image--under-video');
     }
     this.logImageTiming(item, `prepared class applied ${reason}`, preparedClassStartedAt, `total=${this.elapsed(prepareStartedAt)}ms`);
+    if (shouldYieldPreparation) {
+      await this.yieldImagePreparationFrame(item, `after prepared class ${reason}`, prepareStartedAt);
+    }
     const stopPreparedPaintProbe = this.startImageMainThreadProbe(item, `prepared paint ${reason}`, preparedClassStartedAt);
     try {
       image.getBoundingClientRect();
+      if (shouldYieldPreparation) {
+        await this.yieldImagePreparationFrame(item, `after prepared layout ${reason}`, prepareStartedAt);
+      }
       await this.waitForPaint();
       this.logImageTiming(item, `prepared paint ${reason}`, preparedClassStartedAt, `total=${this.elapsed(prepareStartedAt)}ms`);
     } finally {
@@ -1182,6 +1195,23 @@ export class SlotPlayer {
     return new Promise((resolve) => {
       window.requestAnimationFrame(() => {
         window.requestAnimationFrame(() => resolve());
+      });
+    });
+  }
+
+  private shouldYieldImagePreparation(reason: string): boolean {
+    return reason !== 'show';
+  }
+
+  private yieldImagePreparationFrame(item: SeamlessContentItem, stage: string, startedAt: number): Promise<void> {
+    if (/jsdom/i.test(window.navigator.userAgent)) {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+      window.requestAnimationFrame(() => {
+        this.logImageTiming(item, `yield ${stage}`, startedAt, `total=${this.elapsed(startedAt)}ms`);
+        resolve();
       });
     });
   }

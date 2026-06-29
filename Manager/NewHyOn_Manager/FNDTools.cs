@@ -112,6 +112,13 @@ namespace AndoW_Manager
             return path;
         }
 
+        public static string GetTizenContentsDirPath()
+        {
+            string path = Path.Combine(GetContentsDirPath(), "tizen");
+            CreateOrPass(path);
+            return path;
+        }
+
         public static string GetGroupLogosDirPath()
         {
             string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "GroupLogos");
@@ -136,6 +143,11 @@ namespace AndoW_Manager
         public static string GetTargetContentsFilePath(string paramFileName)
         {
             return Path.Combine(GetContentsDirPath(), paramFileName);
+        }
+
+        public static string GetTargetTizenContentsFilePath(string paramFileName)
+        {
+            return Path.Combine(GetTizenContentsDirPath(), paramFileName);
         }
 
         public static string GetContentFilePath(ContentsInfoClass content)

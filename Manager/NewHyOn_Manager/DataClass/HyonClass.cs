@@ -500,7 +500,9 @@ namespace AndoW_Manager
         public string CFI_FileSourceFullPath = string.Empty;
         public string CFI_PageName = string.Empty;
         public string CFI_StorageGuid = string.Empty;
+        public string CFI_RemoteRelativePath = string.Empty;
         public bool CFI_RequireCopy = true;
+        public bool CFI_ForceFtpUpload = false;
 
         public void CopyData(CopyFileInfo tmpData)
         {
@@ -509,7 +511,9 @@ namespace AndoW_Manager
             this.CFI_FileSourceFullPath = tmpData.CFI_FileSourceFullPath;
             this.CFI_PageName = tmpData.CFI_PageName;
             this.CFI_StorageGuid = tmpData.CFI_StorageGuid;
+            this.CFI_RemoteRelativePath = tmpData.CFI_RemoteRelativePath;
             this.CFI_RequireCopy = tmpData.CFI_RequireCopy;
+            this.CFI_ForceFtpUpload = tmpData.CFI_ForceFtpUpload;
         }
     }
 

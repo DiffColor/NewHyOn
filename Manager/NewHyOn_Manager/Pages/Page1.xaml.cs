@@ -29,6 +29,23 @@ namespace AndoW_Manager
 
     public partial class Page1 : UserControl
     {
+        private const int TizenImageMinLongSide = 1920;
+        private const int TizenImageTargetLongSide = 1920;
+        private const double TizenImageAspectRatioTolerance = 0.01;
+        private static readonly double[] TizenImageAspectRatios =
+        {
+            16.0 / 9.0,
+            9.0 / 16.0,
+            16.0 / 10.0,
+            10.0 / 16.0,
+            4.0 / 3.0,
+            3.0 / 4.0,
+            3.0 / 2.0,
+            2.0 / 3.0,
+            21.0 / 9.0,
+            9.0 / 21.0
+        };
+
         public string g_CurrentSelectedObjName = string.Empty;
         Control g_CurrentSelectedElement = null;
         public bool g_IsSelecteControlResizing = false;
@@ -2291,6 +2308,209 @@ namespace AndoW_Manager
                     content.CIF_FileHash = resolution.PartialHash;
                     content.CIF_FileSize = resolution.FileSize;
                     content.CIF_FileExist = true;
+
+                    AppendTizenImageCopyJob(jobs, jobKeys, pageName, sourcePath, storageFileName);
+                }
+            }
+        }
+
+        private void AppendTizenImageCopyJob(
+            List<CopyFileInfo> jobs,
+            HashSet<string> jobKeys,
+            string pageName,
+            string sourcePath,
+            string storageFileName)
+        {
+            if (jobs == null || jobKeys == null)
+            {
+                return;
+            }
+
+            if (!TryEnsureTizenResizeImage(sourcePath, storageFileName, out string tizenPath))
+            {
+                return;
+            }
+
+            string jobKey = $"tizen|{tizenPath}";
+            if (!jobKeys.Add(jobKey))
+            {
+                return;
+            }
+
+            jobs.Add(new CopyFileInfo
+            {
+                CFI_FileName = storageFileName,
+                CFI_FileSourceFullPath = tizenPath,
+                CFI_TargetFileName = tizenPath,
+                CFI_PageName = pageName,
+                CFI_RequireCopy = false,
+                CFI_RemoteRelativePath = $"Contents/tizen/{storageFileName}",
+                CFI_ForceFtpUpload = true
+            });
+        }
+
+        private static bool TryEnsureTizenResizeImage(string sourcePath, string storageFileName, out string tizenPath)
+        {
+            tizenPath = string.Empty;
+            if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath) || string.IsNullOrWhiteSpace(storageFileName))
+            {
+                return false;
+            }
+
+            string extension = Path.GetExtension(storageFileName)?.ToLowerInvariant() ?? string.Empty;
+            if (extension != ".jpg" && extension != ".jpeg" && extension != ".png")
+            {
+                return false;
+            }
+
+            try
+            {
+                using (var sourceImage = System.Drawing.Image.FromFile(sourcePath))
+                {
+                    int sourceWidth = Math.Max(1, sourceImage.Width);
+                    int sourceHeight = Math.Max(1, sourceImage.Height);
+                    int longSide = Math.Max(sourceWidth, sourceHeight);
+                    if (longSide < TizenImageMinLongSide || !IsTizenResizeAspectRatio(sourceWidth, sourceHeight))
+                    {
+                        return false;
+                    }
+
+                    double scale = (double)TizenImageTargetLongSide / longSide;
+                    int targetWidth = Math.Max(1, (int)Math.Round(sourceWidth * scale));
+                    int targetHeight = Math.Max(1, (int)Math.Round(sourceHeight * scale));
+                    tizenPath = FNDTools.GetTargetTizenContentsFilePath(storageFileName);
+                    string tizenDir = Path.GetDirectoryName(tizenPath);
+                    if (!string.IsNullOrWhiteSpace(tizenDir))
+                    {
+                        Directory.CreateDirectory(tizenDir);
+                    }
+
+                    string tempPath = $"{tizenPath}.tmp";
+                    SaveTizenResizedImage(sourceImage, tempPath, extension, targetWidth, targetHeight);
+                    if (File.Exists(tizenPath) && AreFilesSame(tempPath, tizenPath))
+                    {
+                        File.Delete(tempPath);
+                        return true;
+                    }
+
+                    if (File.Exists(tizenPath))
+                    {
+                        File.Delete(tizenPath);
+                    }
+                    File.Move(tempPath, tizenPath);
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
+                tizenPath = string.Empty;
+                return false;
+            }
+        }
+
+        private static bool IsTizenResizeAspectRatio(int width, int height)
+        {
+            double safeWidth = Math.Max(1, width);
+            double safeHeight = Math.Max(1, height);
+            double ratio = safeWidth / safeHeight;
+            return TizenImageAspectRatios.Any(item => Math.Abs(ratio - item) <= TizenImageAspectRatioTolerance);
+        }
+
+        private static void SaveTizenResizedImage(
+            System.Drawing.Image sourceImage,
+            string outputPath,
+            string extension,
+            int targetWidth,
+            int targetHeight)
+        {
+            bool isJpeg = extension == ".jpg" || extension == ".jpeg";
+            var pixelFormat = isJpeg
+                ? System.Drawing.Imaging.PixelFormat.Format24bppRgb
+                : System.Drawing.Imaging.PixelFormat.Format32bppArgb;
+
+            using (var bitmap = new System.Drawing.Bitmap(targetWidth, targetHeight, pixelFormat))
+            using (var graphics = System.Drawing.Graphics.FromImage(bitmap))
+            {
+                graphics.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
+                graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+                graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+                graphics.Clear(isJpeg ? System.Drawing.Color.Black : System.Drawing.Color.Transparent);
+                graphics.DrawImage(sourceImage, 0, 0, targetWidth, targetHeight);
+
+                if (isJpeg)
+                {
+                    SaveJpeg(bitmap, outputPath, 90L);
+                    return;
+                }
+
+                bitmap.Save(outputPath, System.Drawing.Imaging.ImageFormat.Png);
+            }
+        }
+
+        private static void SaveJpeg(System.Drawing.Bitmap bitmap, string outputPath, long quality)
+        {
+            var codec = System.Drawing.Imaging.ImageCodecInfo.GetImageEncoders()
+                .FirstOrDefault(item => item.FormatID == System.Drawing.Imaging.ImageFormat.Jpeg.Guid);
+            if (codec == null)
+            {
+                bitmap.Save(outputPath, System.Drawing.Imaging.ImageFormat.Jpeg);
+                return;
+            }
+
+            using (var parameters = new System.Drawing.Imaging.EncoderParameters(1))
+            {
+                parameters.Param[0] = new System.Drawing.Imaging.EncoderParameter(
+                    System.Drawing.Imaging.Encoder.Quality,
+                    Math.Max(1L, Math.Min(100L, quality)));
+                bitmap.Save(outputPath, codec, parameters);
+            }
+        }
+
+        private static bool AreFilesSame(string leftPath, string rightPath)
+        {
+            if (string.IsNullOrWhiteSpace(leftPath) || string.IsNullOrWhiteSpace(rightPath))
+            {
+                return false;
+            }
+            if (!File.Exists(leftPath) || !File.Exists(rightPath))
+            {
+                return false;
+            }
+
+            FileInfo leftInfo = new FileInfo(leftPath);
+            FileInfo rightInfo = new FileInfo(rightPath);
+            if (leftInfo.Length != rightInfo.Length)
+            {
+                return false;
+            }
+
+            const int bufferSize = 1024 * 1024;
+            byte[] leftBuffer = new byte[bufferSize];
+            byte[] rightBuffer = new byte[bufferSize];
+            using (FileStream leftStream = File.OpenRead(leftPath))
+            using (FileStream rightStream = File.OpenRead(rightPath))
+            {
+                while (true)
+                {
+                    int leftRead = leftStream.Read(leftBuffer, 0, leftBuffer.Length);
+                    int rightRead = rightStream.Read(rightBuffer, 0, rightBuffer.Length);
+                    if (leftRead != rightRead)
+                    {
+                        return false;
+                    }
+                    if (leftRead == 0)
+                    {
+                        return true;
+                    }
+                    for (int index = 0; index < leftRead; index++)
+                    {
+                        if (leftBuffer[index] != rightBuffer[index])
+                        {
+                            return false;
+                        }
+                    }
                 }
             }
         }
