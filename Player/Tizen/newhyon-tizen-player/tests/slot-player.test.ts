@@ -1411,7 +1411,7 @@ describe('SlotPlayer', () => {
     }
   });
 
-  it('영상 play가 첫 프레임을 기다려도 다음 이미지는 먼저 준비한다', async () => {
+  it('영상 첫 프레임이 표시된 뒤 다음 이미지를 준비한다', async () => {
     vi.useFakeTimers();
     const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
     const loadedSources: string[] = [];
@@ -1460,13 +1460,17 @@ describe('SlotPlayer', () => {
       await vi.runAllTicks();
       await vi.advanceTimersByTimeAsync(32);
 
-      expect(loadedSources.some((source) => source.includes('second.png'))).toBe(true);
+      expect(loadedSources.some((source) => source.includes('second.png'))).toBe(false);
 
       if (!playGate.release) {
         throw new Error('영상 play 대기 해제 함수가 등록되지 않았습니다.');
       }
       playGate.release();
       await startPromise;
+      await vi.runAllTicks();
+      await vi.advanceTimersByTimeAsync(32);
+
+      expect(loadedSources.some((source) => source.includes('second.png'))).toBe(true);
     } finally {
       if (descriptor) {
         Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
@@ -1735,6 +1739,27 @@ describe('SlotPlayer', () => {
         Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
       }
     }
+  });
+
+  it('영상 재생 중에는 고정 초수 기준 없이 페이지 경계 첫 이미지 준비를 허용한다', async () => {
+    const play = vi.fn(async () => ({ durationMs: 10000 }));
+    const session = {
+      play,
+      prepare: vi.fn(async () => undefined),
+      clearPrepared: vi.fn(),
+      hide: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+      stop: vi.fn(),
+      state: vi.fn(() => 'PLAYING'),
+      applyDisplayRect: vi.fn(),
+    } as unknown as AvplaySession;
+    const slot = new SlotPlayer(0, document.createElement('section'), createTwoVideoSlot(), false, false, () => session, new RingLogger(5));
+
+    slot.setPageTimeline(0, 30000, false);
+    await slot.start();
+
+    expect(slot.shouldPrepareBoundaryFirstContent(30000)).toBe(true);
   });
 
 });
