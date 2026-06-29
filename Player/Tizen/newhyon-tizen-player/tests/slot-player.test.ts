@@ -1598,6 +1598,36 @@ describe('SlotPlayer', () => {
     }
   });
 
+  it('영상 재생 중 다음 페이지 첫 영상은 AVPlay 준비 lane에 미리 준비한다', async () => {
+    const element = document.createElement('section');
+    const prepare = vi.fn(async (..._args: unknown[]) => ({ durationMs: 10000 }));
+    const session = {
+      play: vi.fn(async () => ({ durationMs: 10000 })),
+      prepare,
+      clearPrepared: vi.fn(),
+      hide: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+      stop: vi.fn(),
+      state: vi.fn(() => 'PLAYING'),
+      applyDisplayRect: vi.fn(),
+    } as unknown as AvplaySession;
+    const slot = new SlotPlayer(0, element, createVideoSlot(), false, false, () => session, new RingLogger(5));
+    const nextPageSlot = {
+      ...createVideoSlot(),
+      items: [createVideoItem('next-page.mp4')],
+    };
+
+    await slot.start();
+    const preparePromise = slot.prepareFirstContentForSlotPlan(nextPageSlot);
+    await preparePromise;
+
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(prepare.mock.calls[0]?.[0]).toMatchObject({
+      name: 'next-page.mp4',
+    });
+  });
+
   it('예약 경계 준비 이미지는 직전 컨텐츠 이미지 전환으로 해제되지 않는다', async () => {
     vi.useFakeTimers();
     const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
