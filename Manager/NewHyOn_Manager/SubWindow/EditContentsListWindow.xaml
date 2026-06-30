@@ -264,8 +264,11 @@
     					<TextBlock x:Name="TextAngleGrade5_Copy3" TextWrapping="Wrap" Text="형식:" Foreground="Black" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" FontSize="13.333" Margin="12,6.953,0,6.953"/>
     					<TextBlock x:Name="TextAngleGrade5_Copy4" TextWrapping="Wrap" Text="TypeName" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" FontSize="13.333" Margin="5,6.953,0,6.953"/>
     					<TextBlock x:Name="TextAngleGrade5_Copy2" TextWrapping="Wrap" Text="재생시간:" Foreground="Black" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" FontSize="13.333" Margin="12,6.953,0,6.953"/>
-    					<ComboBox x:Name="scrollSpeedComboBox_Copy1" ItemsSource="{StaticResource TimeItems}" VerticalAlignment="Center" Height="20" Width="45" HorizontalAlignment="Right" Margin="7,0,0,0"/>
+                    <ComboBox x:Name="scrollSpeedComboBox_Copy1" ItemsSource="{StaticResource TimeItems}" IsEditable="True" VerticalAlignment="Center" Height="20" Width="45" HorizontalAlignment="Right" Margin="7,0,0,0"/>
     					<ComboBox x:Name="scrollSpeedComboBox_Copy" ItemsSource="{StaticResource TimeItems}" VerticalAlignment="Center" Height="20" Width="45" Margin="5,0,0,0"/>
+                    <Button x:Name="BTNResetVideoLength" Style="{DynamicResource Btn_defaultSW}" Height="22" Width="132" Margin="8,0,0,0" Visibility="Collapsed">
+                        <TextBlock TextWrapping="Wrap" Text="원본 길이 초기화" Foreground="Black" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" FontSize="13.333"/>
+                    </Button>
     					<Button x:Name="BTN0DO_Copy1" Style="{DynamicResource Btn_defaultSW}" Height="22" Width="80" Margin="8,0,0,0">
     						<TextBlock x:Name="TextAngleGrade2" TextWrapping="Wrap" Text="저  장" Foreground="Black" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="Malgun Gothic" FontSize="13.333"/>
     					</Button>
