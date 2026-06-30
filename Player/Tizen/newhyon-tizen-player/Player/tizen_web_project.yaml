@@ -30,6 +30,7 @@ files:
   - config.xml
   - index.html
   - media/intro.mp4
+  - media/volume-check.LICENSE.txt
   - media/volume-check.wav
 
 # list of files to exclude based on the matched patterns
