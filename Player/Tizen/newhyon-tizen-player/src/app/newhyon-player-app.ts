@@ -291,10 +291,18 @@ export class NewHyOnPlayerApp {
       this.settingsOverlay = new SettingsOverlay({
         onApply: (settings) => {
           this.stopVolumeTest();
+          this.audioPolicy.forgetLastApplied();
           this.applyPlayerSettings(settings);
+          if (!this.destroyed) {
+            this.applyCurrentPageAudioPolicy('settings-apply');
+          }
         },
         onClose: () => {
           this.stopVolumeTest();
+          this.audioPolicy.forgetLastApplied();
+          if (!this.destroyed) {
+            this.applyCurrentPageAudioPolicy('settings-close');
+          }
         },
         getCurrentVolume: () => this.readTvVolume() ?? this.config.settings.defaultVolume,
         onVolumePreview: (volume) => {
@@ -441,6 +449,10 @@ export class NewHyOnPlayerApp {
   private stopVolumeTest(): void {
     this.volumeTestAudio.pause();
     this.volumeTestAudio.currentTime = 0;
+  }
+
+  private isVolumeTestPlaying(): boolean {
+    return !this.volumeTestAudio.paused;
   }
 
   private applyPlayerSettings(settings: PlayerSettings): void {
@@ -1270,6 +1282,11 @@ export class NewHyOnPlayerApp {
   }
 
   private applyPageAudioPolicy(page: SeamlessPagePlan, _source: string): void {
+    if (this.isVolumeTestPlaying()) {
+      this.logger.info('audio', 'page audio policy skipped while volume test is playing');
+      return;
+    }
+
     this.audioPolicy.applyForPage(page, this.config.settings.defaultVolume);
   }
 

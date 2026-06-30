@@ -46,6 +46,10 @@ export class TizenAudioPolicy {
 
   constructor(private readonly logger: AudioLogger) {}
 
+  forgetLastApplied(): void {
+    this.lastAppliedVolume = null;
+  }
+
   applyForPage(page: SeamlessPagePlan, defaultVolume = 100): void {
     const targetVolume = resolvePageAudioVolume(page, defaultVolume);
     if (this.lastAppliedVolume !== targetVolume) {
