@@ -12,6 +12,7 @@ export interface PlayerSettings {
   readonly manifestUrl: string;
   readonly preserveAspectRatio: boolean;
   readonly switchOnContentEnd: boolean;
+  readonly defaultVolume: number;
   readonly hudInitiallyVisible: boolean;
 }
 
@@ -31,6 +32,7 @@ export const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   manifestUrl: '',
   preserveAspectRatio: false,
   switchOnContentEnd: false,
+  defaultVolume: 100,
   hudInitiallyVisible: false,
 };
 
@@ -45,6 +47,15 @@ function sanitizeBoolean(value: unknown, defaultValue: boolean): boolean {
 function sanitizeInteger(value: unknown, defaultValue: number): number {
   const numeric = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
   return Number.isFinite(numeric) && numeric >= 0 ? Math.round(numeric) : defaultValue;
+}
+
+export function normalizeVolume(value: unknown, defaultValue = DEFAULT_PLAYER_SETTINGS.defaultVolume): number {
+  const numeric = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(numeric)) {
+    return defaultValue;
+  }
+
+  return Math.min(100, Math.max(0, Math.round(numeric)));
 }
 
 function sanitizeHubPath(value: unknown): string {
@@ -84,6 +95,7 @@ export function loadPlayerSettings(storage: Storage = window.localStorage): Play
     manifestUrl: sanitizeString(parsed.manifestUrl),
     preserveAspectRatio: sanitizeBoolean(parsed.preserveAspectRatio, DEFAULT_PLAYER_SETTINGS.preserveAspectRatio),
     switchOnContentEnd: sanitizeBoolean(parsed.switchOnContentEnd, DEFAULT_PLAYER_SETTINGS.switchOnContentEnd),
+    defaultVolume: normalizeVolume(parsed.defaultVolume),
     hudInitiallyVisible: sanitizeBoolean(parsed.hudInitiallyVisible, DEFAULT_PLAYER_SETTINGS.hudInitiallyVisible),
   };
 }

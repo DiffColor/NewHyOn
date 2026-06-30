@@ -20,6 +20,8 @@ declare global {
       isMute?(): boolean;
       setVolume?(volume: number): void;
       getVolume?(): number;
+      setVolumeChangeListener?(listener: (volume: number) => void): void;
+      unsetVolumeChangeListener?(): void;
     };
     filesystem?: {
       toURI(path: string): string;
@@ -155,6 +157,7 @@ declare global {
     settings: {
       preserveAspectRatio: boolean;
       switchOnContentEnd: boolean;
+      defaultVolume: number;
       hudInitiallyVisible: boolean;
     };
   }

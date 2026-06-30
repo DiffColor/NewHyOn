@@ -39,6 +39,9 @@ describe('buildPagePlan', () => {
     expect(buildPagePlan({ PIC_Volume: -5, PIC_Elements: [] }, 'playlist').volume).toBe(0);
     expect(buildPagePlan({ PIC_Volume: 130, PIC_Elements: [] }, 'playlist').volume).toBe(100);
     expect(buildPagePlan({ PIC_Elements: [] }, 'playlist').volume).toBe(100);
+    expect(buildPagePlan({ PIC_Elements: [] }, 'playlist', { defaultVolume: 37 }).volume).toBe(37);
+    expect(buildPagePlan({ PIC_Elements: [] }, 'playlist', { defaultVolume: 37 }).hasExplicitVolume).toBe(false);
+    expect(buildPagePlan({ PIC_Volume: 42, PIC_Elements: [] }, 'playlist', { defaultVolume: 37 }).hasExplicitVolume).toBe(true);
   });
 
   it('단일 영상 슬롯은 원본 Windows PlaybackCoordinator처럼 loop + timer 전환으로 구성한다', () => {

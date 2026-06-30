@@ -51,6 +51,7 @@ function createSnapshot(stage: string): RuntimeHealthSnapshot {
     settings: {
       preserveAspectRatio: true,
       switchOnContentEnd: true,
+      defaultVolume: 60,
       hudInitiallyVisible: true,
     },
   };

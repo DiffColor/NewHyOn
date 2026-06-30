@@ -28,6 +28,7 @@ describe('player settings', () => {
       manifestUrl: ' https://example.com/manifest.json ',
       preserveAspectRatio: true,
       switchOnContentEnd: true,
+      defaultVolume: 42,
       hudInitiallyVisible: true,
     };
 
@@ -47,6 +48,7 @@ describe('player settings', () => {
       manifestUrl: 'https://example.com/manifest.json',
       preserveAspectRatio: true,
       switchOnContentEnd: true,
+      defaultVolume: 42,
       hudInitiallyVisible: true,
     });
   });
@@ -66,6 +68,7 @@ describe('player settings', () => {
       manifestUrl: '',
       preserveAspectRatio: true,
       switchOnContentEnd: true,
+      defaultVolume: 25,
       hudInitiallyVisible: true,
     });
 

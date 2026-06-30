@@ -11,6 +11,7 @@ function createPage(isMuted: boolean): SeamlessPagePlan {
     canvasHeight: 1080,
     durationSeconds: 10,
     volume: 35,
+    hasExplicitVolume: false,
     slots: [
       {
         elementName: 'video',
@@ -48,7 +49,8 @@ describe('TizenAudioPolicy', () => {
     expect(shouldMutePageAudio(createPage(true))).toBe(true);
     expect(shouldMutePageAudio(createPage(false))).toBe(false);
     expect(resolvePageAudioVolume(createPage(true))).toBe(0);
-    expect(resolvePageAudioVolume(createPage(false))).toBe(35);
+    expect(resolvePageAudioVolume(createPage(false), 55)).toBe(55);
+    expect(resolvePageAudioVolume({ ...createPage(false), hasExplicitVolume: true }, 55)).toBe(35);
   });
 
   it('페이지 오디오 정책을 TV audio volume에 적용한다', () => {
@@ -73,11 +75,11 @@ describe('TizenAudioPolicy', () => {
     const policy = new TizenAudioPolicy(new RingLogger(5));
     policy.applyForPage(createPage(true));
     policy.applyForPage(createPage(true));
-    policy.applyForPage(createPage(false));
+    policy.applyForPage(createPage(false), 55);
     policy.restore();
 
     expect(setVolume).toHaveBeenNthCalledWith(1, 0);
-    expect(setVolume).toHaveBeenNthCalledWith(2, 35);
+    expect(setVolume).toHaveBeenNthCalledWith(2, 55);
     expect(setVolume).toHaveBeenNthCalledWith(3, 12);
     expect(setMute).toHaveBeenNthCalledWith(1, false);
     expect(setMute).toHaveBeenNthCalledWith(2, true);

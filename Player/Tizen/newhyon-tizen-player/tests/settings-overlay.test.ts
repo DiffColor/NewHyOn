@@ -54,6 +54,14 @@ describe('SettingsOverlay', () => {
     overlay.handleKeyDown(keyEvent('Enter'));
 
     overlay.handleKeyDown(keyEvent('ArrowDown'));
+    expect(activeSettingName()).toBe('defaultVolume');
+    overlay.handleKeyDown(keyEvent('ArrowLeft'));
+    expect(document.querySelector<HTMLInputElement>('[data-setting-name="defaultVolume"]')?.value).toBe('99');
+
+    overlay.handleKeyDown(keyEvent('ArrowDown'));
+    expect(activeSettingName()).toBe('test-volume');
+
+    overlay.handleKeyDown(keyEvent('ArrowDown'));
     expect(activeSettingName()).toBe('apply');
     overlay.handleKeyDown(keyEvent('Enter'));
 
@@ -63,6 +71,7 @@ describe('SettingsOverlay', () => {
       managerAddress: '10.0.0.10',
       preserveAspectRatio: true,
       switchOnContentEnd: true,
+      defaultVolume: 99,
     });
     expect(loadPlayerSettings()).toEqual({
       ...DEFAULT_PLAYER_SETTINGS,
@@ -70,7 +79,56 @@ describe('SettingsOverlay', () => {
       managerAddress: '10.0.0.10',
       preserveAspectRatio: true,
       switchOnContentEnd: true,
+      defaultVolume: 99,
     });
+  });
+
+  it('기본 볼륨 슬라이더를 TV 실제 볼륨과 동기화하고 테스트 재생을 요청한다', () => {
+    let listener: unknown = null;
+    window.tizen = {
+      tvaudiocontrol: {
+        getVolume: vi.fn(() => 37),
+        setVolumeChangeListener: vi.fn((nextListener) => {
+          listener = nextListener;
+        }),
+        unsetVolumeChangeListener: vi.fn(() => {
+          listener = null;
+        }),
+      },
+    };
+    const onVolumePreview = vi.fn();
+    const onPlayVolumeTest = vi.fn();
+    const overlay = new SettingsOverlay({
+      onApply: vi.fn(),
+      getCurrentVolume: () => window.tizen?.tvaudiocontrol?.getVolume?.() ?? null,
+      onVolumePreview,
+      onPlayVolumeTest,
+    });
+
+    overlay.open();
+    const slider = document.querySelector<HTMLInputElement>('[data-setting-name="defaultVolume"]');
+    expect(slider?.value).toBe('37');
+
+    if (typeof listener !== 'function') {
+      throw new Error('TV 볼륨 변경 리스너가 등록되지 않았습니다.');
+    }
+    listener(62);
+    expect(slider?.value).toBe('62');
+    expect(document.querySelector('[data-volume-value="true"]')?.textContent).toBe('62');
+
+    overlay.handleKeyDown(keyEvent('ArrowDown'));
+    overlay.handleKeyDown(keyEvent('ArrowDown'));
+    overlay.handleKeyDown(keyEvent('ArrowDown'));
+    overlay.handleKeyDown(keyEvent('ArrowDown'));
+    overlay.handleKeyDown(keyEvent('ArrowDown'));
+    expect(activeSettingName()).toBe('test-volume');
+    overlay.handleKeyDown(keyEvent('Enter'));
+
+    expect(onVolumePreview).toHaveBeenLastCalledWith(62);
+    expect(onPlayVolumeTest).toHaveBeenCalledWith(62);
+
+    overlay.close();
+    expect(listener).toBeNull();
   });
 
   it('Back 계열 키로 설정창을 닫는다', () => {

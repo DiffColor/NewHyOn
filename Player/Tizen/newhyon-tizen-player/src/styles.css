@@ -614,6 +614,22 @@ body {
   font-size: 18px;
 }
 
+.settings-inline-controls,
+.settings-volume-control {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.settings-inline-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 17px;
+}
+
 .settings-input,
 .settings-toggle,
 .settings-action {
@@ -633,6 +649,19 @@ body {
 
 .settings-toggle {
   width: 120px;
+}
+
+.settings-volume-slider {
+  flex: 1;
+  min-width: 220px;
+  accent-color: #69d49f;
+}
+
+.settings-volume-value {
+  width: 42px;
+  color: #fff;
+  font-size: 20px;
+  text-align: right;
 }
 
 .settings-input--time {
@@ -713,6 +742,8 @@ body {
 
 .settings-input:focus,
 .settings-input.settings-control--active,
+.settings-volume-slider:focus,
+.settings-volume-slider.settings-control--active,
 .settings-toggle:focus,
 .settings-toggle.settings-control--active,
 .settings-action:focus,

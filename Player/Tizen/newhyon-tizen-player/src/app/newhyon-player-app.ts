@@ -1,5 +1,5 @@
 import type { RuntimeConfig } from './runtime-config';
-import type { PlayerSettings } from './player-settings';
+import { normalizeVolume, type PlayerSettings } from './player-settings';
 import { RingLogger } from '../core/logger';
 import { buildPagePlan, type BuildPagePlanOptions, type SeamlessContentItem, type SeamlessPagePlan, type SeamlessSlotPlan } from '../domain/page-plan';
 import {
@@ -150,6 +150,8 @@ const SCHEDULE_PREPARE_LEAD_MS = 5000;
 const SCHEDULE_PREPARE_LOOKAHEAD_MS = SCHEDULE_PREPARE_LEAD_MS + SCHEDULE_CHECK_INTERVAL_MS;
 const RUNTIME_HEALTH_RECENT_LOG_LIMIT = 200;
 const RUNTIME_HEALTH_LOG_FLUSH_DELAY_MS = 250;
+const VOLUME_TEST_AUDIO_URL = 'media/volume-check.wav';
+const VOLUME_TEST_DURATION_MS = 10000;
 
 function getRequiredElement<T extends HTMLElement>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -176,6 +178,8 @@ export class NewHyOnPlayerApp {
   private readonly avplaySessionPairs: Array<AvplaySessionPair | null> = [];
   private readonly audioPolicy = new TizenAudioPolicy(this.logger);
   private readonly healthReporter = new RuntimeHealthReporter();
+  private readonly volumeTestAudio = new Audio(VOLUME_TEST_AUDIO_URL);
+  private volumeTestTimer: number | null = null;
   private pageIndex = 0;
   private pageStartedAt = 0;
   private pagePausedElapsedMs = 0;
@@ -290,6 +294,13 @@ export class NewHyOnPlayerApp {
         onApply: (settings) => {
           this.applyPlayerSettings(settings);
         },
+        getCurrentVolume: () => this.readTvVolume() ?? this.config.settings.defaultVolume,
+        onVolumePreview: (volume) => {
+          this.applyTvVolume(volume, 'settings-preview');
+        },
+        onPlayVolumeTest: (volume) => {
+          this.playVolumeTest(volume);
+        },
         onAuthenticate: () => {
           void this.openAuthenticationOverlay('인증 상태를 다시 확인합니다.');
         },
@@ -329,6 +340,7 @@ export class NewHyOnPlayerApp {
     this.remoteCommandService?.dispose();
     this.remoteCommandService = null;
     this.stopAvplaySessionPairs();
+    this.stopVolumeTest();
     this.removeEmptyIntroVideo();
     this.audioPolicy.restore();
     this.settingsOverlay?.close();
@@ -374,9 +386,74 @@ export class NewHyOnPlayerApp {
     this.avplaySessionPairs.forEach((session) => session?.stop());
   }
 
+  private readTvVolume(): number | null {
+    const audioControl = window.tizen?.tvaudiocontrol;
+    if (typeof audioControl?.getVolume !== 'function') {
+      return null;
+    }
+
+    try {
+      return normalizeVolume(audioControl.getVolume());
+    } catch (error) {
+      this.logger.warn('audio', `TV 볼륨 조회 실패: ${formatError(error)}`);
+      return null;
+    }
+  }
+
+  private applyTvVolume(volume: number, source: string): void {
+    const normalizedVolume = normalizeVolume(volume);
+    const audioControl = window.tizen?.tvaudiocontrol;
+    if (typeof audioControl?.setVolume !== 'function') {
+      this.logger.warn('audio', `TV 볼륨 적용 API 없음 (${source}, volume=${normalizedVolume})`);
+      return;
+    }
+
+    try {
+      if (normalizedVolume > 0 && typeof audioControl.setMute === 'function') {
+        audioControl.setMute(false);
+      }
+      audioControl.setVolume(normalizedVolume);
+      this.logger.info('audio', `TV volume=${normalizedVolume} (${source})`);
+    } catch (error) {
+      this.logger.warn('audio', `TV 볼륨 적용 실패 (${source}, volume=${normalizedVolume}): ${formatError(error)}`);
+    }
+  }
+
+  private playVolumeTest(volume: number): void {
+    this.applyTvVolume(volume, 'settings-volume-test');
+    if (this.volumeTestTimer !== null) {
+      window.clearTimeout(this.volumeTestTimer);
+      this.volumeTestTimer = null;
+    }
+
+    const audio = this.volumeTestAudio;
+    audio.pause();
+    audio.currentTime = 0;
+    audio.loop = false;
+    audio.volume = 1;
+    void audio.play().catch((error) => {
+      this.logger.warn('audio', `볼륨 테스트 음악 재생 실패: ${formatError(error)}`);
+    });
+    this.volumeTestTimer = window.setTimeout(() => {
+      audio.pause();
+      audio.currentTime = 0;
+      this.volumeTestTimer = null;
+    }, VOLUME_TEST_DURATION_MS);
+  }
+
+  private stopVolumeTest(): void {
+    if (this.volumeTestTimer !== null) {
+      window.clearTimeout(this.volumeTestTimer);
+      this.volumeTestTimer = null;
+    }
+    this.volumeTestAudio.pause();
+    this.volumeTestAudio.currentTime = 0;
+  }
+
   private applyPlayerSettings(settings: PlayerSettings): void {
     const preserveChanged = this.config.settings.preserveAspectRatio !== settings.preserveAspectRatio;
     const switchOnEndChanged = this.config.settings.switchOnContentEnd !== settings.switchOnContentEnd;
+    const defaultVolumeChanged = this.config.settings.defaultVolume !== settings.defaultVolume;
 
     this.config = {
       ...this.config,
@@ -396,16 +473,20 @@ export class NewHyOnPlayerApp {
       slotPlayer.applyDisplayRect();
     });
     this.applyEmptyIntroDisplayMode();
+    if (defaultVolumeChanged) {
+      this.applyCurrentPageAudioPolicy('settings-default-volume');
+    }
     this.setHudVisible(settings.hudInitiallyVisible);
     this.setMessage([
       '설정 적용 완료',
       `비율대로표출=${settings.preserveAspectRatio ? 'ON' : 'OFF'}`,
       `컨텐츠 종료시 전환=${settings.switchOnContentEnd ? 'ON' : 'OFF'}`,
+      `기본볼륨=${settings.defaultVolume}`,
     ].join(' / '));
-    if (preserveChanged || switchOnEndChanged) {
+    if (preserveChanged || switchOnEndChanged || defaultVolumeChanged) {
       this.logger.info(
         'settings',
-        `playback settings applied: preserveAspectRatio=${settings.preserveAspectRatio}, switchOnContentEnd=${settings.switchOnContentEnd}`,
+        `playback settings applied: preserveAspectRatio=${settings.preserveAspectRatio}, switchOnContentEnd=${settings.switchOnContentEnd}, defaultVolume=${settings.defaultVolume}`,
       );
     }
     this.render();
@@ -1196,7 +1277,7 @@ export class NewHyOnPlayerApp {
   }
 
   private applyPageAudioPolicy(page: SeamlessPagePlan, _source: string): void {
-    this.audioPolicy.applyForPage(page);
+    this.audioPolicy.applyForPage(page, this.config.settings.defaultVolume);
   }
 
   private applyPanelMute(muted: boolean, source: string): void {
@@ -2395,7 +2476,9 @@ export class NewHyOnPlayerApp {
     this.logger.info('manifest', '재생 가능한 데이터가 없어 Tizen intro 영상을 사용합니다.');
     const introManifest = createTizenIntroManifest(manifest.preserveAspectRatio);
     return {
-      pagePlans: introManifest.pages.map((page) => buildPagePlan(page, introManifest.playlistName)),
+      pagePlans: introManifest.pages.map((page) => buildPagePlan(page, introManifest.playlistName, {
+        defaultVolume: this.config.settings.defaultVolume,
+      })),
       mode: 'empty-intro',
     };
   }
@@ -2411,6 +2494,7 @@ export class NewHyOnPlayerApp {
           canvasHeight: referencePage?.PIC_CanvasHeight && referencePage.PIC_CanvasHeight > 0 ? referencePage.PIC_CanvasHeight : 1080,
           durationSeconds: 60,
           volume: 0,
+          hasExplicitVolume: true,
           slots: [],
         },
       ],
@@ -2424,13 +2508,16 @@ export class NewHyOnPlayerApp {
   }
 
   private hasManifestContentItems(manifest: RuntimeConfig['manifest']): boolean {
-    const pagePlans = manifest.pages.map((page) => buildPagePlan(page, manifest.playlistName));
+    const pagePlans = manifest.pages.map((page) => buildPagePlan(page, manifest.playlistName, {
+      defaultVolume: this.config.settings.defaultVolume,
+    }));
     return pagePlans.some((page) =>
       page.slots.some((slot) => slot.width > 0 && slot.height > 0 && slot.items.length > 0));
   }
 
   private createContentPeriodPlanOptions(now = new Date()): BuildPagePlanOptions {
     return {
+      defaultVolume: this.config.settings.defaultVolume,
       hasContentPeriod: (content) => hasContentPeriod(content.CIF_StrGUID),
       isContentAllowed: (content) => isContentPeriodAllowed(content.CIF_StrGUID, now),
     };
@@ -2680,6 +2767,7 @@ export class NewHyOnPlayerApp {
       settings: {
         preserveAspectRatio: this.config.manifest.preserveAspectRatio,
         switchOnContentEnd: this.config.settings.switchOnContentEnd,
+        defaultVolume: this.config.settings.defaultVolume,
         hudInitiallyVisible: this.config.hudInitiallyVisible,
       },
     };
@@ -2779,6 +2867,7 @@ export class NewHyOnPlayerApp {
     this.clearTimers();
     this.stopSlots();
     this.stopAvplaySessionPairs();
+    this.stopVolumeTest();
     this.removeStageSlots();
     this.removeEmptyIntroVideo();
     this.audioPolicy.restore();

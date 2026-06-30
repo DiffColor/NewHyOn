@@ -2,6 +2,7 @@ import {
   clearPlayerSettings,
   DEFAULT_PLAYER_SETTINGS,
   loadPlayerSettings,
+  normalizeVolume,
   savePlayerSettings,
   type PlayerSettings,
 } from './player-settings';
@@ -28,6 +29,9 @@ interface SettingsOverlayOptions {
   readonly onApply: (settings: PlayerSettings) => void;
   readonly onClose?: () => void;
   readonly onAuthenticate?: () => void;
+  readonly getCurrentVolume?: () => number | null;
+  readonly onVolumePreview?: (volume: number) => void;
+  readonly onPlayVolumeTest?: (volume: number) => void;
   readonly getAuthStatusText?: () => string;
 }
 
@@ -88,6 +92,69 @@ function createToggle(name: keyof PlayerSettings, active: boolean): HTMLButtonEl
   return button;
 }
 
+function createPlaybackOptionsRow(aspectToggle: HTMLButtonElement, switchOnEndToggle: HTMLButtonElement): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'settings-row settings-row--inline';
+
+  const label = document.createElement('span');
+  label.className = 'settings-row__label';
+  label.textContent = '재생 옵션';
+
+  const controls = document.createElement('div');
+  controls.className = 'settings-inline-controls';
+
+  const aspect = document.createElement('label');
+  aspect.className = 'settings-inline-toggle';
+  const aspectLabel = document.createElement('span');
+  aspectLabel.textContent = '화면 비율 유지';
+  aspect.append(aspectLabel, aspectToggle);
+
+  const switchOnEnd = document.createElement('label');
+  switchOnEnd.className = 'settings-inline-toggle';
+  const switchOnEndLabel = document.createElement('span');
+  switchOnEndLabel.textContent = '콘텐츠 종료 시 전환';
+  switchOnEnd.append(switchOnEndLabel, switchOnEndToggle);
+
+  controls.append(aspect, switchOnEnd);
+  row.append(label, controls);
+  return row;
+}
+
+function createVolumeSlider(volume: number): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'settings-row settings-row--volume';
+
+  const label = document.createElement('label');
+  label.className = 'settings-row__label';
+  label.htmlFor = 'settings-default-volume';
+  label.textContent = '기본 볼륨';
+
+  const controls = document.createElement('div');
+  controls.className = 'settings-volume-control';
+
+  const slider = document.createElement('input');
+  slider.id = 'settings-default-volume';
+  slider.className = 'settings-volume-slider';
+  slider.dataset.settingControl = 'true';
+  slider.dataset.settingName = 'defaultVolume';
+  slider.tabIndex = -1;
+  slider.type = 'range';
+  slider.min = '0';
+  slider.max = '100';
+  slider.step = '1';
+  slider.value = String(normalizeVolume(volume));
+  slider.setAttribute('aria-label', '기본 볼륨');
+
+  const value = document.createElement('span');
+  value.className = 'settings-volume-value';
+  value.dataset.volumeValue = 'true';
+  value.textContent = slider.value;
+
+  controls.append(slider, value, createAction('test-volume', '볼륨 테스트'));
+  row.append(label, controls);
+  return row;
+}
+
 function createAction(action: string, text: string): HTMLButtonElement {
   const button = document.createElement('button');
   button.className = 'settings-action';
@@ -136,6 +203,7 @@ export class SettingsOverlay {
   private keypadInput: HTMLInputElement | null = null;
   private selectedControlIndex = 0;
   private openState = false;
+  private tvVolumeListenerBound = false;
 
   constructor(private readonly options: SettingsOverlayOptions) {
     this.root.className = 'settings-overlay settings-overlay--hidden';
@@ -153,10 +221,12 @@ export class SettingsOverlay {
     this.root.classList.remove('settings-overlay--hidden');
     this.root.setAttribute('aria-hidden', 'false');
     this.openState = true;
+    this.bindTvVolumeSync();
     this.focusControl(0);
   }
 
   close(): void {
+    this.unbindTvVolumeSync();
     this.closeKeypad();
     this.root.classList.add('settings-overlay--hidden');
     this.root.setAttribute('aria-hidden', 'true');
@@ -189,12 +259,24 @@ export class SettingsOverlay {
     }
 
     if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+      const active = this.selectedControl();
+      if (active instanceof HTMLInputElement && active.type === 'range' && event.key === 'ArrowRight') {
+        event.preventDefault();
+        this.adjustVolumeSlider(active, 1);
+        return true;
+      }
       event.preventDefault();
       this.focusRelative(1);
       return true;
     }
 
     if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+      const active = this.selectedControl();
+      if (active instanceof HTMLInputElement && active.type === 'range' && event.key === 'ArrowLeft') {
+        event.preventDefault();
+        this.adjustVolumeSlider(active, -1);
+        return true;
+      }
       event.preventDefault();
       this.focusRelative(-1);
       return true;
@@ -234,6 +316,8 @@ export class SettingsOverlay {
     const managerInput = createInput('managerAddress', settings.managerAddress, '10.0.0.10 또는 10.0.0.10:8181');
     const aspectToggle = createToggle('preserveAspectRatio', settings.preserveAspectRatio);
     const switchOnEndToggle = createToggle('switchOnContentEnd', settings.switchOnContentEnd);
+    const currentVolume = this.options.getCurrentVolume?.();
+    const volumeRow = createVolumeSlider(currentVolume ?? settings.defaultVolume);
     const authStatus = document.createElement('div');
     authStatus.className = 'settings-status';
     authStatus.textContent = this.options.getAuthStatusText?.() ?? '인증 상태 : 미확인';
@@ -250,8 +334,8 @@ export class SettingsOverlay {
       authStatus,
       createRow('기기 이름', playerIdInput),
       createRow('데이터서버', managerInput),
-      createRow('화면 비율 유지', aspectToggle),
-      createRow('콘텐츠 종료 시 전환', switchOnEndToggle),
+      createPlaybackOptionsRow(aspectToggle, switchOnEndToggle),
+      volumeRow,
       actionBar,
       this.createWeeklySchedulePanel(loadWeeklySchedule()),
     );
@@ -264,6 +348,11 @@ export class SettingsOverlay {
       if (control instanceof HTMLButtonElement) {
         control.addEventListener('focus', () => {
           this.markSelectedControl(index);
+        });
+      }
+      if (control instanceof HTMLInputElement && control.type === 'range') {
+        control.addEventListener('input', () => {
+          this.applyVolumeSlider(control);
         });
       }
     });
@@ -307,6 +396,57 @@ export class SettingsOverlay {
   private focusRelative(offset: number): void {
     const nextIndex = (this.selectedControlIndex + offset + this.controls.length) % this.controls.length;
     this.focusControl(nextIndex);
+  }
+
+  private adjustVolumeSlider(slider: HTMLInputElement, delta: number): void {
+    slider.value = String(normalizeVolume(Number.parseInt(slider.value, 10) + delta));
+    this.applyVolumeSlider(slider);
+  }
+
+  private applyVolumeSlider(slider: HTMLInputElement): void {
+    const volume = normalizeVolume(slider.value);
+    this.updateVolumeSlider(volume);
+    this.options.onVolumePreview?.(volume);
+  }
+
+  private updateVolumeSlider(volume: number): void {
+    const normalizedVolume = normalizeVolume(volume);
+    const slider = this.root.querySelector<HTMLInputElement>('[data-setting-name="defaultVolume"]');
+    if (slider) {
+      slider.value = String(normalizedVolume);
+    }
+    const value = this.root.querySelector<HTMLElement>('[data-volume-value="true"]');
+    if (value) {
+      value.textContent = String(normalizedVolume);
+    }
+  }
+
+  private bindTvVolumeSync(): void {
+    const audioControl = window.tizen?.tvaudiocontrol;
+    if (this.tvVolumeListenerBound || typeof audioControl?.setVolumeChangeListener !== 'function') {
+      return;
+    }
+
+    audioControl.setVolumeChangeListener((volume) => {
+      if (this.openState) {
+        this.updateVolumeSlider(volume);
+      }
+    });
+    this.tvVolumeListenerBound = true;
+  }
+
+  private unbindTvVolumeSync(): void {
+    if (!this.tvVolumeListenerBound) {
+      return;
+    }
+
+    window.tizen?.tvaudiocontrol?.unsetVolumeChangeListener?.();
+    this.tvVolumeListenerBound = false;
+  }
+
+  private currentVolumeValue(): number {
+    const slider = this.root.querySelector<HTMLInputElement>('[data-setting-name="defaultVolume"]');
+    return normalizeVolume(slider?.value);
   }
 
   private selectedControl(): SettingControl | null {
@@ -508,6 +648,13 @@ export class SettingsOverlay {
       return;
     }
 
+    if (action === 'test-volume') {
+      const volume = this.currentVolumeValue();
+      this.options.onVolumePreview?.(volume);
+      this.options.onPlayVolumeTest?.(volume);
+      return;
+    }
+
     if (action === 'reset') {
       clearPlayerSettings();
       clearRemoteManifest();
@@ -536,6 +683,7 @@ export class SettingsOverlay {
       this.root.querySelector<HTMLButtonElement>('[data-setting-name="preserveAspectRatio"]')?.getAttribute('aria-pressed') === 'true';
     const switchOnContentEnd =
       this.root.querySelector<HTMLButtonElement>('[data-setting-name="switchOnContentEnd"]')?.getAttribute('aria-pressed') === 'true';
+    const defaultVolume = this.currentVolumeValue();
 
     return {
       ...current,
@@ -543,6 +691,7 @@ export class SettingsOverlay {
       managerAddress,
       preserveAspectRatio,
       switchOnContentEnd,
+      defaultVolume,
     };
   }
 

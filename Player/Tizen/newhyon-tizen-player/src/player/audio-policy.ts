@@ -23,8 +23,20 @@ export function shouldMutePageAudio(page: SeamlessPagePlan): boolean {
   return !hasUnmutedVideo;
 }
 
-export function resolvePageAudioVolume(page: SeamlessPagePlan): number {
-  return shouldMutePageAudio(page) ? 0 : page.volume;
+function normalizeVolume(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 100;
+  }
+
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+export function resolvePageAudioVolume(page: SeamlessPagePlan, defaultVolume = 100): number {
+  if (shouldMutePageAudio(page)) {
+    return 0;
+  }
+
+  return page.hasExplicitVolume ? page.volume : normalizeVolume(defaultVolume);
 }
 
 export class TizenAudioPolicy {
@@ -34,8 +46,8 @@ export class TizenAudioPolicy {
 
   constructor(private readonly logger: AudioLogger) {}
 
-  applyForPage(page: SeamlessPagePlan): void {
-    const targetVolume = resolvePageAudioVolume(page);
+  applyForPage(page: SeamlessPagePlan, defaultVolume = 100): void {
+    const targetVolume = resolvePageAudioVolume(page, defaultVolume);
     if (this.lastAppliedVolume !== targetVolume) {
       if (!this.applyAudioVolume(targetVolume, 'page')) {
         return;
