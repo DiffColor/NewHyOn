@@ -192,6 +192,7 @@ export class AvplaySession {
       const sourceUrl = resolveAvplaySourceUrl(item.sourceUrl);
       this.clearPreparedLane();
       this.resetLaneForPlayback(laneIndex);
+      this.hideLaneSurface(laneIndex, 'prepare-next');
       this.configureLaneForItem(laneIndex, item, sourceUrl, slot, slotElement, preserveAspectRatio, null);
       await this.prepareLaneAsync(laneIndex, item.name);
       this.assertOperationCurrent(operationId, laneIndex, 'prepare.prepareAsync', item.name);

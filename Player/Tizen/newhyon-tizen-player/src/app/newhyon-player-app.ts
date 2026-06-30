@@ -1449,6 +1449,7 @@ export class NewHyOnPlayerApp {
     this.contentShowCount += 1;
     this.lastContent = `slot ${slotIndex + 1}: ${item.name}`;
     this.writeRuntimeHealth('content-shown');
+    this.updateUpcomingBoundarySlots('content-shown');
     window.setTimeout(() => {
       this.prepareUpcomingBoundaryFirstContent('content-shown');
     }, 0);
@@ -1467,6 +1468,8 @@ export class NewHyOnPlayerApp {
     this.view.stage.style.setProperty('--canvas-height', String(page.canvasHeight));
     this.view.stage.style.aspectRatio = `${page.canvasWidth} / ${page.canvasHeight}`;
     this.ensureContentSlotSurfaces(targetPagePlans, page);
+    const pageDurationMs = Math.max(1, page.durationSeconds) * 1000;
+    this.setUpcomingBoundarySlots(this.resolvePageBoundaryPreparationTarget(targetPagePlans, targetPageIndex, pageDurationMs));
 
     if (commitPageTimelineBeforeContentSwitch) {
       this.commitPlaybackPlan(targetPagePlans, targetPlaybackMode, targetPageIndex);
@@ -1478,7 +1481,6 @@ export class NewHyOnPlayerApp {
       this.writeRuntimeHealth('page-started');
     }
 
-    const pageDurationMs = Math.max(1, page.durationSeconds) * 1000;
     const startResults = await Promise.all(this.slotPlayers.map((slotPlayer, slotIndex) => {
       const slot = page.slots[slotIndex] ?? this.createEmptySlotPlan(slotIndex, page);
       slotPlayer.setPageTimeline(0, pageDurationMs, targetPagePlans.length <= 1);
@@ -1568,7 +1570,7 @@ export class NewHyOnPlayerApp {
       return;
     }
 
-    const target = this.resolveBoundaryPreparationTarget(reason);
+    const target = this.updateUpcomingBoundarySlots(reason);
     if (!target) {
       return;
     }
@@ -1603,6 +1605,21 @@ export class NewHyOnPlayerApp {
     });
   }
 
+  private updateUpcomingBoundarySlots(reason: string): BoundaryPreparationTarget | null {
+    const target = this.resolveBoundaryPreparationTarget(reason);
+    this.setUpcomingBoundarySlots(target);
+    return target;
+  }
+
+  private setUpcomingBoundarySlots(target: BoundaryPreparationTarget | null): void {
+    this.slotPlayers.forEach((slotPlayer, slotIndex) => {
+      slotPlayer.setUpcomingBoundarySlot(
+        target?.page.slots[slotIndex] ?? null,
+        target?.remainingMs ?? Number.POSITIVE_INFINITY,
+      );
+    });
+  }
+
   private resolveBoundaryPreparationTarget(reason: string): BoundaryPreparationTarget | null {
     const pageRemainingMs = Math.max(0, this.currentPageDurationMilliseconds() - this.currentPageElapsedMilliseconds());
     const scheduleTarget = this.resolveRemoteSchedulePreparationTarget(pageRemainingMs, reason);
@@ -1616,6 +1633,24 @@ export class NewHyOnPlayerApp {
     const nextPage = this.pagePlans[nextPageIndex];
     return nextPage
       ? { page: nextPage, remainingMs: pageRemainingMs, reason: this.pagePlans.length <= 1 ? 'page-loop' : 'page-boundary' }
+      : null;
+  }
+
+  private resolvePageBoundaryPreparationTarget(
+    pagePlans: readonly SeamlessPagePlan[],
+    pageIndex: number,
+    pageRemainingMs: number,
+  ): BoundaryPreparationTarget | null {
+    if (pagePlans.length === 0) {
+      return null;
+    }
+
+    const nextPageIndex = pagePlans.length <= 1
+      ? pageIndex
+      : (pageIndex + 1) % pagePlans.length;
+    const nextPage = pagePlans[nextPageIndex];
+    return nextPage
+      ? { page: nextPage, remainingMs: Math.max(0, pageRemainingMs), reason: pagePlans.length <= 1 ? 'page-loop' : 'page-boundary' }
       : null;
   }
 
@@ -1779,6 +1814,7 @@ export class NewHyOnPlayerApp {
     }
 
     this.slotTimelineSyncInProgress = true;
+    this.updateUpcomingBoundarySlots('timeline-sync');
     void Promise.all(this.slotPlayers.map((slotPlayer) => (
       slotPlayer.syncToPageElapsed(pageElapsedMs, pageDurationMs, loopCurrentPageAtPageEnd)
     )))

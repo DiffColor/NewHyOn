@@ -61,6 +61,8 @@ export class SlotPlayer {
   private pageElapsedMs = 0;
   private pageDurationMs = Number.POSITIVE_INFINITY;
   private loopCurrentPageAtPageEnd = false;
+  private upcomingBoundarySlot: SeamlessSlotPlan | null = null;
+  private upcomingBoundaryRemainingMs = Number.POSITIVE_INFINITY;
   private contentEndReachedAtPageBoundary = false;
   private pageBoundaryVideoWaitStartedAt = -1;
   private readonly videoDurationMsByItemId = new Map<string, number>();
@@ -210,6 +212,13 @@ export class SlotPlayer {
     }
   }
 
+  setUpcomingBoundarySlot(slot: SeamlessSlotPlan | null, boundaryRemainingMs: number): void {
+    this.upcomingBoundarySlot = slot;
+    this.upcomingBoundaryRemainingMs = Number.isFinite(boundaryRemainingMs)
+      ? Math.max(0, boundaryRemainingMs)
+      : Number.POSITIVE_INFINITY;
+  }
+
   stop(): void {
     this.nextContentGeneration();
     this.active = false;
@@ -303,6 +312,10 @@ export class SlotPlayer {
     }
 
     if (item.contentType === 'Image') {
+      if (this.preparedBoundaryImageId === item.id && this.preparedBoundaryImagePromise) {
+        return null;
+      }
+
       if (this.preparedBoundaryImageId !== item.id || !this.preparedBoundaryImagePromise) {
         this.clearPreparedBoundaryImage();
         this.preparedBoundaryImageId = item.id;
@@ -919,7 +932,7 @@ export class SlotPlayer {
   }
 
   private async prepareNextContent(generation = this.contentGeneration): Promise<void> {
-    if (!this.active || !this.canAdvanceContent() || !this.isContentGenerationCurrent(generation)) {
+    if (!this.active || !this.isContentGenerationCurrent(generation)) {
       return;
     }
 
@@ -928,24 +941,19 @@ export class SlotPlayer {
       return;
     }
 
-    const nextIndex = this.resolvePreparedItemIndex();
-    if (nextIndex === null) {
+    const target = this.resolvePreparedContentTarget();
+    if (!target) {
       this.clearPreparedContent();
       return;
     }
 
-    if (this.preparedItemIndex === nextIndex || this.preparePromise) {
+    if (this.preparedItemId === target.item.id && this.preparePromise) {
       return;
     }
 
-    const nextItem = this.slot.items[nextIndex];
-    if (!nextItem) {
-      return;
-    }
-
-    const preparePromise = nextItem.contentType === 'Image'
-      ? this.prepareImageContent(nextItem, { underVideo: currentItem.contentType === 'Video' })
-      : this.prepareVideoContentForSlotPlan(nextItem, nextIndex, this.slot);
+    const preparePromise = target.item.contentType === 'Image'
+      ? this.prepareImageContent(target.item, { underVideo: currentItem.contentType === 'Video' })
+      : this.prepareVideoContentForSlotPlan(target.item, target.itemIndex, target.slot);
 
     try {
       await preparePromise;
@@ -1006,6 +1014,74 @@ export class SlotPlayer {
     void this.prepareImageContent(nextItem, { underVideo: true }).catch(() => {
       // 전환 경로에서 다시 준비하고 실패를 확정 로그로 남긴다.
     });
+  }
+
+  private resolvePreparedContentTarget(): {
+    readonly item: SeamlessContentItem;
+    readonly itemIndex: number;
+    readonly slot: SeamlessSlotPlan;
+  } | null {
+    const currentItem = this.currentItem();
+    if (!currentItem) {
+      return null;
+    }
+
+    if (this.shouldPrepareUpcomingBoundaryBeforePageItem(currentItem)) {
+      return this.resolveUpcomingBoundaryPreparedTarget();
+    }
+
+    const nextIndex = this.resolvePreparedItemIndex();
+    if (nextIndex === null) {
+      return null;
+    }
+    const nextItem = this.slot.items[nextIndex] ?? null;
+    if (!nextItem) {
+      return null;
+    }
+
+    return {
+      item: nextItem,
+      itemIndex: nextIndex,
+      slot: this.slot,
+    };
+  }
+
+  private resolveUpcomingBoundaryPreparedTarget(): {
+    readonly item: SeamlessContentItem;
+    readonly itemIndex: number;
+    readonly slot: SeamlessSlotPlan;
+  } | null {
+    const slot = this.upcomingBoundarySlot;
+    if (!slot || slot.items.length === 0 || slot.width <= 0 || slot.height <= 0) {
+      return null;
+    }
+
+    const itemIndex = this.firstPlayableIndex(slot);
+    if (itemIndex === null) {
+      return null;
+    }
+    const item = slot.items[itemIndex] ?? null;
+    if (!item || item.id === this.currentItem()?.id) {
+      return null;
+    }
+
+    return { item, itemIndex, slot };
+  }
+
+  private shouldPrepareUpcomingBoundaryBeforePageItem(item: SeamlessContentItem): boolean {
+    if (!this.upcomingBoundarySlot) {
+      return false;
+    }
+
+    const boundaryRemainingMs = Number.isFinite(this.upcomingBoundaryRemainingMs)
+      ? this.upcomingBoundaryRemainingMs
+      : this.pageDurationMs - this.pageElapsedMs;
+    const contentRemainingMs = this.currentBoundaryTransitionRemainingMs(item);
+    if (contentRemainingMs === null) {
+      return false;
+    }
+
+    return boundaryRemainingMs <= contentRemainingMs + PREPARATION_PRIORITY_TOLERANCE_MS;
   }
 
   private prepareVideoContentForSlotPlan(item: SeamlessContentItem, itemIndex: number, slot: SeamlessSlotPlan): Promise<void> {
@@ -1412,6 +1488,15 @@ export class SlotPlayer {
     }
 
     if (item.contentType === 'Video' && this.shouldWaitForVideoEnd(item)) {
+      return this.currentVideoStreamRemainingMs(item);
+    }
+
+    const itemDurationMs = Math.max(1, item.durationSeconds) * 1000;
+    return Math.max(0, itemDurationMs - this.currentItemTimelineElapsedMilliseconds(item));
+  }
+
+  private currentBoundaryTransitionRemainingMs(item: SeamlessContentItem): number | null {
+    if (item.contentType === 'Video' && this.shouldWaitForVideoEndForPageTransition(item)) {
       return this.currentVideoStreamRemainingMs(item);
     }
 
