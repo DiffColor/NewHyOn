@@ -451,12 +451,13 @@ describe('AvplaySession', () => {
     expect(laneA.style.visibility).toBe('visible');
   });
 
-  it('첫 프레임 대기는 500ms 안에 재생 시간 이벤트가 없으면 실패한다', async () => {
+  it('첫 프레임 대기는 500ms 안에 재생 시간 이벤트가 없으면 영상을 강제로 표출한다', async () => {
     vi.useFakeTimers();
     const playerA = createPlayer();
     const playerB = createPlayer();
+    const laneA = document.createElement('object');
     const session = new AvplaySession(0, [
-      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerA, objectElement: laneA },
       { player: playerB, objectElement: document.createElement('object') },
     ], document.body, new RingLogger(1), {
       onEnded: vi.fn(),
@@ -471,24 +472,19 @@ describe('AvplaySession', () => {
       vi.fn(),
       { waitForFirstFrame: true },
     );
-    const rejection = expect(playPromise).rejects.toThrow('첫 프레임 준비 시간 초과');
     let settled = false;
-    const observed = playPromise.then(
-      () => {
-        settled = true;
-      },
-      () => {
-        settled = true;
-      },
-    );
+    void playPromise.then(() => {
+      settled = true;
+    });
 
     await vi.advanceTimersByTimeAsync(499);
     await Promise.resolve();
     expect(settled).toBe(false);
+    expect(laneA.style.visibility).toBe('hidden');
 
     await vi.advanceTimersByTimeAsync(1);
-    await observed;
-    await rejection;
+    await playPromise;
+    expect(laneA.style.visibility).toBe('visible');
   });
 
   it('현재 영상 첫 프레임 대기 중 다음 lane prepare가 들어와도 현재 play를 폐기하지 않는다', async () => {

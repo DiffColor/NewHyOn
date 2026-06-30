@@ -433,7 +433,8 @@ export class AvplaySessionPair {
           return;
         }
         settled = true;
-        rejectPromise?.(new Error(`slot ${this.index} lane ${laneIndex + 1} 첫 프레임 준비 시간 초과: ${itemName}`));
+        this.logger.warn('avplay', `slot ${this.index} lane ${laneIndex + 1} 첫 프레임 준비 시간 초과, 영상 표출 강제 진행: ${itemName}`);
+        resolvePromise?.();
       }, FIRST_FRAME_READY_TIMEOUT_MS);
     };
 
