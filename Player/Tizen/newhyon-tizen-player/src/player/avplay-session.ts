@@ -129,7 +129,7 @@ export class AvplaySessionPair {
         durationMs = this.readDurationMs(nextLaneIndex, item.name);
       } else {
         this.assertOperationCurrent(operationId, nextLaneIndex, 'play.preparedLane', item.name);
-        this.callLane(nextLaneIndex, 'setListener', () => {
+        this.callLaneSafe(nextLaneIndex, 'setListener', () => {
           lane.player.setListener(this.createLaneListener(nextLaneIndex, firstFrameReady));
         }, item.name);
         this.applyDisplayRectToLane(nextLaneIndex, slot, slotElement);
@@ -415,12 +415,20 @@ export class AvplaySessionPair {
     let started = false;
     let timerId: number | null = null;
     let resolvePromise: (() => void) | null = null;
-    let rejectPromise: ((error: Error) => void) | null = null;
 
-    const promise = new Promise<void>((resolve, reject) => {
+    const promise = new Promise<void>((resolve) => {
       resolvePromise = resolve;
-      rejectPromise = reject;
     });
+
+    const forceReady = (reason: string): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clear();
+      this.logger.warn('avplay', `slot ${this.index} lane ${laneIndex + 1} ${reason}, 영상 표출 강제 진행: ${itemName}`);
+      resolvePromise?.();
+    };
 
     const startTimer = () => {
       if (settled || started) {
@@ -429,12 +437,7 @@ export class AvplaySessionPair {
 
       started = true;
       timerId = window.setTimeout(() => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        this.logger.warn('avplay', `slot ${this.index} lane ${laneIndex + 1} 첫 프레임 준비 시간 초과, 영상 표출 강제 진행: ${itemName}`);
-        resolvePromise?.();
+        forceReady('첫 프레임 준비 시간 초과');
       }, FIRST_FRAME_READY_TIMEOUT_MS);
     };
 
@@ -458,12 +461,7 @@ export class AvplaySessionPair {
         resolvePromise?.();
       },
       fail: (message) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        clear();
-        rejectPromise?.(new Error(message));
+        forceReady(`첫 프레임 대기 중 오류: ${message}`);
       },
       cancel: () => {
         if (settled) {
@@ -592,7 +590,7 @@ export class AvplaySessionPair {
     this.callLane(laneIndex, 'open', () => {
       lane.player.open(sourceUrl);
     }, `${item.name} ${sourceUrl}`);
-    this.callLane(laneIndex, 'setListener', () => {
+    this.callLaneSafe(laneIndex, 'setListener', () => {
       lane.player.setListener(this.createLaneListener(laneIndex, firstFrameReady));
     }, item.name);
     this.applyDisplayRectToLane(laneIndex, slot, slotElement);
@@ -728,7 +726,7 @@ export class AvplaySessionPair {
     lane.objectElement.style.top = `${rect.top}px`;
     lane.objectElement.style.width = `${rect.width}px`;
     lane.objectElement.style.height = `${rect.height}px`;
-    this.callLane(laneIndex, 'setDisplayRect', () => {
+    this.callLaneSafe(laneIndex, 'setDisplayRect', () => {
       lane.player.setDisplayRect(left, top, width, height);
     }, `${left},${top},${width}x${height}`);
     this.logger.debug('avplay', `slot ${this.index} lane ${laneIndex + 1} rect ${slot.left},${slot.top},${slot.width}x${slot.height}`);

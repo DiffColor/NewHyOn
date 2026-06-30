@@ -487,6 +487,66 @@ describe('AvplaySession', () => {
     expect(laneA.style.visibility).toBe('visible');
   });
 
+  it('첫 프레임 대기 중 AVPlay 오류가 와도 재생 중인 영상을 강제로 표출한다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    const laneA = document.createElement('object');
+    const listenerRef: { current: AVPlayListener | null } = { current: null };
+    const onError = vi.fn();
+    playerA.setListener = vi.fn((nextListener) => {
+      listenerRef.current = nextListener;
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: laneA },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError,
+    });
+
+    const playPromise = session.play(
+      createVideoItem('error-before-frame.mp4'),
+      createSlotPlan(),
+      document.createElement('section'),
+      false,
+      vi.fn(),
+      { waitForFirstFrame: true },
+    );
+    await Promise.resolve();
+
+    listenerRef.current?.onerror?.({ message: 'decode delayed' });
+    await expect(playPromise).resolves.toEqual({ durationMs: null });
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(playerA.play).toHaveBeenCalledTimes(1);
+    expect(laneA.style.visibility).toBe('visible');
+  });
+
+  it('display rect 적용이 실패해도 AVPlay 재생은 계속 진행한다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    playerA.setDisplayRect = vi.fn(() => {
+      throw new Error('rect unavailable');
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    await expect(session.play(
+      createVideoItem('rect-failed.mp4'),
+      createSlotPlan(),
+      document.createElement('section'),
+      false,
+      vi.fn(),
+    )).resolves.toEqual({ durationMs: null });
+
+    expect(playerA.play).toHaveBeenCalledTimes(1);
+  });
+
   it('현재 영상 첫 프레임 대기 중 다음 lane prepare가 들어와도 현재 play를 폐기하지 않는다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
