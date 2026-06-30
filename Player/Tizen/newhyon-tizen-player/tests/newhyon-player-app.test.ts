@@ -1131,7 +1131,7 @@ describe('NewHyOnPlayerApp', () => {
     await Promise.resolve();
 
     expect(play).toHaveBeenCalledTimes(1);
-    expect(setPanelMute).toHaveBeenLastCalledWith('OFF');
+    expect(setPanelMute).toHaveBeenLastCalledWith('ON');
     expect(document.querySelector('#status-state')?.textContent).toBe('playing');
     expect(document.querySelector('#broadcast-standby')?.classList.contains('broadcast-standby--hidden')).toBe(true);
     app.destroy();

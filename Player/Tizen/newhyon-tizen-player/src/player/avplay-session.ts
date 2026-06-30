@@ -154,7 +154,7 @@ export class AvplaySessionPair {
         this.assertCurrentPlaybackFirstFrame(operationId, nextLaneIndex, item);
       }
       this.updateObjectVisibility();
-      await this.muteAndStopHeldLaneAfterNextFrame();
+      this.muteAndStopHeldLane();
       return { durationMs };
     } catch (error) {
       firstFrameReady?.cancel();
@@ -657,16 +657,13 @@ export class AvplaySessionPair {
     this.stopLane(laneIndex);
   }
 
-  private muteAndStopHeldLaneAfterNextFrame(): Promise<void> {
+  private muteAndStopHeldLane(): void {
     if (this.heldLaneIndex === null || this.heldLaneIndex === this.currentLaneIndex) {
-      return Promise.resolve();
+      return;
     }
 
     const laneIndex = this.heldLaneIndex;
-    this.setLaneMuted(laneIndex, true);
-    return this.afterNextFrame(() => {
-      this.freezeAndStopLane(laneIndex, { alreadyMuted: true });
-    });
+    this.freezeAndStopLane(laneIndex);
   }
 
   private afterNextFrame(action: () => void): Promise<void> {

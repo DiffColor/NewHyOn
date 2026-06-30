@@ -8,7 +8,7 @@ import {
   type RemoteControlAction,
 } from '../input/remote-control';
 import { type AvplaySessionPair, createAvplaySessionPair } from '../player/avplay-session';
-import { TizenAudioPolicy } from '../player/audio-policy';
+import { shouldMutePageAudio, TizenAudioPolicy } from '../player/audio-policy';
 import { SlotPlayer, type SlotPlayerTimelineSnapshot } from '../player/slot-player';
 import { RuntimeHealthReporter } from './runtime-health-reporter';
 import { collectRuntimeDiagnostics, formatRuntimeDiagnostics } from './runtime-diagnostics';
@@ -1172,16 +1172,30 @@ export class NewHyOnPlayerApp {
 
     if (!wasOnAir || !this.hasActivePlaybackSurface()) {
       this.logger.info('schedule', `on-air (${source}): ${evaluation.reason}`);
-      this.applyPanelMute(false, source);
       await this.playPage(this.pageIndex);
       await this.sendHeartbeatNow();
       return;
     }
 
-    this.applyPanelMute(false, source);
+    this.applyCurrentPageAudioPolicy(source);
 
     this.render();
     this.writeRuntimeHealth('schedule-on-air');
+  }
+
+  private applyCurrentPageAudioPolicy(source: string): void {
+    const page = this.pagePlans[this.pageIndex];
+    if (!page) {
+      this.applyPanelMute(false, source);
+      return;
+    }
+
+    this.applyPageAudioPolicy(page, source);
+  }
+
+  private applyPageAudioPolicy(page: SeamlessPagePlan, source: string): void {
+    this.audioPolicy.applyForPage(page);
+    this.applyPanelMute(shouldMutePageAudio(page), source);
   }
 
   private applyPanelMute(muted: boolean, source: string): void {
@@ -1389,7 +1403,7 @@ export class NewHyOnPlayerApp {
     }
 
     if (!preserveIntroTransition) {
-      this.audioPolicy.applyForPage(page);
+      this.applyPageAudioPolicy(page, 'page-commit-before-switch');
     }
     this.view.stage.style.setProperty('--canvas-width', String(page.canvasWidth));
     this.view.stage.style.setProperty('--canvas-height', String(page.canvasHeight));
@@ -1409,7 +1423,7 @@ export class NewHyOnPlayerApp {
         this.removeStageSlots();
         this.removeEmptyIntroVideo();
         this.commitPlaybackPlan(targetPagePlans, targetPlaybackMode, targetPageIndex);
-        this.audioPolicy.applyForPage(page);
+        this.applyPageAudioPolicy(page, 'empty-intro-switch');
         stagedIntroVideo.style.visibility = '';
         this.emptyIntroVideoElement = stagedIntroVideo;
       }
@@ -1463,7 +1477,7 @@ export class NewHyOnPlayerApp {
 
     if (commitPageTimelineBeforeContentSwitch) {
       this.commitPlaybackPlan(targetPagePlans, targetPlaybackMode, targetPageIndex);
-      this.audioPolicy.applyForPage(page);
+      this.applyPageAudioPolicy(page, 'page-commit-before-content-switch');
       this.playing = true;
       this.pageStartCount += 1;
       this.pageStartedAt = performance.now();
@@ -1490,7 +1504,7 @@ export class NewHyOnPlayerApp {
 
     if (!commitPageTimelineBeforeContentSwitch) {
       this.commitPlaybackPlan(targetPagePlans, targetPlaybackMode, targetPageIndex);
-      this.audioPolicy.applyForPage(page);
+      this.applyPageAudioPolicy(page, 'page-commit-after-content-switch');
     }
     this.removeEmptyIntroVideo();
     this.slotPlayers.forEach((slotPlayer) => slotPlayer.applyDisplayRect());
