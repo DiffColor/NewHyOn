@@ -25,13 +25,12 @@ trust_anchor: []
 
 # list of files in web project (.html,.css etc) and resources
 files:
-  - assets/index-DAMz8y3J.js
   - assets/index-DktQOVGL.css
+  - assets/index-fDjyRP-H.js
   - config.xml
   - index.html
   - media/intro.mp4
-  - media/volume-check.LICENSE.txt
-  - media/volume-check.wav
+  - media/volume_sample.mp3
 
 # list of files to exclude based on the matched patterns
 excludes:

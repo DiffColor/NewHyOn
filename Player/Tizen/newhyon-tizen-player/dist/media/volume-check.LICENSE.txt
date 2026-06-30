@@ -1,5 +1,0 @@
-volume-check.wav
-
-Purpose: 10-second volume check music for the Tizen player settings screen.
-Source basis: J.S. Bach-inspired public-domain harmonic pattern, rendered in-house.
-Recording: Generated locally for this project. No third-party sound recording is included.

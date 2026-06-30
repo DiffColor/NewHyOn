@@ -150,8 +150,7 @@ const SCHEDULE_PREPARE_LEAD_MS = 5000;
 const SCHEDULE_PREPARE_LOOKAHEAD_MS = SCHEDULE_PREPARE_LEAD_MS + SCHEDULE_CHECK_INTERVAL_MS;
 const RUNTIME_HEALTH_RECENT_LOG_LIMIT = 200;
 const RUNTIME_HEALTH_LOG_FLUSH_DELAY_MS = 250;
-const VOLUME_TEST_AUDIO_URL = 'media/volume-check.wav';
-const VOLUME_TEST_DURATION_MS = 10000;
+const VOLUME_TEST_AUDIO_URL = 'media/volume_sample.mp3';
 
 function getRequiredElement<T extends HTMLElement>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -179,7 +178,6 @@ export class NewHyOnPlayerApp {
   private readonly audioPolicy = new TizenAudioPolicy(this.logger);
   private readonly healthReporter = new RuntimeHealthReporter();
   private readonly volumeTestAudio = new Audio(VOLUME_TEST_AUDIO_URL);
-  private volumeTestTimer: number | null = null;
   private pageIndex = 0;
   private pageStartedAt = 0;
   private pagePausedElapsedMs = 0;
@@ -292,7 +290,11 @@ export class NewHyOnPlayerApp {
       this.ensureFixedAvplaySessionPairs();
       this.settingsOverlay = new SettingsOverlay({
         onApply: (settings) => {
+          this.stopVolumeTest();
           this.applyPlayerSettings(settings);
+        },
+        onClose: () => {
+          this.stopVolumeTest();
         },
         getCurrentVolume: () => this.readTvVolume() ?? this.config.settings.defaultVolume,
         onVolumePreview: (volume) => {
@@ -421,31 +423,22 @@ export class NewHyOnPlayerApp {
 
   private playVolumeTest(volume: number): void {
     this.applyTvVolume(volume, 'settings-volume-test');
-    if (this.volumeTestTimer !== null) {
-      window.clearTimeout(this.volumeTestTimer);
-      this.volumeTestTimer = null;
+    if (!this.volumeTestAudio.paused) {
+      this.stopVolumeTest();
+      return;
     }
 
     const audio = this.volumeTestAudio;
     audio.pause();
     audio.currentTime = 0;
-    audio.loop = false;
+    audio.loop = true;
     audio.volume = 1;
     void audio.play().catch((error) => {
       this.logger.warn('audio', `볼륨 테스트 음악 재생 실패: ${formatError(error)}`);
     });
-    this.volumeTestTimer = window.setTimeout(() => {
-      audio.pause();
-      audio.currentTime = 0;
-      this.volumeTestTimer = null;
-    }, VOLUME_TEST_DURATION_MS);
   }
 
   private stopVolumeTest(): void {
-    if (this.volumeTestTimer !== null) {
-      window.clearTimeout(this.volumeTestTimer);
-      this.volumeTestTimer = null;
-    }
     this.volumeTestAudio.pause();
     this.volumeTestAudio.currentTime = 0;
   }
