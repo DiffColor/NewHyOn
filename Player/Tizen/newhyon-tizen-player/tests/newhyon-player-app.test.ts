@@ -1103,7 +1103,13 @@ describe('NewHyOnPlayerApp', () => {
     saveWeeklySchedule(rows);
     const play = vi.fn();
     const setPanelMute = vi.fn();
+    const setMute = vi.fn();
     window.webapis = createWebApis(createPlayer(play), setPanelMute);
+    window.tizen = {
+      tvaudiocontrol: {
+        setMute,
+      },
+    };
 
     const app = new NewHyOnPlayerApp({
       manifest: createManifest(),
@@ -1131,7 +1137,8 @@ describe('NewHyOnPlayerApp', () => {
     await Promise.resolve();
 
     expect(play).toHaveBeenCalledTimes(1);
-    expect(setPanelMute).toHaveBeenLastCalledWith('ON');
+    expect(setPanelMute).toHaveBeenLastCalledWith('OFF');
+    expect(setMute).toHaveBeenCalledWith(true);
     expect(document.querySelector('#status-state')?.textContent).toBe('playing');
     expect(document.querySelector('#broadcast-standby')?.classList.contains('broadcast-standby--hidden')).toBe(true);
     app.destroy();

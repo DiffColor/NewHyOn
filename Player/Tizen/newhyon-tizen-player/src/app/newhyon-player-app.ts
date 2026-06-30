@@ -8,7 +8,7 @@ import {
   type RemoteControlAction,
 } from '../input/remote-control';
 import { type AvplaySessionPair, createAvplaySessionPair } from '../player/avplay-session';
-import { shouldMutePageAudio, TizenAudioPolicy } from '../player/audio-policy';
+import { TizenAudioPolicy } from '../player/audio-policy';
 import { SlotPlayer, type SlotPlayerTimelineSnapshot } from '../player/slot-player';
 import { RuntimeHealthReporter } from './runtime-health-reporter';
 import { collectRuntimeDiagnostics, formatRuntimeDiagnostics } from './runtime-diagnostics';
@@ -1172,6 +1172,7 @@ export class NewHyOnPlayerApp {
 
     if (!wasOnAir || !this.hasActivePlaybackSurface()) {
       this.logger.info('schedule', `on-air (${source}): ${evaluation.reason}`);
+      this.applyPanelMute(false, source);
       await this.playPage(this.pageIndex);
       await this.sendHeartbeatNow();
       return;
@@ -1187,15 +1188,15 @@ export class NewHyOnPlayerApp {
     const page = this.pagePlans[this.pageIndex];
     if (!page) {
       this.applyPanelMute(false, source);
+      this.audioPolicy.restore();
       return;
     }
 
     this.applyPageAudioPolicy(page, source);
   }
 
-  private applyPageAudioPolicy(page: SeamlessPagePlan, source: string): void {
+  private applyPageAudioPolicy(page: SeamlessPagePlan, _source: string): void {
     this.audioPolicy.applyForPage(page);
-    this.applyPanelMute(shouldMutePageAudio(page), source);
   }
 
   private applyPanelMute(muted: boolean, source: string): void {

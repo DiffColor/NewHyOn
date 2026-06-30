@@ -48,7 +48,7 @@ describe('TizenAudioPolicy', () => {
     expect(shouldMutePageAudio(createPage(false))).toBe(false);
   });
 
-  it('TV 시스템 mute를 직접 변경하지 않는다', () => {
+  it('페이지 오디오 정책을 TV audio mute에 적용한다', () => {
     const setMute = vi.fn();
     window.tizen = {
       tvaudiocontrol: {
@@ -59,8 +59,28 @@ describe('TizenAudioPolicy', () => {
 
     const policy = new TizenAudioPolicy(new RingLogger(5));
     policy.applyForPage(createPage(true));
+    policy.applyForPage(createPage(true));
+    policy.applyForPage(createPage(false));
     policy.restore();
 
-    expect(setMute).not.toHaveBeenCalled();
+    expect(setMute).toHaveBeenNthCalledWith(1, true);
+    expect(setMute).toHaveBeenNthCalledWith(2, false);
+    expect(setMute).toHaveBeenCalledTimes(2);
+  });
+
+  it('restore 시 이전 정책이 mute면 TV audio mute를 해제한다', () => {
+    const setMute = vi.fn();
+    window.tizen = {
+      tvaudiocontrol: {
+        setMute,
+      },
+    };
+
+    const policy = new TizenAudioPolicy(new RingLogger(5));
+    policy.applyForPage(createPage(true));
+    policy.restore();
+
+    expect(setMute).toHaveBeenNthCalledWith(1, true);
+    expect(setMute).toHaveBeenNthCalledWith(2, false);
   });
 });
