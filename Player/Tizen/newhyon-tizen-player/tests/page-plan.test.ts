@@ -34,6 +34,13 @@ describe('buildPagePlan', () => {
     expect(plan.slots[5].elementName).toBe('element-2');
   });
 
+  it('페이지 볼륨을 0~100 범위로 정규화한다', () => {
+    expect(buildPagePlan({ PIC_Volume: 42, PIC_Elements: [] }, 'playlist').volume).toBe(42);
+    expect(buildPagePlan({ PIC_Volume: -5, PIC_Elements: [] }, 'playlist').volume).toBe(0);
+    expect(buildPagePlan({ PIC_Volume: 130, PIC_Elements: [] }, 'playlist').volume).toBe(100);
+    expect(buildPagePlan({ PIC_Elements: [] }, 'playlist').volume).toBe(100);
+  });
+
   it('단일 영상 슬롯은 원본 Windows PlaybackCoordinator처럼 loop + timer 전환으로 구성한다', () => {
     const plan = buildPagePlan(
       {

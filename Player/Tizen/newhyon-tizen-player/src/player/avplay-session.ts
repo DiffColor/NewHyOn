@@ -644,8 +644,14 @@ export class AvplaySessionPair {
 
   private setLaneMuted(laneIndex: number, muted: boolean): void {
     const lane = this.lanes[laneIndex];
-    this.callLaneSafe(laneIndex, 'setMute', () => {
-      lane.player.setMute?.(muted);
+    const operation = muted ? 'disableAudioStream' : 'enableAudioStream';
+    this.callLaneSafe(laneIndex, operation, () => {
+      const control = muted ? lane.player.disableAudioStream : lane.player.enableAudioStream;
+      if (typeof control !== 'function') {
+        throw new Error(`AVPlay ${operation} unavailable`);
+      }
+
+      control.call(lane.player);
     }, String(muted));
   }
 

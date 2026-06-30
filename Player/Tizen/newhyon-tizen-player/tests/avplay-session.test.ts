@@ -17,7 +17,8 @@ function createPlayer(): AVPlayApi {
     setDisplayMethod: vi.fn(),
     setVideoStillMode: vi.fn(),
     setLooping: vi.fn(),
-    setMute: vi.fn(),
+    disableAudioStream: vi.fn(),
+    enableAudioStream: vi.fn(),
     getState: vi.fn(() => 'IDLE'),
   };
 }
@@ -246,8 +247,8 @@ describe('AvplaySession', () => {
     playerA.setVideoStillMode = vi.fn((mode) => {
       callOrder.push(`a.still:${mode}`);
     });
-    playerA.setMute = vi.fn((muted) => {
-      callOrder.push(`a.mute:${muted}`);
+    playerA.disableAudioStream = vi.fn(() => {
+      callOrder.push('a.disableAudioStream');
     });
     playerA.stop = vi.fn(() => {
       callOrder.push('a.stop');
@@ -278,7 +279,7 @@ describe('AvplaySession', () => {
 
     expect(callOrder[0]).toBe('b.prepareAsync');
     expect(callOrder[1]).toBe('b.play');
-    expect(callOrder[2]).toBe('a.mute:true');
+    expect(callOrder[2]).toBe('a.disableAudioStream');
     expect(callOrder[3]).toBe('a.still:true');
     expect(callOrder[4]).toBe('a.stop');
     expect(playerB.play).toHaveBeenCalledTimes(1);

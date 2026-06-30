@@ -31,6 +31,7 @@ export interface SeamlessPagePlan {
   readonly canvasWidth: number;
   readonly canvasHeight: number;
   readonly durationSeconds: number;
+  readonly volume: number;
   readonly slots: SeamlessSlotPlan[];
 }
 
@@ -176,6 +177,15 @@ function pageDurationSeconds(page: PageInfoClass): number {
   );
 }
 
+function pageVolume(page: PageInfoClass): number {
+  const volume = page.PIC_Volume ?? 100;
+  if (!Number.isFinite(volume)) {
+    return 100;
+  }
+
+  return Math.min(100, Math.max(0, Math.round(volume)));
+}
+
 export function buildPagePlan(page: PageInfoClass, playlistName: string, options: BuildPagePlanOptions = {}): SeamlessPagePlan {
   const playableElements = [...(page.PIC_Elements ?? [])]
     .filter(isMediaElement)
@@ -232,6 +242,7 @@ export function buildPagePlan(page: PageInfoClass, playlistName: string, options
     canvasWidth: page.PIC_CanvasWidth && page.PIC_CanvasWidth > 0 ? page.PIC_CanvasWidth : 1920,
     canvasHeight: page.PIC_CanvasHeight && page.PIC_CanvasHeight > 0 ? page.PIC_CanvasHeight : 1080,
     durationSeconds: hasPeriodRestrictedContent ? Math.max(1, dynamicDurationSeconds) : pageDurationSeconds(page),
+    volume: pageVolume(page),
     slots,
   };
 }

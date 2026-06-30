@@ -1103,11 +1103,12 @@ describe('NewHyOnPlayerApp', () => {
     saveWeeklySchedule(rows);
     const play = vi.fn();
     const setPanelMute = vi.fn();
-    const setMute = vi.fn();
+    const setVolume = vi.fn();
     window.webapis = createWebApis(createPlayer(play), setPanelMute);
     window.tizen = {
       tvaudiocontrol: {
-        setMute,
+        getVolume: vi.fn(() => 30),
+        setVolume,
       },
     };
 
@@ -1138,7 +1139,7 @@ describe('NewHyOnPlayerApp', () => {
 
     expect(play).toHaveBeenCalledTimes(1);
     expect(setPanelMute).toHaveBeenLastCalledWith('OFF');
-    expect(setMute).toHaveBeenCalledWith(true);
+    expect(setVolume).toHaveBeenCalledWith(0);
     expect(document.querySelector('#status-state')?.textContent).toBe('playing');
     expect(document.querySelector('#broadcast-standby')?.classList.contains('broadcast-standby--hidden')).toBe(true);
     app.destroy();

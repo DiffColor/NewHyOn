@@ -16,7 +16,7 @@ declare global {
       registerKeyBatch?(keys: string[], successCallback?: () => void, errorCallback?: (error: unknown) => void): void;
     };
     tvaudiocontrol?: {
-      setMute(mute: boolean): void;
+      setMute?(mute: boolean): void;
       isMute?(): boolean;
       setVolume?(volume: number): void;
       getVolume?(): number;
@@ -303,7 +303,8 @@ declare global {
     setTimeoutForBuffering?(seconds: number): void;
     setLooping?(isLooping: boolean): void;
     setVideoStillMode?(mode: string): void;
-    setMute?(mute: boolean): void;
+    disableAudioStream?(): void;
+    enableAudioStream?(): void;
     getState?(): string;
     getCurrentTime?(): number;
     getDuration?(): number;

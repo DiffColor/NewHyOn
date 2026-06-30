@@ -2410,6 +2410,7 @@ export class NewHyOnPlayerApp {
           canvasWidth: referencePage?.PIC_CanvasWidth && referencePage.PIC_CanvasWidth > 0 ? referencePage.PIC_CanvasWidth : 1920,
           canvasHeight: referencePage?.PIC_CanvasHeight && referencePage.PIC_CanvasHeight > 0 ? referencePage.PIC_CanvasHeight : 1080,
           durationSeconds: 60,
+          volume: 0,
           slots: [],
         },
       ],

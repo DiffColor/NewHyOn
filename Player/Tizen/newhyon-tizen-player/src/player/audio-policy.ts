@@ -23,41 +23,61 @@ export function shouldMutePageAudio(page: SeamlessPagePlan): boolean {
   return !hasUnmutedVideo;
 }
 
+export function resolvePageAudioVolume(page: SeamlessPagePlan): number {
+  return shouldMutePageAudio(page) ? 0 : page.volume;
+}
+
 export class TizenAudioPolicy {
-  private lastAppliedMute: boolean | null = null;
+  private lastAppliedVolume: number | null = null;
+  private originalVolume: number | null = null;
+  private originalMute: boolean | null = null;
 
   constructor(private readonly logger: AudioLogger) {}
 
   applyForPage(page: SeamlessPagePlan): void {
-    const targetMute = shouldMutePageAudio(page);
-    if (this.lastAppliedMute !== targetMute) {
-      if (!this.applyAudioMute(targetMute, 'page')) {
+    const targetVolume = resolvePageAudioVolume(page);
+    if (this.lastAppliedVolume !== targetVolume) {
+      if (!this.applyAudioVolume(targetVolume, 'page')) {
         return;
       }
-      this.lastAppliedMute = targetMute;
-      this.logger.info('audio', `page audio mute policy=${targetMute}`);
+      this.lastAppliedVolume = targetVolume;
+      this.logger.info('audio', `page audio volume=${targetVolume}`);
     }
   }
 
   restore(): void {
-    if (this.lastAppliedMute === true) {
-      this.applyAudioMute(false, 'restore');
+    if (this.originalVolume !== null) {
+      this.applyAudioVolume(this.originalVolume, 'restore', { restoreMute: true });
     }
-    this.lastAppliedMute = null;
+    this.lastAppliedVolume = null;
+    this.originalVolume = null;
+    this.originalMute = null;
   }
 
-  private applyAudioMute(muted: boolean, source: string): boolean {
+  private applyAudioVolume(volume: number, source: string, options: { readonly restoreMute?: boolean } = {}): boolean {
     const audioControl = window.tizen?.tvaudiocontrol;
-    if (typeof audioControl?.setMute !== 'function') {
-      this.logger.warn('audio', `tvaudiocontrol.setMute unavailable (${source}, muted=${muted})`);
+    if (typeof audioControl?.setVolume !== 'function') {
+      this.logger.warn('audio', `tvaudiocontrol.setVolume unavailable (${source}, volume=${volume})`);
       return false;
     }
 
     try {
-      audioControl.setMute(muted);
+      if (this.originalVolume === null && typeof audioControl.getVolume === 'function') {
+        this.originalVolume = audioControl.getVolume();
+      }
+      if (this.originalMute === null && typeof audioControl.isMute === 'function') {
+        this.originalMute = audioControl.isMute();
+      }
+      if (volume > 0 && options.restoreMute !== true && typeof audioControl.setMute === 'function') {
+        audioControl.setMute(false);
+      }
+      audioControl.setVolume(volume);
+      if (options.restoreMute === true && this.originalMute !== null && typeof audioControl.setMute === 'function') {
+        audioControl.setMute(this.originalMute);
+      }
       return true;
     } catch (error) {
-      this.logger.warn('audio', `tvaudiocontrol.setMute failed (${source}, muted=${muted}): ${formatAudioError(error)}`);
+      this.logger.warn('audio', `tvaudiocontrol.setVolume failed (${source}, volume=${volume}): ${formatAudioError(error)}`);
       return false;
     }
   }
