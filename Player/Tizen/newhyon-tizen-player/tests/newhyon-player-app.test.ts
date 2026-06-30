@@ -753,7 +753,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(play).toHaveBeenCalledTimes(1);
     expect(getPlayer).toHaveBeenCalledTimes(4);
     expect(players[0]?.prepareAsync).toHaveBeenCalledTimes(1);
-    expect(players[1]?.prepareAsync).not.toHaveBeenCalled();
+    expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(6499);
     await Promise.resolve();
@@ -761,7 +761,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelectorAll('.slot')).toHaveLength(1);
     expect(play).toHaveBeenCalledTimes(1);
     expect(getPlayer).toHaveBeenCalledTimes(4);
-    expect(players[1]?.prepareAsync).not.toHaveBeenCalled();
+    expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(3501);
     await vi.advanceTimersByTimeAsync(64);
