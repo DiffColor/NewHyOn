@@ -176,7 +176,7 @@ describe('SlotPlayer', () => {
     expect(play).toHaveBeenCalledTimes(1);
   });
 
-  it('기간 스케줄상 현재 재생 불가한 첫 콘텐츠는 건너뛰고 첫 허용 콘텐츠로 시작한다', async () => {
+  it('기간 스케줄상 현재 재생 불가한 콘텐츠는 건너뛰고 허용 콘텐츠로 시작한다', async () => {
     const play = vi.fn(async (..._args: unknown[]) => undefined);
     const session = {
       play,
@@ -419,7 +419,7 @@ describe('SlotPlayer', () => {
     expect(play).toHaveBeenCalledTimes(2);
   });
 
-  it('다중 영상 슬롯은 현재 영상 재생 중 다음 영상을 준비한다', async () => {
+  it('영상에서 영상으로 이어질 때는 현재 영상 재생 중 다음 영상을 prepare하지 않는다', async () => {
     vi.useFakeTimers();
     const play = vi.fn(async (..._args: unknown[]) => undefined);
     const prepare = vi.fn(async (..._args: unknown[]) => undefined);
@@ -439,11 +439,11 @@ describe('SlotPlayer', () => {
     await vi.runAllTicks();
 
     expect(play).toHaveBeenCalledTimes(1);
-    expect(prepare).toHaveBeenCalledTimes(1);
-    expect((prepare.mock.calls[0]?.[0] as SeamlessContentItem).name).toBe('second.mp4');
+    expect(prepare).not.toHaveBeenCalled();
 
     await slot.syncToPageElapsed(10000);
     expect(play).toHaveBeenCalledTimes(2);
+    expect(prepare).not.toHaveBeenCalled();
     expect(play.mock.calls[0]?.[5]).toMatchObject({ waitForFirstFrame: true });
     expect(play.mock.calls[1]?.[5]).toMatchObject({ waitForFirstFrame: true });
   });
@@ -582,6 +582,51 @@ describe('SlotPlayer', () => {
 
     await vi.advanceTimersByTimeAsync(5000);
     await slot.syncToPageElapsed(10000);
+    await ended.handler();
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(play).toHaveBeenCalledTimes(2);
+    expect((play.mock.calls[1]?.[0] as SeamlessContentItem).name).toBe('second.mp4');
+  });
+
+  it('영상 설정 시간과 원본 길이 차이가 1초 이내이면 1회 재생 종료 이벤트로 다음 컨텐츠를 재생한다', async () => {
+    vi.useFakeTimers();
+    const ended = {
+      handler: null as (() => boolean | Promise<boolean> | void) | null,
+    };
+    const play = vi.fn(async (
+      _item: SeamlessContentItem,
+      _slot: SeamlessSlotPlan,
+      _element: HTMLElement,
+      _preserveAspectRatio: boolean,
+      onStreamEnded: () => boolean | Promise<boolean> | void,
+    ) => {
+      ended.handler = onStreamEnded;
+      return { durationMs: 9100 };
+    });
+    const session = {
+      play,
+      prepare: vi.fn(async () => ({ durationMs: 9100 })),
+      clearPrepared: vi.fn(),
+      setLooping: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+      stop: vi.fn(),
+      state: vi.fn(() => 'PLAYING'),
+      applyDisplayRect: vi.fn(),
+    } as unknown as AvplaySession;
+    const slot = new SlotPlayer(0, document.createElement('section'), createTwoVideoSlot(), false, false, () => session, new RingLogger(5));
+
+    await slot.start();
+    expect(session.setLooping).toHaveBeenLastCalledWith(false);
+
+    await slot.syncToPageElapsed(10000);
+    expect(play).toHaveBeenCalledTimes(1);
+
+    if (!ended.handler) {
+      throw new Error('영상 종료 핸들러가 등록되지 않았습니다.');
+    }
+
     await ended.handler();
     await vi.runOnlyPendingTimersAsync();
 
@@ -887,12 +932,12 @@ describe('SlotPlayer', () => {
     expect(slot.blocksPageTransitionForContentEnd()).toBe(false);
   });
 
-  it('페이지 끝에서 실제 영상 종료가 2초 이내이면 타이머 전환 영상도 종료 이벤트를 기다린다', async () => {
+  it('페이지 끝에서 실제 영상 종료가 1초 이내이면 타이머 전환 영상도 종료 이벤트를 기다린다', async () => {
     vi.useFakeTimers();
     const ended = {
       handler: null as (() => boolean | Promise<boolean> | void | Promise<void>) | null,
     };
-    const onPageBoundaryContentEnd = vi.fn();
+    const onPageTransitionContentEnd = vi.fn();
     const play = vi.fn(async (
       _item: SeamlessContentItem,
       _slot: SeamlessSlotPlan,
@@ -932,7 +977,7 @@ describe('SlotPlayer', () => {
       () => undefined,
       false,
       () => undefined,
-      onPageBoundaryContentEnd,
+      onPageTransitionContentEnd,
       () => true,
     );
 
@@ -949,7 +994,7 @@ describe('SlotPlayer', () => {
     await vi.runOnlyPendingTimersAsync();
 
     expect(shouldComplete).toBe(false);
-    expect(onPageBoundaryContentEnd).toHaveBeenCalledTimes(1);
+    expect(onPageTransitionContentEnd).toHaveBeenCalledTimes(1);
     expect(slot.blocksPageTransitionForContentEnd()).toBe(false);
   });
 
@@ -1478,7 +1523,7 @@ describe('SlotPlayer', () => {
     }
   });
 
-  it('영상에서 이미지로 전환한 직후 다음 영상 준비는 지연 stop 이후에 시작한다', async () => {
+  it('영상에서 이미지로 전환한 뒤에도 다음 영상은 선행 prepare하지 않는다', async () => {
     vi.useFakeTimers();
     const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
     Object.defineProperty(HTMLImageElement.prototype, 'src', {
@@ -1494,12 +1539,13 @@ describe('SlotPlayer', () => {
 
     try {
       const callOrder: string[] = [];
+      const prepare = vi.fn(async (..._args: unknown[]) => {
+        callOrder.push('prepare');
+        return undefined;
+      });
       const session = {
         play: vi.fn(async () => undefined),
-        prepare: vi.fn(async () => {
-          callOrder.push('prepare');
-          return undefined;
-        }),
+        prepare,
         clearPrepared: vi.fn(),
         hide: vi.fn(() => {
           callOrder.push('hide');
@@ -1537,229 +1583,14 @@ describe('SlotPlayer', () => {
       await vi.runOnlyPendingTimersAsync();
       await vi.runOnlyPendingTimersAsync();
       await vi.runAllTicks();
-      expect(session.prepare).toHaveBeenCalledTimes(1);
+      expect(prepare).toHaveBeenCalledTimes(1);
+      expect((prepare.mock.calls[0]?.[0] as SeamlessContentItem).name).toBe('third.mp4');
       expect(callOrder).toEqual(['hide', 'stop', 'prepare']);
     } finally {
       if (descriptor) {
         Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
       }
     }
-  });
-
-  it('영상 재생 중 다음 페이지 첫 이미지는 표출하지 않고 hidden standby 콘텐츠로 준비한다', async () => {
-    vi.useFakeTimers();
-    const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
-    Object.defineProperty(HTMLImageElement.prototype, 'src', {
-      configurable: true,
-      get() {
-        return this.getAttribute('src') ?? '';
-      },
-      set(value: string) {
-        this.setAttribute('src', value);
-        queueMicrotask(() => this.onload?.(new Event('load')));
-      },
-    });
-
-    try {
-      const element = document.createElement('section');
-      const session = {
-        play: vi.fn(async () => undefined),
-        prepare: vi.fn(async () => undefined),
-        clearPrepared: vi.fn(),
-        hide: vi.fn(),
-        pause: vi.fn(),
-        resume: vi.fn(),
-        stop: vi.fn(),
-        state: vi.fn(() => 'PLAYING'),
-        applyDisplayRect: vi.fn(),
-      } as unknown as AvplaySession;
-      const slot = new SlotPlayer(0, element, createVideoSlot(), false, false, () => session, new RingLogger(5));
-      const nextPageSlot = {
-        ...createVideoSlot(),
-        items: [createImageItem('next-page.png')],
-      };
-
-      await slot.start();
-      expect(element.querySelectorAll('.slot-image--visible')).toHaveLength(0);
-
-      slot.prepareFirstContentForSlotPlan(nextPageSlot);
-      await vi.runAllTicks();
-      await vi.advanceTimersByTimeAsync(32);
-
-      const images = Array.from(element.querySelectorAll<HTMLImageElement>('.slot-image'));
-      expect(element.querySelectorAll('.slot-image--visible')).toHaveLength(0);
-      expect(Array.from(element.querySelectorAll<HTMLImageElement>('.slot-image--prepared'))
-        .some((image) => image.getAttribute('src')?.includes('next-page.png'))).toBe(true);
-      expect(images.some((image) => image.getAttribute('src')?.includes('next-page.png'))).toBe(true);
-    } finally {
-      if (descriptor) {
-        Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
-      }
-    }
-  });
-
-  it('예약 경계 준비 이미지는 직전 컨텐츠 이미지 전환으로 해제되지 않는다', async () => {
-    vi.useFakeTimers();
-    const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
-    Object.defineProperty(HTMLImageElement.prototype, 'src', {
-      configurable: true,
-      get() {
-        return this.getAttribute('src') ?? '';
-      },
-      set(value: string) {
-        this.setAttribute('src', value);
-        queueMicrotask(() => this.onload?.(new Event('load')));
-      },
-    });
-
-    try {
-      const element = document.createElement('section');
-      const session = {
-        play: vi.fn(async () => undefined),
-        prepare: vi.fn(async () => undefined),
-        clearPrepared: vi.fn(),
-        hide: vi.fn(),
-        hideCurrentKeepPrepared: vi.fn(async () => undefined),
-        pause: vi.fn(),
-        resume: vi.fn(),
-        stop: vi.fn(),
-        state: vi.fn(() => 'PLAYING'),
-        applyDisplayRect: vi.fn(),
-      } as unknown as AvplaySession;
-      const slot = new SlotPlayer(0, element, createVideoThenImageSlot(), false, false, () => session, new RingLogger(5));
-      const scheduleSlot = {
-        ...createVideoSlot(),
-        items: [createImageItem('schedule-first.png')],
-      };
-
-      slot.setPageTimeline(0, 30000, false);
-      await slot.start();
-      slot.prepareFirstContentForSlotPlan(scheduleSlot);
-      await vi.runAllTicks();
-      await vi.advanceTimersByTimeAsync(32);
-
-      expect(Array.from(element.querySelectorAll<HTMLImageElement>('.slot-image--prepared'))
-        .some((image) => image.getAttribute('src')?.includes('schedule-first.png'))).toBe(true);
-
-      await slot.syncToPageElapsed(10000, 30000, false);
-      await vi.runAllTicks();
-      await vi.advanceTimersByTimeAsync(32);
-
-      expect(slot.snapshot()).toContain('second.png (IMAGE)');
-      expect(Array.from(element.querySelectorAll<HTMLImageElement>('.slot-image--prepared'))
-        .some((image) => image.getAttribute('src')?.includes('schedule-first.png'))).toBe(true);
-    } finally {
-      if (descriptor) {
-        Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
-      }
-    }
-  });
-
-  it('현재 컨텐츠 전환이 페이지 경계보다 빠르면 경계 준비를 미룬다', async () => {
-    vi.useFakeTimers();
-    const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
-    Object.defineProperty(HTMLImageElement.prototype, 'src', {
-      configurable: true,
-      get() {
-        return this.getAttribute('src') ?? '';
-      },
-      set(value: string) {
-        this.setAttribute('src', value);
-        queueMicrotask(() => this.onload?.(new Event('load')));
-      },
-    });
-
-    try {
-      const element = document.createElement('section');
-      const session = {
-        play: vi.fn(async () => undefined),
-        prepare: vi.fn(async () => undefined),
-        clearPrepared: vi.fn(),
-        hide: vi.fn(),
-        pause: vi.fn(),
-        resume: vi.fn(),
-        stop: vi.fn(),
-        state: vi.fn(() => 'IDLE'),
-        applyDisplayRect: vi.fn(),
-      } as unknown as AvplaySession;
-      const slot = new SlotPlayer(0, element, createTwoImageSlot(), false, false, () => session, new RingLogger(5));
-
-      slot.setPageTimeline(0, 30000, false);
-      await slot.start();
-      await vi.runAllTicks();
-      await vi.advanceTimersByTimeAsync(32);
-
-      expect(slot.shouldPrepareBoundaryFirstContent(30000)).toBe(false);
-      expect(Array.from(element.querySelectorAll<HTMLImageElement>('.slot-image--prepared'))
-        .some((image) => image.getAttribute('src')?.includes('second.png'))).toBe(true);
-    } finally {
-      if (descriptor) {
-        Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
-      }
-    }
-  });
-
-  it('페이지 경계가 현재 컨텐츠 전환보다 빠르면 경계 준비를 허용한다', async () => {
-    vi.useFakeTimers();
-    const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
-    Object.defineProperty(HTMLImageElement.prototype, 'src', {
-      configurable: true,
-      get() {
-        return this.getAttribute('src') ?? '';
-      },
-      set(value: string) {
-        this.setAttribute('src', value);
-        queueMicrotask(() => this.onload?.(new Event('load')));
-      },
-    });
-
-    try {
-      const element = document.createElement('section');
-      const session = {
-        play: vi.fn(async () => undefined),
-        prepare: vi.fn(async () => undefined),
-        clearPrepared: vi.fn(),
-        hide: vi.fn(),
-        pause: vi.fn(),
-        resume: vi.fn(),
-        stop: vi.fn(),
-        state: vi.fn(() => 'IDLE'),
-        applyDisplayRect: vi.fn(),
-      } as unknown as AvplaySession;
-      const slot = new SlotPlayer(0, element, createTwoImageSlot(), false, false, () => session, new RingLogger(5));
-
-      slot.setPageTimeline(9500, 10000, false);
-      await slot.start();
-      await vi.runAllTicks();
-      await vi.advanceTimersByTimeAsync(32);
-
-      expect(slot.shouldPrepareBoundaryFirstContent(500)).toBe(true);
-    } finally {
-      if (descriptor) {
-        Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
-      }
-    }
-  });
-
-  it('영상 재생 중에는 고정 초수 기준 없이 페이지 경계 첫 이미지 준비를 허용한다', async () => {
-    const play = vi.fn(async () => ({ durationMs: 10000 }));
-    const session = {
-      play,
-      prepare: vi.fn(async () => undefined),
-      clearPrepared: vi.fn(),
-      hide: vi.fn(),
-      pause: vi.fn(),
-      resume: vi.fn(),
-      stop: vi.fn(),
-      state: vi.fn(() => 'PLAYING'),
-      applyDisplayRect: vi.fn(),
-    } as unknown as AvplaySession;
-    const slot = new SlotPlayer(0, document.createElement('section'), createTwoVideoSlot(), false, false, () => session, new RingLogger(5));
-
-    slot.setPageTimeline(0, 30000, false);
-    await slot.start();
-
-    expect(slot.shouldPrepareBoundaryFirstContent(30000)).toBe(true);
   });
 
 });

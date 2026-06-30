@@ -6,7 +6,7 @@ const DISPLAY_METHOD_FILL = 'PLAYER_DISPLAY_MODE_FULL_SCREEN';
 const DISPLAY_METHOD_CONTAIN = 'PLAYER_DISPLAY_MODE_LETTER_BOX';
 const AVPLAY_BASE_WIDTH = 1920;
 const AVPLAY_BASE_HEIGHT = 1080;
-const FIRST_FRAME_READY_TIMEOUT_MS = 5000;
+const FIRST_FRAME_READY_TIMEOUT_MS = 500;
 const STOPPABLE_STATES = new Set(['READY', 'PLAYING', 'PAUSED']);
 const VIDEO_DURATION_MATCH_TOLERANCE_MS = 250;
 const AVPLAY_LAYER_BELOW_SLOT_OFFSET = -1;
@@ -20,7 +20,7 @@ export interface VideoSessionEvents {
 
 type StreamEndedHandler = () => boolean | Promise<boolean> | void | Promise<void>;
 
-interface AvplayLane {
+interface AvplayPairSession {
   readonly player: AVPlayApi;
   readonly objectElement: HTMLObjectElement;
 }
@@ -66,7 +66,7 @@ function getPlayerState(player: AVPlayApi): string {
   return (player.getState?.() ?? 'UNKNOWN').toUpperCase();
 }
 
-export class AvplaySession {
+export class AvplaySessionPair {
   private currentItem: SeamlessContentItem | null = null;
   private currentEndedHandler: StreamEndedHandler | null = null;
   private currentLaneIndex: number | null = null;
@@ -79,7 +79,7 @@ export class AvplaySession {
 
   constructor(
     readonly index: number,
-    private readonly lanes: readonly [AvplayLane, AvplayLane],
+    private readonly lanes: readonly [AvplayPairSession, AvplayPairSession],
     host: HTMLElement,
     private readonly logger: RingLogger,
     private readonly events: VideoSessionEvents,
@@ -136,6 +136,7 @@ export class AvplaySession {
         this.setLaneDisplayMethod(nextLaneIndex, preserveAspectRatio ? DISPLAY_METHOD_CONTAIN : DISPLAY_METHOD_FILL);
       }
       this.setLaneLooping(nextLaneIndex, this.shouldLoopForDuration(item, durationMs));
+      this.setLaneMuted(nextLaneIndex, slot.isMuted);
       this.preparedLane = null;
       this.setLaneVideoStillMode(nextLaneIndex, 'false');
       this.assertOperationCurrent(operationId, nextLaneIndex, 'play.beforePlay', item.name);
@@ -153,7 +154,7 @@ export class AvplaySession {
         this.assertCurrentPlaybackFirstFrame(operationId, nextLaneIndex, item);
       }
       this.updateObjectVisibility();
-      this.freezeAndStopHeldLane();
+      await this.muteAndStopHeldLaneAfterNextFrame();
       return { durationMs };
     } catch (error) {
       firstFrameReady?.cancel();
@@ -474,7 +475,7 @@ export class AvplaySession {
     };
   }
 
-  private currentLane(): AvplayLane | null {
+  private currentLane(): AvplayPairSession | null {
     if (this.currentLaneIndex === null) {
       return null;
     }
@@ -642,17 +643,31 @@ export class AvplaySession {
     }, mode);
   }
 
-  private freezeAndStopLane(laneIndex: number): void {
+  private setLaneMuted(laneIndex: number, muted: boolean): void {
+    const lane = this.lanes[laneIndex];
+    this.callLaneSafe(laneIndex, 'setMute', () => {
+      lane.player.setMute?.(muted);
+    }, String(muted));
+  }
+
+  private freezeAndStopLane(laneIndex: number, options: { readonly alreadyMuted?: boolean } = {}): void {
+    if (options.alreadyMuted !== true) {
+      this.setLaneMuted(laneIndex, true);
+    }
     this.setLaneVideoStillMode(laneIndex, 'true');
     this.stopLane(laneIndex);
   }
 
-  private freezeAndStopHeldLane(): void {
+  private muteAndStopHeldLaneAfterNextFrame(): Promise<void> {
     if (this.heldLaneIndex === null || this.heldLaneIndex === this.currentLaneIndex) {
-      return;
+      return Promise.resolve();
     }
 
-    this.freezeAndStopLane(this.heldLaneIndex);
+    const laneIndex = this.heldLaneIndex;
+    this.setLaneMuted(laneIndex, true);
+    return this.afterNextFrame(() => {
+      this.freezeAndStopLane(laneIndex, { alreadyMuted: true });
+    });
   }
 
   private afterNextFrame(action: () => void): Promise<void> {
@@ -729,6 +744,7 @@ export class AvplaySession {
 
     lanesToHide.forEach(({ laneIndex }) => {
       const lane = this.lanes[laneIndex];
+      this.setLaneMuted(laneIndex, true);
       lane.objectElement.style.visibility = 'hidden';
       lane.objectElement.setAttribute('aria-hidden', 'true');
     });
@@ -868,13 +884,13 @@ export function createAvplaySessionPair(
   host: HTMLElement,
   logger: RingLogger,
   events: VideoSessionEvents,
-): AvplaySession {
+): AvplaySessionPair {
   const store = window.webapis?.avplaystore;
   if (!store) {
     throw new Error('AVPlayStore API를 찾지 못했습니다. avplay-seamless-still-mode 기준 재생은 삼성 Tizen Signage 실장비의 webapis.avplaystore가 필요합니다.');
   }
 
-  const createLaneObject = (): AvplayLane => {
+  const createPairSession = (): AvplayPairSession => {
     const player = store.getPlayer();
     if (!player) {
       throw new Error('AVPlayStore 플레이어를 확보하지 못했습니다.');
@@ -886,14 +902,16 @@ export function createAvplaySessionPair(
     };
   };
 
-  return new AvplaySession(
+  return new AvplaySessionPair(
     index,
     [
-      createLaneObject(),
-      createLaneObject(),
+      createPairSession(),
+      createPairSession(),
     ],
     host,
     logger,
     events,
   );
 }
+
+export { AvplaySessionPair as AvplaySession };

@@ -720,7 +720,7 @@ describe('NewHyOnPlayerApp', () => {
     app.destroy();
   });
 
-  it('페이지 만료 후 다음 페이지 첫 영상으로 전환한다', async () => {
+  it('페이지 만료 후 다음 페이지 영상 콘텐츠로 전환한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn();
     const players: AVPlayApi[] = [];
@@ -753,7 +753,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(play).toHaveBeenCalledTimes(1);
     expect(getPlayer).toHaveBeenCalledTimes(4);
     expect(players[0]?.prepareAsync).toHaveBeenCalledTimes(1);
-    expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
+    expect(players[1]?.prepareAsync).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(6499);
     await Promise.resolve();
@@ -761,7 +761,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelectorAll('.slot')).toHaveLength(1);
     expect(play).toHaveBeenCalledTimes(1);
     expect(getPlayer).toHaveBeenCalledTimes(4);
-    expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
+    expect(players[1]?.prepareAsync).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(3501);
     await vi.advanceTimersByTimeAsync(64);
@@ -776,7 +776,7 @@ describe('NewHyOnPlayerApp', () => {
     app.destroy();
   });
 
-  it('페이지 시작 직후 다음 페이지 첫 이미지를 standby DOM에 opacity 0으로 준비한다', async () => {
+  it('페이지 시작 직후 다음 페이지 이미지 콘텐츠를 준비한다', async () => {
     vi.useFakeTimers();
     const loadedSources: string[] = [];
     const srcDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
@@ -843,6 +843,129 @@ describe('NewHyOnPlayerApp', () => {
       await Promise.resolve();
 
       expect(document.querySelector('#status-page')?.textContent).toContain('second-page');
+      app.destroy();
+    } finally {
+      if (srcDescriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'src', srcDescriptor);
+      }
+      if (decodeDescriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'decode', decodeDescriptor);
+      } else {
+        delete (HTMLImageElement.prototype as Partial<HTMLImageElement>).decode;
+      }
+    }
+  });
+
+  it('예약 스케줄 lookahead는 현재 재생 슬롯에 예약 이미지 콘텐츠를 준비하지 않는다', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 22, 9, 0, 56));
+    const loadedSources: string[] = [];
+    const srcDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    const decodeDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'decode');
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      configurable: true,
+      get() {
+        return this.getAttribute('src') ?? '';
+      },
+      set(value: string) {
+        loadedSources.push(value);
+        this.setAttribute('src', value);
+        queueMicrotask(() => this.onload?.(new Event('load')));
+      },
+    });
+    Object.defineProperty(HTMLImageElement.prototype, 'decode', {
+      configurable: true,
+      value: vi.fn(() => Promise.resolve()),
+    });
+
+    try {
+      const play = vi.fn();
+      window.webapis = createWebApis(createPlayer(play), vi.fn(), {
+        getPlayer: vi.fn(() => ({
+          ...createPlayer(play),
+          getState: vi.fn(() => 'PLAYING'),
+        })),
+      });
+      saveRemoteScheduleFromUpdatePayload({
+        Schedule: {
+          GeneratedAt: '2026-06-22 09:00:00',
+          SpecialSchedules: [
+            {
+              Id: 'future-image-schedule',
+              PageListName: 'future-image-list',
+              DayOfWeek1: false,
+              DayOfWeek2: true,
+              DayOfWeek3: false,
+              DayOfWeek4: false,
+              DayOfWeek5: false,
+              DayOfWeek6: false,
+              DayOfWeek7: false,
+              IsPeriodEnable: false,
+              DisplayStartH: 9,
+              DisplayStartM: 1,
+              DisplayEndH: 18,
+              DisplayEndM: 0,
+            },
+          ],
+          Playlists: [
+            {
+              PlaylistName: 'future-image-list',
+              PageList: { PLI_PageListName: 'future-image-list' },
+              Pages: [
+                {
+                  PIC_PageName: 'future-image-page',
+                  PIC_PlaytimeSecond: 10,
+                  PIC_CanvasWidth: 1920,
+                  PIC_CanvasHeight: 1080,
+                  PIC_Elements: [
+                    {
+                      EIF_Name: 'future-image',
+                      EIF_Type: 'Media',
+                      EIF_Width: 1920,
+                      EIF_Height: 1080,
+                      EIF_PosLeft: 0,
+                      EIF_PosTop: 0,
+                      EIF_IsMuted: true,
+                      EIF_ContentsInfoClassList: [
+                        {
+                          CIF_FileName: 'future-scheduled.png',
+                          CIF_FileFullPath: 'https://example.com/future-scheduled.png',
+                          CIF_ContentType: 'Image',
+                          CIF_PlayMinute: '00',
+                          CIF_PlaySec: '10',
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+      const app = new NewHyOnPlayerApp({
+        manifest: createManifest(),
+        settings: {
+          ...DEFAULT_PLAYER_SETTINGS,
+          playerId: '',
+          managerAddress: '',
+          manifestUrl: '',
+          preserveAspectRatio: false,
+          switchOnContentEnd: false,
+          hudInitiallyVisible: false,
+        },
+        hudInitiallyVisible: false,
+      });
+
+      await app.start();
+      await vi.advanceTimersByTimeAsync(2000);
+      await vi.runAllTicks();
+
+      expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
+      expect(loadedSources.some((source) => source.includes('future-scheduled.png'))).toBe(false);
+      expect(Array.from(document.querySelectorAll<HTMLImageElement>('.slot-image'))
+        .some((image) => image.getAttribute('src')?.includes('future-scheduled.png'))).toBe(false);
       app.destroy();
     } finally {
       if (srcDescriptor) {

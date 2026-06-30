@@ -303,6 +303,7 @@ declare global {
     setTimeoutForBuffering?(seconds: number): void;
     setLooping?(isLooping: boolean): void;
     setVideoStillMode?(mode: string): void;
+    setMute?(mute: boolean): void;
     getState?(): string;
     getCurrentTime?(): number;
     getDuration?(): number;

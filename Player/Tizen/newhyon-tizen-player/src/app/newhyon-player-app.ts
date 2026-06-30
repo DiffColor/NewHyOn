@@ -7,7 +7,7 @@ import {
   resolveRemoteControlAction,
   type RemoteControlAction,
 } from '../input/remote-control';
-import { type AvplaySession, createAvplaySessionPair } from '../player/avplay-session';
+import { type AvplaySessionPair, createAvplaySessionPair } from '../player/avplay-session';
 import { TizenAudioPolicy } from '../player/audio-policy';
 import { SlotPlayer, type SlotPlayerTimelineSnapshot } from '../player/slot-player';
 import { RuntimeHealthReporter } from './runtime-health-reporter';
@@ -95,12 +95,6 @@ interface PagePlanResolution {
   readonly mode: PlaybackMode;
 }
 
-interface BoundaryPreparationTarget {
-  readonly page: SeamlessPagePlan;
-  readonly remainingMs: number;
-  readonly reason: string;
-}
-
 interface PagePlayOptions {
   readonly preservePreviousUntilReady?: boolean;
   readonly pagePlans?: readonly SeamlessPagePlan[];
@@ -147,6 +141,8 @@ type LoadingStepState = 'pending' | 'active' | 'complete' | 'error' | 'skipped';
 
 const FIXED_AVPLAY_SESSION_PAIR_COUNT = 2;
 const AVPLAY_PLAYERS_PER_SESSION_PAIR = 2;
+const ACTIVE_AVPLAY_SESSION_PAIR_INDEX = 0;
+const STANDBY_AVPLAY_SESSION_PAIR_INDEX = 1;
 const MASTER_TICK_INTERVAL_MS = 200;
 const MASTER_TICK_LAG_WARN_MS = 500;
 const SCHEDULE_CHECK_INTERVAL_MS = 1000;
@@ -177,7 +173,7 @@ export class NewHyOnPlayerApp {
   private readonly view: ViewRefs;
   private readonly pagePlans: SeamlessPagePlan[];
   private readonly slotPlayers: SlotPlayer[] = [];
-  private readonly avplaySessionPairs: Array<AvplaySession | null> = [];
+  private readonly avplaySessionPairs: Array<AvplaySessionPair | null> = [];
   private readonly audioPolicy = new TizenAudioPolicy(this.logger);
   private readonly healthReporter = new RuntimeHealthReporter();
   private pageIndex = 0;
@@ -362,15 +358,15 @@ export class NewHyOnPlayerApp {
     }
   }
 
-  private ensureAvplaySessionPairForSlot(slotIndex: number): AvplaySession {
-    const pairIndex = slotIndex;
+  private ensureActiveAvplaySessionPair(slotIndex: number): AvplaySessionPair {
+    const pairIndex = ACTIVE_AVPLAY_SESSION_PAIR_INDEX;
     const existing = this.avplaySessionPairs[pairIndex];
     if (existing) {
       return existing;
     }
 
     throw new Error(
-      `Tizen AVPlayStore 고정 페어 한도를 초과했습니다: slot ${slotIndex + 1}, fixed pairs ${FIXED_AVPLAY_SESSION_PAIR_COUNT}, players ${FIXED_AVPLAY_SESSION_PAIR_COUNT * AVPLAY_PLAYERS_PER_SESSION_PAIR}/4`,
+      `Tizen AVPlayStore 현재 재생 페어를 찾지 못했습니다: slot ${slotIndex + 1}, active pair ${pairIndex + 1}, standby pair ${STANDBY_AVPLAY_SESSION_PAIR_INDEX + 1}, players ${FIXED_AVPLAY_SESSION_PAIR_COUNT * AVPLAY_PLAYERS_PER_SESSION_PAIR}/4`,
     );
   }
 
@@ -1449,9 +1445,6 @@ export class NewHyOnPlayerApp {
     this.contentShowCount += 1;
     this.lastContent = `slot ${slotIndex + 1}: ${item.name}`;
     this.writeRuntimeHealth('content-shown');
-    window.setTimeout(() => {
-      this.prepareUpcomingBoundaryFirstContent('content-shown');
-    }, 0);
   }
 
   private async playContentPage(
@@ -1513,7 +1506,6 @@ export class NewHyOnPlayerApp {
       this.writeRuntimeHealth('page-started');
     }
     this.startMasterTimer();
-    this.prepareUpcomingBoundaryFirstContent('page-started');
   }
 
   private ensureContentSlotSurfaces(
@@ -1534,7 +1526,7 @@ export class NewHyOnPlayerApp {
         this.createEmptySlotPlan(slotIndex, page),
         this.config.manifest.preserveAspectRatio,
         this.config.settings.switchOnContentEnd,
-        () => this.ensureAvplaySessionPairForSlot(slotIndex),
+        () => this.ensureActiveAvplaySessionPair(slotIndex),
         this.logger,
         (shownSlotIndex, item) => {
           this.recordContentShown(shownSlotIndex, item);
@@ -1542,7 +1534,7 @@ export class NewHyOnPlayerApp {
         false,
         () => undefined,
         (endedSlotIndex, item) => {
-          this.handlePageBoundaryContentEnded(endedSlotIndex, item);
+          this.handlePageTransitionContentEnded(endedSlotIndex, item);
         },
         () => this.isPageTransitionPending(),
         (item) => this.isContentItemPlayable(item),
@@ -1563,62 +1555,6 @@ export class NewHyOnPlayerApp {
       zIndex: page.slots[slotIndex]?.zIndex ?? slotIndex,
       items: [],
     };
-  }
-
-  private prepareUpcomingBoundaryFirstContent(reason: string): void {
-    if (this.destroyed || this.playbackMode !== 'content' || this.pagePlans.length === 0) {
-      return;
-    }
-
-    const target = this.resolveBoundaryPreparationTarget(reason);
-    if (!target) {
-      return;
-    }
-
-    target.page.slots.forEach((slot, slotIndex) => {
-      const item = this.firstPlayableContentItem(slot);
-      if (!item || item.contentType !== 'Image') {
-        return;
-      }
-
-      const slotPlayer = this.slotPlayers[slotIndex];
-      if (!slotPlayer) {
-        this.logger.warn('prepare', `boundary prepare skipped(${target.reason}/${reason}): slot ${slotIndex + 1} player 없음, ${item.name}`);
-        return;
-      }
-
-      if (!slotPlayer.shouldPrepareBoundaryFirstContent(target.remainingMs)) {
-        this.logger.debug('prepare', `boundary prepare deferred(${target.reason}/${reason}): slot ${slotIndex + 1} ${item.name}`);
-        return;
-      }
-
-      const preparePromise = slotPlayer.prepareFirstContentForSlotPlan(slot);
-      if (preparePromise) {
-        void preparePromise
-          .then(() => {
-            this.logger.debug('prepare', `boundary prepared(${target.reason}/${reason}): slot ${slotIndex + 1} ${item.name}`);
-          })
-          .catch((error) => {
-            this.logger.warn('prepare', `boundary prepare failed(${target.reason}/${reason}): slot ${slotIndex + 1} ${item.name}: ${formatError(error)}`);
-          });
-      }
-    });
-  }
-
-  private resolveBoundaryPreparationTarget(reason: string): BoundaryPreparationTarget | null {
-    const pageRemainingMs = Math.max(0, this.currentPageDurationMilliseconds() - this.currentPageElapsedMilliseconds());
-    const scheduleTarget = this.resolveRemoteSchedulePreparationTarget(pageRemainingMs, reason);
-    if (scheduleTarget) {
-      return scheduleTarget;
-    }
-
-    const nextPageIndex = this.pagePlans.length <= 1
-      ? this.pageIndex
-      : (this.pageIndex + 1) % this.pagePlans.length;
-    const nextPage = this.pagePlans[nextPageIndex];
-    return nextPage
-      ? { page: nextPage, remainingMs: pageRemainingMs, reason: this.pagePlans.length <= 1 ? 'page-loop' : 'page-boundary' }
-      : null;
   }
 
   private resolveLogicalNextPageSlots(
@@ -1649,63 +1585,8 @@ export class NewHyOnPlayerApp {
     return item ? { item, itemIndex, slot } : null;
   }
 
-  private resolveRemoteSchedulePreparationTarget(pageRemainingMs: number, reason: string): BoundaryPreparationTarget | null {
-    if (this.remoteScheduleUpdateInProgress) {
-      return null;
-    }
-
-    const snapshot = loadRemoteSchedule();
-    if (!snapshot) {
-      return null;
-    }
-
-    const nowMs = Date.now();
-    const decision = evaluateRemoteSchedule(snapshot, new Date(nowMs), this.currentContentManifest.playlistName);
-    if (decision.nextSwitchAtMs <= 0 || !decision.nextPlaylistName) {
-      return null;
-    }
-
-    const scheduleRemainingMs = decision.nextSwitchAtMs - nowMs;
-    if (
-      scheduleRemainingMs < -SCHEDULE_CHECK_INTERVAL_MS
-      || scheduleRemainingMs > SCHEDULE_PREPARE_LOOKAHEAD_MS
-    ) {
-      return null;
-    }
-
-    const manifest = decision.nextScheduleId
-      ? buildManifestFromRemoteSchedulePlaylist(
-        snapshot,
-        decision.nextPlaylistName,
-        this.config.manifest.preserveAspectRatio,
-      )
-      : this.currentContentManifest;
-    if (!manifest) {
-      this.logger.warn('prepare', `예약 스케줄 준비 대상 playlist 데이터를 찾지 못했습니다: ${decision.nextPlaylistName}`);
-      return null;
-    }
-
-    const resolution = decision.nextScheduleId
-      ? { pagePlans: this.createContentPagePlans(manifest), mode: 'content' as PlaybackMode }
-      : this.createEffectiveUpdatePagePlans(manifest);
-    const page = resolution.pagePlans[0];
-    if (!page || resolution.mode !== 'content') {
-      return null;
-    }
-
-    this.logger.debug(
-      'prepare',
-      `예약 스케줄 boundary 준비 후보(${reason}): ${decision.nextPlaylistName} in ${Math.max(0, Math.round(scheduleRemainingMs))}ms`,
-    );
-    return {
-      page,
-      remainingMs: Math.max(0, scheduleRemainingMs),
-      reason: 'schedule-boundary',
-    };
-  }
-
   private slotNeedsSurface(slot: SeamlessSlotPlan): boolean {
-    return this.firstPlayableContentItem(slot) !== null && slot.width > 0 && slot.height > 0;
+    return this.resolvePlayableContentItem(slot) !== null && slot.width > 0 && slot.height > 0;
   }
 
   private formatSlotTransitionFailure(slotPlayers: readonly SlotPlayer[]): string {
@@ -1849,7 +1730,7 @@ export class NewHyOnPlayerApp {
     return true;
   }
 
-  private handlePageBoundaryContentEnded(slotIndex: number, item: SeamlessContentItem): void {
+  private handlePageTransitionContentEnded(slotIndex: number, item: SeamlessContentItem): void {
     if (
       !this.playing
       || this.pagePlans.length <= 1
@@ -1900,7 +1781,7 @@ export class NewHyOnPlayerApp {
     }
 
     const currentMinute = Math.floor(nowMs / 60000);
-    this.checkContentPeriodBoundary(currentMinute);
+    this.checkContentPeriodChange(currentMinute);
     if (currentMinute === this.lastBroadcastScheduleCheckMinute || this.scheduleCheckInProgress) {
       return;
     }
@@ -1916,7 +1797,7 @@ export class NewHyOnPlayerApp {
       });
   }
 
-  private checkContentPeriodBoundary(currentMinute: number): void {
+  private checkContentPeriodChange(currentMinute: number): void {
     if (
       currentMinute === this.lastContentPeriodCheckMinute
       || !this.broadcastOnAir
@@ -1946,7 +1827,6 @@ export class NewHyOnPlayerApp {
       return;
     }
 
-    this.prepareUpcomingBoundaryFirstContent('schedule-tick');
     void this.applyRemoteScheduleSnapshot(snapshot, nowMs)
       .catch((error) => {
         this.logger.warn('schedule', `예약 스케줄 적용 실패: ${formatError(error)}`);
@@ -2524,7 +2404,7 @@ export class NewHyOnPlayerApp {
 
   private hasPlayablePagePlans(pagePlans: readonly SeamlessPagePlan[]): boolean {
     return pagePlans.some((page) =>
-      page.slots.some((slot) => slot.width > 0 && slot.height > 0 && this.firstPlayableContentItem(slot) !== null));
+      page.slots.some((slot) => slot.width > 0 && slot.height > 0 && this.resolvePlayableContentItem(slot) !== null));
   }
 
   private hasManifestContentItems(manifest: RuntimeConfig['manifest']): boolean {
@@ -2544,7 +2424,7 @@ export class NewHyOnPlayerApp {
     return isContentPeriodAllowed(item.source.CIF_StrGUID, new Date());
   }
 
-  private firstPlayableContentItem(slot: SeamlessSlotPlan): SeamlessContentItem | null {
+  private resolvePlayableContentItem(slot: SeamlessSlotPlan): SeamlessContentItem | null {
     return slot.items.find((item) => this.isContentItemPlayable(item)) ?? null;
   }
 

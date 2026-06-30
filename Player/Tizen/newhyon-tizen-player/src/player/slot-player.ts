@@ -1,10 +1,10 @@
 import type { RingLogger } from '../core/logger';
 import type { SeamlessContentItem, SeamlessSlotPlan } from '../domain/page-plan';
-import type { AvplaySession } from './avplay-session';
+import type { AvplaySessionPair } from './avplay-session';
 import { resolveImageSourceUrl } from './source-resolver';
 
 type ContentShownHandler = (slotIndex: number, item: SeamlessContentItem) => void;
-type PageBoundaryContentEndHandler = (slotIndex: number, item: SeamlessContentItem) => void;
+type PageTransitionContentEndHandler = (slotIndex: number, item: SeamlessContentItem) => void;
 type ContentPlayablePredicate = (item: SeamlessContentItem) => boolean;
 type VideoTransitionMode = 'timer' | 'event';
 
@@ -14,8 +14,8 @@ interface NextContentTarget {
   readonly slot: SeamlessSlotPlan;
 }
 
-const VIDEO_DURATION_MATCH_TOLERANCE_MS = 250;
-const PAGE_END_VIDEO_COMPLETION_GRACE_MS = 2000;
+const VIDEO_DURATION_MATCH_TOLERANCE_MS = 1000;
+const PAGE_END_VIDEO_COMPLETION_GRACE_MS = 1000;
 const IMAGE_MAIN_THREAD_GAP_WARN_MS = 250;
 const PREPARATION_PRIORITY_TOLERANCE_MS = 250;
 const IMAGE_LAYER_BOTTOM = '0';
@@ -43,7 +43,6 @@ export interface SlotPlayerTimelineSnapshot {
 export class SlotPlayer {
   private readonly imageA = document.createElement('img');
   private readonly imageB = document.createElement('img');
-  private readonly boundaryImage = document.createElement('img');
   private readonly videoMask = document.createElement('div');
   private currentImage: HTMLImageElement;
   private standbyImage: HTMLImageElement;
@@ -52,7 +51,7 @@ export class SlotPlayer {
   private itemPausedElapsedMs = 0;
   private active = false;
   private switchingItem = false;
-  private videoSession: AvplaySession | null = null;
+  private videoSession: AvplaySessionPair | null = null;
   private failureMessage: string | null = null;
   private preparedItemIndex: number | null = null;
   private preparedItemId: string | null = null;
@@ -60,8 +59,6 @@ export class SlotPlayer {
   private preparedImageId: string | null = null;
   private preparedImagePromise: Promise<void> | null = null;
   private preparedImageElement: HTMLImageElement | null = null;
-  private preparedBoundaryImageId: string | null = null;
-  private preparedBoundaryImagePromise: Promise<void> | null = null;
   private contentGeneration = 0;
   private layoutCanvasWidth = 0;
   private layoutCanvasHeight = 0;
@@ -69,8 +66,8 @@ export class SlotPlayer {
   private pageDurationMs = Number.POSITIVE_INFINITY;
   private loopCurrentPageAtPageEnd = false;
   private logicalNextContentTarget: NextContentTarget | null = null;
-  private contentEndReachedAtPageBoundary = false;
-  private pageBoundaryVideoWaitStartedAt = -1;
+  private contentEndReachedForPageTransition = false;
+  private pageTransitionVideoWaitStartedAt = -1;
   private readonly videoDurationMsByItemId = new Map<string, number>();
   private currentVideoLoopState: boolean | null = null;
   private currentVideoCompletionCount = 0;
@@ -81,12 +78,12 @@ export class SlotPlayer {
     private slot: SeamlessSlotPlan,
     private preserveAspectRatio: boolean,
     private switchOnContentEnd: boolean,
-    private readonly getVideoSession: () => AvplaySession,
+    private readonly getVideoSession: () => AvplaySessionPair,
     private readonly logger: RingLogger,
     private readonly onContentShown: ContentShownHandler = () => undefined,
     private readonly waitForVideoFirstFrame = false,
-    private readonly releaseVideoSession: (session: AvplaySession) => void = () => undefined,
-    private readonly onPageBoundaryContentEnd: PageBoundaryContentEndHandler = () => undefined,
+    private readonly releaseVideoSession: (session: AvplaySessionPair) => void = () => undefined,
+    private readonly onPageTransitionContentEnd: PageTransitionContentEndHandler = () => undefined,
     private readonly isPageTransitionScheduled: () => boolean = () => false,
     private readonly isContentPlayable: ContentPlayablePredicate = () => true,
   ) {
@@ -96,10 +93,8 @@ export class SlotPlayer {
     this.imageA.style.zIndex = IMAGE_LAYER_TOP;
     this.imageB.className = 'slot-image';
     this.imageB.style.zIndex = IMAGE_LAYER_BOTTOM;
-    this.boundaryImage.className = 'slot-image';
-    this.boundaryImage.style.zIndex = IMAGE_LAYER_BOTTOM;
     this.videoMask.className = 'slot-video-mask';
-    this.element.append(this.videoMask, this.imageA, this.imageB, this.boundaryImage);
+    this.element.append(this.videoMask, this.imageA, this.imageB);
   }
 
   updatePlaybackSettings(preserveAspectRatio: boolean, switchOnContentEnd: boolean): void {
@@ -120,15 +115,15 @@ export class SlotPlayer {
 
     this.active = true;
     this.failureMessage = null;
-    const firstPlayableIndex = this.firstPlayableIndex();
-    if (firstPlayableIndex === null) {
+    const playableStartIndex = this.resolvePlayableStartIndex();
+    if (playableStartIndex === null) {
       this.active = false;
       this.element.classList.remove('slot--video-active');
       this.element.classList.add('slot--empty');
       return true;
     }
 
-    this.itemIndex = firstPlayableIndex;
+    this.itemIndex = playableStartIndex;
     return this.showCurrentItem();
   }
 
@@ -141,35 +136,29 @@ export class SlotPlayer {
     const previousItemPausedElapsedMs = this.itemPausedElapsedMs;
     const previousCanvasWidth = this.layoutCanvasWidth;
     const previousCanvasHeight = this.layoutCanvasHeight;
-    const incomingFirstItemIndex = this.firstPlayableIndex(slot);
-    const incomingFirstItem = incomingFirstItemIndex !== null ? slot.items[incomingFirstItemIndex] ?? null : null;
-    if (!incomingFirstItem) {
+    const incomingStartItemIndex = this.resolvePlayableStartIndex(slot);
+    const incomingStartItem = incomingStartItemIndex !== null ? slot.items[incomingStartItemIndex] ?? null : null;
+    if (!incomingStartItem) {
       this.clearPreparedImage();
-      this.clearPreparedBoundaryImage();
       this.clearPreparedContent();
-    } else if (incomingFirstItem.contentType === 'Image') {
-      if (this.preparedImageId !== incomingFirstItem.id) {
+    } else if (incomingStartItem.contentType === 'Image') {
+      if (this.preparedImageId !== incomingStartItem.id) {
         this.clearPreparedImage();
       }
-      if (this.preparedBoundaryImageId !== incomingFirstItem.id) {
-        this.clearPreparedBoundaryImage();
-      }
-    } else if (this.preparedItemId !== incomingFirstItem.id) {
-      this.clearPreparedBoundaryImage();
+    } else if (this.preparedItemId !== incomingStartItem.id) {
       this.clearPreparedContent();
     }
     this.slot = slot;
     this.applyLayout(canvasWidth, canvasHeight);
-    this.itemIndex = incomingFirstItemIndex ?? 0;
+    this.itemIndex = incomingStartItemIndex ?? 0;
     this.failureMessage = null;
-    if (incomingFirstItemIndex === null || slot.width <= 0 || slot.height <= 0) {
+    if (incomingStartItemIndex === null || slot.width <= 0 || slot.height <= 0) {
       this.active = false;
       this.resetItemClock();
       this.releaseCurrentVideoSession();
       this.hideImages();
       this.currentImage.removeAttribute('src');
       this.standbyImage.removeAttribute('src');
-      this.boundaryImage.removeAttribute('src');
       this.element.classList.remove('slot--video-active');
       this.element.classList.add('slot--empty');
       return true;
@@ -214,7 +203,7 @@ export class SlotPlayer {
     this.pageDurationMs = Math.max(1, pageDurationMs);
     this.loopCurrentPageAtPageEnd = loopCurrentPageAtPageEnd;
     if (!this.isPageTimelineExpired()) {
-      this.pageBoundaryVideoWaitStartedAt = -1;
+      this.pageTransitionVideoWaitStartedAt = -1;
     }
   }
 
@@ -228,23 +217,17 @@ export class SlotPlayer {
     this.resetItemClock();
     this.clearPreparedContent();
     this.clearPreparedImage();
-    this.clearPreparedBoundaryImage();
     this.releaseCurrentVideoSession();
     this.currentImage.removeAttribute('src');
     this.standbyImage.removeAttribute('src');
-    this.boundaryImage.removeAttribute('src');
     this.currentImage.classList.remove('slot-image--visible');
     this.standbyImage.classList.remove('slot-image--visible');
-    this.boundaryImage.classList.remove('slot-image--visible');
     this.currentImage.classList.remove('slot-image--prepared');
     this.standbyImage.classList.remove('slot-image--prepared');
-    this.boundaryImage.classList.remove('slot-image--prepared');
     this.currentImage.classList.remove('slot-image--under-video');
     this.standbyImage.classList.remove('slot-image--under-video');
-    this.boundaryImage.classList.remove('slot-image--under-video');
     this.currentImage.style.zIndex = IMAGE_LAYER_TOP;
     this.standbyImage.style.zIndex = IMAGE_LAYER_BOTTOM;
-    this.boundaryImage.style.zIndex = IMAGE_LAYER_BOTTOM;
     this.element.classList.remove('slot--video-active');
     this.failureMessage = null;
   }
@@ -279,12 +262,11 @@ export class SlotPlayer {
     this.resetItemClock();
     this.clearPreparedContent();
     this.clearPreparedImage();
-    this.clearPreparedBoundaryImage();
     if (!this.canAdvanceContent()) {
       return;
     }
 
-    this.itemIndex = this.firstPlayableIndex() ?? 0;
+    this.itemIndex = this.resolvePlayableStartIndex() ?? 0;
     await this.showCurrentItem();
   }
 
@@ -293,85 +275,6 @@ export class SlotPlayer {
     if (item?.contentType === 'Video') {
       this.videoSession?.applyDisplayRect(this.slot, this.element);
     }
-  }
-
-  prepareFirstContentForSlotPlan(slot: SeamlessSlotPlan): Promise<void> | null {
-    if (!this.active || slot.items.length === 0 || slot.width <= 0 || slot.height <= 0) {
-      return null;
-    }
-
-    const firstPlayableIndex = this.firstPlayableIndex(slot);
-    const item = firstPlayableIndex !== null ? slot.items[firstPlayableIndex] ?? null : null;
-    if (!item) {
-      return null;
-    }
-
-    if (item.id === this.currentItem()?.id) {
-      return null;
-    }
-
-    if (this.preparedItemId === item.id && this.preparePromise) {
-      return this.preparePromise;
-    }
-
-    if (item.contentType === 'Image') {
-      if (this.preparedBoundaryImageId !== item.id || !this.preparedBoundaryImagePromise) {
-        this.clearPreparedBoundaryImage();
-        this.preparedBoundaryImageId = item.id;
-        this.preparedBoundaryImagePromise = this.prepareImageElement(
-          this.boundaryImage,
-          item,
-          'page-boundary-first',
-          { underVideo: this.currentItem()?.contentType === 'Video' },
-        ).catch((error) => {
-          this.clearPreparedBoundaryImage();
-          throw error;
-        });
-      }
-
-      const pageBoundaryPreparePromise = this.preparedBoundaryImagePromise
-        .then(() => undefined)
-        .catch((error) => {
-          this.logger.warn('slot', `slot ${this.slotIndex + 1} 다음 페이지 첫 콘텐츠 준비 실패: ${String(error)}`);
-          throw error;
-        });
-
-      return pageBoundaryPreparePromise;
-    }
-
-    const pageBoundaryPreparePromise = this.prepareVideoContentForSlotPlan(item, 0, slot)
-      .then(() => undefined)
-      .catch((error) => {
-        this.logger.warn('slot', `slot ${this.slotIndex + 1} 다음 페이지 첫 콘텐츠 준비 실패: ${String(error)}`);
-        throw error;
-      });
-
-    return pageBoundaryPreparePromise;
-  }
-
-  shouldPrepareBoundaryFirstContent(boundaryRemainingMs = this.pageDurationMs - this.pageElapsedMs): boolean {
-    if (!this.active) {
-      return false;
-    }
-
-    const item = this.currentItem();
-    if (!item) {
-      return true;
-    }
-
-    if (item.contentType === 'Video') {
-      return true;
-    }
-
-    const safeBoundaryRemainingMs = Number.isFinite(boundaryRemainingMs)
-      ? Math.max(0, boundaryRemainingMs)
-      : Number.POSITIVE_INFINITY;
-    const contentRemainingMs = this.currentContentTransitionRemainingMs(item);
-    if (contentRemainingMs === null) {
-      return true;
-    }
-
-    return safeBoundaryRemainingMs <= contentRemainingMs + PREPARATION_PRIORITY_TOLERANCE_MS;
   }
 
   blocksPageTransitionForContentEnd(): boolean {
@@ -384,8 +287,8 @@ export class SlotPlayer {
       return this.switchOnContentEnd && !this.hasCurrentItemDurationEnded(item);
     }
 
-    if (!this.shouldWaitForVideoEndForPageTransition(item) || this.contentEndReachedAtPageBoundary) {
-      this.pageBoundaryVideoWaitStartedAt = -1;
+    if (!this.shouldWaitForVideoEndForPageTransition(item) || this.contentEndReachedForPageTransition) {
+      this.pageTransitionVideoWaitStartedAt = -1;
       return false;
     }
 
@@ -393,14 +296,14 @@ export class SlotPlayer {
       return true;
     }
 
-    if (this.pageBoundaryVideoWaitStartedAt < 0) {
-      this.pageBoundaryVideoWaitStartedAt = performance.now();
+    if (this.pageTransitionVideoWaitStartedAt < 0) {
+      this.pageTransitionVideoWaitStartedAt = performance.now();
     }
 
-    const waitElapsedMs = performance.now() - this.pageBoundaryVideoWaitStartedAt;
+    const waitElapsedMs = performance.now() - this.pageTransitionVideoWaitStartedAt;
     if (waitElapsedMs > PAGE_END_VIDEO_COMPLETION_GRACE_MS) {
       this.logger.warn('slot', `slot ${this.slotIndex + 1} 영상 종료 이벤트 대기 초과, 페이지 전환 허용: ${item.name}`);
-      this.contentEndReachedAtPageBoundary = true;
+      this.contentEndReachedForPageTransition = true;
       return false;
     }
 
@@ -491,13 +394,12 @@ export class SlotPlayer {
     this.setPageTimeline(pageElapsedMs, pageDurationMs, loopCurrentPageAtPageEnd);
     let item = this.currentItem();
     if (this.active && !this.switchingItem && (!item || !this.isItemPlayable(item))) {
-      const playableIndex = this.firstPlayableIndex();
+      const playableIndex = this.resolvePlayableStartIndex();
       if (playableIndex === null) {
         this.active = false;
         this.resetItemClock();
         this.clearPreparedContent();
         this.clearPreparedImage();
-        this.clearPreparedBoundaryImage();
         await this.releaseCurrentVideoSession();
         this.hideImages();
         this.element.classList.remove('slot--video-active');
@@ -544,8 +446,8 @@ export class SlotPlayer {
 
     this.switchingItem = true;
     this.resetItemClock();
-    this.contentEndReachedAtPageBoundary = false;
-    this.pageBoundaryVideoWaitStartedAt = -1;
+    this.contentEndReachedForPageTransition = false;
+    this.pageTransitionVideoWaitStartedAt = -1;
     this.currentVideoLoopState = null;
     this.currentVideoCompletionCount = 0;
     try {
@@ -605,7 +507,7 @@ export class SlotPlayer {
         this.videoSession = nextVideoSession;
         this.currentVideoLoopState = null;
         this.updateCurrentVideoLoopState(item, true);
-        this.hideImages({ preservePreparedBoundaryImage: true });
+        this.hideImages();
         if (this.preparedItemId === item.id) {
           this.clearPreparedContent();
         }
@@ -681,8 +583,8 @@ export class SlotPlayer {
     }
 
     if (!this.loopCurrentPageAtPageEnd && (this.isPageTimelineExpired() || this.isPageTransitionScheduled())) {
-      this.contentEndReachedAtPageBoundary = true;
-      this.queuePageBoundaryContentEnd(item);
+      this.contentEndReachedForPageTransition = true;
+      this.queuePageTransitionContentEnd(item);
       return false;
     }
 
@@ -702,13 +604,13 @@ export class SlotPlayer {
     return true;
   }
 
-  private queuePageBoundaryContentEnd(item: SeamlessContentItem): void {
+  private queuePageTransitionContentEnd(item: SeamlessContentItem): void {
     window.setTimeout(() => {
-      if (!this.active || !this.contentEndReachedAtPageBoundary) {
+      if (!this.active || !this.contentEndReachedForPageTransition) {
         return;
       }
 
-      this.onPageBoundaryContentEnd(this.slotIndex, item);
+      this.onPageTransitionContentEnd(this.slotIndex, item);
     }, 0);
   }
 
@@ -717,7 +619,6 @@ export class SlotPlayer {
     this.resetItemClock();
     this.clearPreparedContent();
     this.clearPreparedImage();
-    this.clearPreparedBoundaryImage();
     this.releaseCurrentVideoSession();
     this.hideImages();
     this.element.classList.remove('slot--video-active');
@@ -737,19 +638,13 @@ export class SlotPlayer {
     } = {},
   ): Promise<void> {
     const showStartedAt = performance.now();
-    const image = this.preparedBoundaryImageId === item.id
-      ? this.boundaryImage
-      : (this.preparedImageId === item.id && this.preparedImageElement
-        ? this.preparedImageElement
-        : this.standbyImage);
+    const image = this.preparedImageId === item.id && this.preparedImageElement
+      ? this.preparedImageElement
+      : this.standbyImage;
     const previousImage = image === this.currentImage ? this.standbyImage : this.currentImage;
     this.applyImageDisplayMode();
 
-    if (this.preparedBoundaryImageId === item.id && this.preparedBoundaryImagePromise) {
-      const waitStartedAt = performance.now();
-      await this.preparedBoundaryImagePromise;
-      this.logImageTiming(item, 'show boundary prepared wait', waitStartedAt, `total=${this.elapsed(showStartedAt)}ms`);
-    } else if (this.preparedImageId === item.id && this.preparedImagePromise) {
+    if (this.preparedImageId === item.id && this.preparedImagePromise) {
       const waitStartedAt = performance.now();
       await this.preparedImagePromise;
       this.logImageTiming(item, 'show prepared wait', waitStartedAt, `total=${this.elapsed(showStartedAt)}ms`);
@@ -782,7 +677,6 @@ export class SlotPlayer {
     this.currentImage = image;
     this.standbyImage = previousImage;
     this.consumePreparedImage(item.id);
-    this.consumePreparedBoundaryImage(item.id);
     this.logImageTiming(item, 'visible class applied', visibleStartedAt, `total=${this.elapsed(showStartedAt)}ms`);
     image.getBoundingClientRect();
     this.element.getBoundingClientRect();
@@ -882,10 +776,9 @@ export class SlotPlayer {
     const objectFit = this.preserveAspectRatio ? 'contain' : 'fill';
     this.imageA.style.objectFit = objectFit;
     this.imageB.style.objectFit = objectFit;
-    this.boundaryImage.style.objectFit = objectFit;
   }
 
-  private hideImages(options: { readonly preservePreparedBoundaryImage?: boolean } = {}): void {
+  private hideImages(): void {
     this.imageA.classList.remove('slot-image--visible');
     this.imageB.classList.remove('slot-image--visible');
     this.imageA.classList.remove('slot-image--prepared');
@@ -894,18 +787,6 @@ export class SlotPlayer {
     this.imageB.classList.remove('slot-image--under-video');
     this.imageA.style.zIndex = IMAGE_LAYER_BOTTOM;
     this.imageB.style.zIndex = IMAGE_LAYER_BOTTOM;
-    if (options.preservePreparedBoundaryImage === true && this.preparedBoundaryImageId !== null) {
-      this.boundaryImage.classList.remove('slot-image--visible');
-      this.boundaryImage.classList.add('slot-image--prepared');
-      this.boundaryImage.classList.add('slot-image--under-video');
-      this.boundaryImage.style.zIndex = IMAGE_LAYER_BOTTOM;
-      return;
-    }
-
-    this.boundaryImage.classList.remove('slot-image--visible');
-    this.boundaryImage.classList.remove('slot-image--prepared');
-    this.boundaryImage.classList.remove('slot-image--under-video');
-    this.boundaryImage.style.zIndex = IMAGE_LAYER_BOTTOM;
   }
 
   private startPassiveItemClock(item: SeamlessContentItem, elapsedMs = 0): void {
@@ -946,7 +827,11 @@ export class SlotPlayer {
       return;
     }
 
-    if (this.preparedItemId === target.item.id && this.preparePromise) {
+    if (this.preparedItemIndex === target.itemIndex || this.preparePromise) {
+      return;
+    }
+
+    if (currentItem.contentType === 'Video' && target.item.contentType === 'Video') {
       return;
     }
 
@@ -1015,25 +900,6 @@ export class SlotPlayer {
     });
   }
 
-  private resolvePreparedContentTarget(): NextContentTarget | null {
-    if (this.canAdvanceContent()) {
-      const nextIndex = this.resolvePreparedItemIndex();
-      if (nextIndex !== null) {
-        const nextItem = this.slot.items[nextIndex] ?? null;
-        if (nextItem) {
-          return { item: nextItem, itemIndex: nextIndex, slot: this.slot };
-        }
-      }
-    }
-
-    const logicalTarget = this.logicalNextContentTarget;
-    if (!logicalTarget || logicalTarget.item.id === this.currentItem()?.id) {
-      return null;
-    }
-
-    return logicalTarget;
-  }
-
   private prepareVideoContentForSlotPlan(item: SeamlessContentItem, itemIndex: number, slot: SeamlessSlotPlan): Promise<void> {
     if (this.preparedItemId === item.id && this.preparePromise) {
       return this.preparePromise;
@@ -1063,6 +929,25 @@ export class SlotPlayer {
       }
       throw error;
     }
+  }
+
+  private resolvePreparedContentTarget(): NextContentTarget | null {
+    if (this.canAdvanceContent()) {
+      const nextIndex = this.resolvePreparedItemIndex();
+      if (nextIndex !== null) {
+        const nextItem = this.slot.items[nextIndex] ?? null;
+        if (nextItem) {
+          return { item: nextItem, itemIndex: nextIndex, slot: this.slot };
+        }
+      }
+    }
+
+    const logicalTarget = this.logicalNextContentTarget;
+    if (!logicalTarget || logicalTarget.item.id === this.currentItem()?.id) {
+      return null;
+    }
+
+    return logicalTarget;
   }
 
   private recordVideoDuration(item: SeamlessContentItem, durationMs: number | null): void {
@@ -1181,23 +1066,6 @@ export class SlotPlayer {
     image.style.zIndex = IMAGE_LAYER_BOTTOM;
   }
 
-  private clearPreparedBoundaryImage(itemId?: string): void {
-    if (itemId && this.preparedBoundaryImageId !== itemId) {
-      return;
-    }
-
-    this.preparedBoundaryImageId = null;
-    this.preparedBoundaryImagePromise = null;
-    if (this.currentImage === this.boundaryImage) {
-      return;
-    }
-
-    this.boundaryImage.classList.remove('slot-image--visible');
-    this.boundaryImage.classList.remove('slot-image--prepared');
-    this.boundaryImage.classList.remove('slot-image--under-video');
-    this.boundaryImage.style.zIndex = IMAGE_LAYER_BOTTOM;
-  }
-
   private consumePreparedImage(itemId: string): void {
     if (this.preparedImageId !== itemId) {
       return;
@@ -1206,15 +1074,6 @@ export class SlotPlayer {
     this.preparedImageId = null;
     this.preparedImagePromise = null;
     this.preparedImageElement = null;
-  }
-
-  private consumePreparedBoundaryImage(itemId: string): void {
-    if (this.preparedBoundaryImageId !== itemId) {
-      return;
-    }
-
-    this.preparedBoundaryImageId = null;
-    this.preparedBoundaryImagePromise = null;
   }
 
   private waitForPaint(): Promise<void> {
@@ -1496,14 +1355,14 @@ export class SlotPlayer {
   }
 
   private hasPlayableItems(slot: SeamlessSlotPlan = this.slot): boolean {
-    return this.firstPlayableIndex(slot) !== null;
+    return this.resolvePlayableStartIndex(slot) !== null;
   }
 
   private playableItemCount(slot: SeamlessSlotPlan = this.slot): number {
     return slot.items.reduce((count, item) => count + (this.isItemPlayable(item) ? 1 : 0), 0);
   }
 
-  private firstPlayableIndex(slot: SeamlessSlotPlan = this.slot): number | null {
+  private resolvePlayableStartIndex(slot: SeamlessSlotPlan = this.slot): number | null {
     for (let index = 0; index < slot.items.length; index += 1) {
       const item = slot.items[index];
       if (item && this.isItemPlayable(item)) {

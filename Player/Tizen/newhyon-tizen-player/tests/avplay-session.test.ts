@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AvplaySession, createAvplaySessionPair } from '../src/player/avplay-session';
 import { RingLogger } from '../src/core/logger';
 import type { SeamlessContentItem, SeamlessSlotPlan } from '../src/domain/page-plan';
@@ -17,6 +17,7 @@ function createPlayer(): AVPlayApi {
     setDisplayMethod: vi.fn(),
     setVideoStillMode: vi.fn(),
     setLooping: vi.fn(),
+    setMute: vi.fn(),
     getState: vi.fn(() => 'IDLE'),
   };
 }
@@ -55,6 +56,10 @@ function createSlotPlan(): SeamlessSlotPlan {
 }
 
 describe('AvplaySession', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('AVPlayStore 플레이어 두 개로 고정 세션 페어 하나를 만든다', () => {
     const getPlayer = vi.fn(createPlayer);
     window.webapis = {
@@ -233,13 +238,19 @@ describe('AvplaySession', () => {
     expect(laneB.style.zIndex).toBe('21');
   });
 
-  it('다음 영상 prepare 중에는 현재 lane을 still mode로 멈추지 않는다', async () => {
+  it('영상 전환 시 다음 lane 준비 전에는 현재 lane을 멈추지 않고 play 후 이전 lane을 정지한다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
     const callOrder: string[] = [];
     playerA.getState = vi.fn(() => 'PLAYING');
     playerA.setVideoStillMode = vi.fn((mode) => {
       callOrder.push(`a.still:${mode}`);
+    });
+    playerA.setMute = vi.fn((muted) => {
+      callOrder.push(`a.mute:${muted}`);
+    });
+    playerA.stop = vi.fn(() => {
+      callOrder.push('a.stop');
     });
     playerB.prepareAsync = vi.fn((successCallback: () => void) => {
       callOrder.push('b.prepareAsync');
@@ -267,7 +278,9 @@ describe('AvplaySession', () => {
 
     expect(callOrder[0]).toBe('b.prepareAsync');
     expect(callOrder[1]).toBe('b.play');
-    expect(callOrder[2]).toBe('a.still:true');
+    expect(callOrder[2]).toBe('a.mute:true');
+    expect(callOrder[3]).toBe('a.still:true');
+    expect(callOrder[4]).toBe('a.stop');
     expect(playerB.play).toHaveBeenCalledTimes(1);
   });
 
@@ -288,7 +301,7 @@ describe('AvplaySession', () => {
       onError: vi.fn(),
     });
 
-    await session.play(createVideoItem('boundary.mp4'), createSlotPlan(), document.createElement('section'), false, () => false);
+    await session.play(createVideoItem('deferred-completion.mp4'), createSlotPlan(), document.createElement('section'), false, () => false);
     playerA.setVideoStillMode = vi.fn();
     playerA.stop = vi.fn();
 
@@ -436,6 +449,46 @@ describe('AvplaySession', () => {
 
     expect(resolved).toBe(true);
     expect(laneA.style.visibility).toBe('visible');
+  });
+
+  it('첫 프레임 대기는 500ms 안에 재생 시간 이벤트가 없으면 실패한다', async () => {
+    vi.useFakeTimers();
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    const playPromise = session.play(
+      createVideoItem('timeout.mp4'),
+      createSlotPlan(),
+      document.createElement('section'),
+      false,
+      vi.fn(),
+      { waitForFirstFrame: true },
+    );
+    const rejection = expect(playPromise).rejects.toThrow('첫 프레임 준비 시간 초과');
+    let settled = false;
+    const observed = playPromise.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+
+    await vi.advanceTimersByTimeAsync(499);
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await observed;
+    await rejection;
   });
 
   it('현재 영상 첫 프레임 대기 중 다음 lane prepare가 들어와도 현재 play를 폐기하지 않는다', async () => {

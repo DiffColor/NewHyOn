@@ -182,18 +182,23 @@ Web Inspector로 현재 플레이어를 직접 확인한 결과, 앱은 업데�
 다음 제약은 코드 작성 시 반드시 지켜야 합니다.
 
 - `index.html`은 `$WEBAPIS/webapis/webapis.js`를 앱 모듈보다 먼저 로드해야 합니다. 이 스크립트가 빠지면 `webapis.avplay`/`webapis.avplaystore`를 안정적으로 사용할 수 없습니다.
-- `webapis.avplaystore.getPlayer()`는 병렬 pre-buffering용 플레이어를 생성하며 동시에 최대 4개까지입니다.
+- `webapis.avplaystore.getPlayer()`는 독립 AVPlay 세션용 플레이어를 생성하며 동시에 최대 4개까지입니다.
 - 제한 초과 시 `QUOTA_EXCEEDED_ERR`와 `Max player count reached`가 발생합니다.
 - 앱 시작 시 영상 슬롯 수만큼 AVPlayStore 플레이어를 미리 만들면 QM32C에서 즉시 실패합니다.
-- 현재 구현은 앱 시작 시 `createAvplaySessionPair()`로 AVPlay 플레이어 2개짜리 고정 페어 2세트를 정확히 확보합니다. 즉 `2 players x 2 pairs = 4 getPlayer()`가 의도한 보유량이자 절대 한도입니다.
-- 페어 1개 안의 두 AVPlay 플레이어는 현재 영상 lane과 다음 영상 준비 lane입니다. 스케줄-스케줄 전환 때문에 이 페어가 2세트 필요합니다.
-- `SlotPlayer`의 컨텐츠 전환 상태(`preparedItemId`, `preparedImageId`, `preparedBoundaryImageId`)는 콘텐츠 id 기준을 유지합니다. 페이지/스케줄 전환도 결국 슬롯 안의 이미지/영상 컨텐츠 전환이므로 이 논리 전환 키를 실제 소스 키로 바꾸지 않습니다.
-- 실제 재생 소스(`contentType + sourceUrl`) 기준 합류는 `AvplaySession` 내부의 in-flight `prepareAsync` 직렬화 범위에서만 처리합니다. 같은 파일이 다른 페이지/명령 id로 들어오는 경우에도 동일 lane을 다시 `open()`하면 안 되기 때문입니다.
+- AVPlay 세션 1개는 `getPlayer()`로 얻은 AVPlay 플레이어 1개와 해당 `<object>` 표면 1개입니다. 세션 1개 안에 `lane1/lane2`가 있는 모델로 이해하지 않습니다.
+- 현재 구현은 앱 시작 시 `createAvplaySessionPair()`로 독립 AVPlay 세션 2개짜리 고정 페어 2세트를 정확히 확보합니다. 즉 `2 sessions x 2 pairs = 4 getPlayer()`가 의도한 보유량이자 절대 한도입니다.
+- 페어 1개 안의 두 AVPlay 세션은 현재 콘텐츠 재생 세션과 다음 콘텐츠 준비 세션입니다. 콘텐츠 전환 때 두 세션의 역할이 교대됩니다.
+- 현재 재생 페어는 현재 스케줄/현재 playlist의 콘텐츠-콘텐츠 전환에만 사용합니다.
+- 나머지 대기 페어는 예약 스케줄 진입 또는 예약 스케줄 종료 후 기존 스케줄 복귀를 준비하기 위해 사용합니다.
+- 페어 간 전환은 예약 스케줄 진입/복귀에서만 발생합니다. 페이지 전환은 페어 전환 사유가 아닙니다.
+- 페이지-페이지 연결과 컨텐츠-컨텐츠 연결은 별도 표면 교체가 아니라 각 슬롯의 이미지/영상 콘텐츠 전환입니다. 페이지 전환은 같은 재생 페어 안에서 콘텐츠 계획만 바꾸는 동작입니다.
+- `SlotPlayer`의 컨텐츠 전환 상태(`preparedItemId`, `preparedImageId`)는 콘텐츠 id 기준을 유지합니다. 페이지 전환도 결국 슬롯 안의 이미지/영상 컨텐츠 전환이므로 이 논리 전환 키를 실제 소스 키로 바꾸지 않습니다.
+- 실제 재생 소스(`contentType + sourceUrl`) 기준 합류는 페어 안의 준비 세션 in-flight `prepareAsync` 직렬화 범위에서만 처리합니다. 같은 파일이 다른 페이지/명령 id로 들어오는 경우에도 준비 세션에 동일 소스를 다시 `open()`하면 안 되기 때문입니다.
 - AVPlay 준비 절차는 레퍼런스 샘플 `Player/Tizen/avplay-seamless-still-mode alias` 기준으로 `open -> setListener -> setDisplayRect -> setDisplayMethod -> prepareAsync 완료 -> play` 순서를 지킵니다.
-- `prepareAsync`가 진행 중인 player에는 `stop()`, `close()`, 다른 `open()`을 끼워 넣지 않습니다. `clearPrepared()`는 준비 메타 정리 요청이며 in-flight prepare를 폐기하는 명령이 아닙니다.
-- 다른 영상을 준비해야 하면 진행 중인 `prepareAsync`가 끝난 뒤 준비 lane을 `stop/close`하고 새 소스를 `open/prepareAsync`합니다.
+- `prepareAsync`가 진행 중인 준비 세션에는 `stop()`, `close()`, 다른 `open()`을 끼워 넣지 않습니다. `clearPrepared()`는 준비 메타 정리 요청이며 in-flight prepare를 폐기하는 명령이 아닙니다.
+- 다른 영상을 준비해야 하면 진행 중인 `prepareAsync`가 끝난 뒤 준비 세션을 `stop/close`하고 새 소스를 `open/prepareAsync`합니다.
+- 현재 재생 세션과 다음 준비 세션의 상태를 하나의 세션 상태로 뭉개지 않습니다. 페어는 두 독립 세션의 역할을 관리하는 상위 개념입니다.
 - `pool`/`lease` 방식으로 세션을 빌려주거나 반납하는 구조를 다시 만들지 않습니다.
-- 페이지-페이지 연결과 컨텐츠-컨텐츠 연결은 별도 표면 교체가 아니라 각 슬롯의 이미지/영상 콘텐츠 전환입니다.
 - AVPlayStore 한도 초과가 예상되면 추가 `getPlayer()`를 호출하지 않습니다. 초과 영상 슬롯은 앱 전체 오류로 전파하지 않고 HUD 슬롯 상태에 `ERROR`로 남깁니다.
 - 이미지 슬롯, 설정창, HUD 렌더링, snapshot, stop 처리에서는 AVPlayStore 세션을 새로 만들면 안 됩니다.
 - Tizen AVPlay는 상대 경로를 직접 열 수 없습니다. 패키지 로컬 파일은 Tizen filesystem으로 절대 경로로 변환해야 합니다.
@@ -206,8 +211,8 @@ Web Inspector로 현재 플레이어를 직접 확인한 결과, 앱은 업데�
 
 ### 2026-06-28 전환 회귀 주의
 
-- `2c8ed0bd`의 `boundaryPreparationProtected` 계열 변경은 정상 구조가 아닙니다. 스케줄 경계 준비를 이유로 `syncToPageElapsed()`, `handleVideoEnded()`, `prepareNextContent()`가 조기 return 하게 만들면 현재 컨텐츠 전환과 신규 명령 처리가 멈출 수 있습니다.
-- `prepareUpcomingBoundaryFirstContent()`에서 경계 첫 콘텐츠가 영상이어도 미리 AVPlay prepare 하는 변경을 되살리지 않습니다. 경계 선준비는 이미지에만 적용하고, 영상은 실제 전환 시 AVPlay 절차대로 준비/재생합니다.
+- `2c8ed0bd`의 보호 플래그 계열 변경은 정상 구조가 아닙니다. 스케줄 전환 준비를 이유로 `syncToPageElapsed()`, `handleVideoEnded()`, `prepareNextContent()`가 조기 return 하게 만들면 현재 컨텐츠 전환과 신규 명령 처리가 멈출 수 있습니다.
+- 컨텐츠 준비는 `SlotPlayer.prepareNextContent()` 하나로 유지합니다. 이미지와 영상은 준비 과정만 다르며, 별도 페이지 시작점/경계 준비 함수를 만들지 않습니다. 예약 스케줄 진입/복귀 준비는 대기 페어 책임이며, 현재 재생 페어의 콘텐츠 전환을 막아서는 안 됩니다.
 
 ## 주요 파일
 
