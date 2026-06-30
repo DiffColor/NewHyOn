@@ -609,6 +609,12 @@ body {
   margin: 12px 0;
 }
 
+.settings-row--inline,
+.settings-row--volume {
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 10px;
+}
+
 .settings-row__label {
   color: rgba(255, 255, 255, 0.72);
   font-size: 18px;
@@ -618,14 +624,15 @@ body {
 .settings-volume-control {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   min-width: 0;
 }
 
 .settings-inline-toggle {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  white-space: nowrap;
   color: rgba(255, 255, 255, 0.82);
   font-size: 17px;
 }
@@ -648,7 +655,7 @@ body {
 }
 
 .settings-toggle {
-  width: 120px;
+  width: 86px;
 }
 
 .settings-volume-slider {
