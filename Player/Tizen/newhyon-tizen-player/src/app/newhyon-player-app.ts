@@ -1479,9 +1479,11 @@ export class NewHyOnPlayerApp {
     }
 
     const pageDurationMs = Math.max(1, page.durationSeconds) * 1000;
+    const boundarySlots = this.resolveNextPageSlots(targetPagePlans, targetPageIndex);
     const startResults = await Promise.all(this.slotPlayers.map((slotPlayer, slotIndex) => {
       const slot = page.slots[slotIndex] ?? this.createEmptySlotPlan(slotIndex, page);
       slotPlayer.setPageTimeline(0, pageDurationMs, targetPagePlans.length <= 1);
+      slotPlayer.setBoundaryNextContentTarget(this.resolveBoundaryNextVideoTarget(boundarySlots[slotIndex] ?? null));
       return slotPlayer.switchToSlotPlan(slot, page.canvasWidth, page.canvasHeight);
     }));
     const failed = startResults.some((started) => !started);
@@ -1616,6 +1618,40 @@ export class NewHyOnPlayerApp {
     const nextPage = this.pagePlans[nextPageIndex];
     return nextPage
       ? { page: nextPage, remainingMs: pageRemainingMs, reason: this.pagePlans.length <= 1 ? 'page-loop' : 'page-boundary' }
+      : null;
+  }
+
+  private resolveNextPageSlots(
+    pagePlans: readonly SeamlessPagePlan[],
+    pageIndex: number,
+  ): readonly SeamlessSlotPlan[] {
+    if (pagePlans.length === 0) {
+      return [];
+    }
+
+    const nextPageIndex = pagePlans.length <= 1
+      ? pageIndex
+      : (pageIndex + 1) % pagePlans.length;
+    return pagePlans[nextPageIndex]?.slots ?? [];
+  }
+
+  private resolveBoundaryNextVideoTarget(slot: SeamlessSlotPlan | null): {
+    readonly item: SeamlessContentItem;
+    readonly itemIndex: number;
+    readonly slot: SeamlessSlotPlan;
+  } | null {
+    if (!slot || slot.width <= 0 || slot.height <= 0) {
+      return null;
+    }
+
+    const itemIndex = slot.items.findIndex((item) => this.isContentItemPlayable(item));
+    if (itemIndex < 0) {
+      return null;
+    }
+
+    const item = slot.items[itemIndex];
+    return item?.contentType === 'Video'
+      ? { item, itemIndex, slot }
       : null;
   }
 
