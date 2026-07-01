@@ -500,6 +500,11 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
         }
 
         const pair = this.pairs[this.activePairIndex];
+        if (pair.swapsInTurn < this.config.swapsBeforePairHandoff) {
+            this.switchInsideActivePair(pair);
+            return;
+        }
+
         const preparePair = this.pairs[this.preparePairIndex];
         if (preparePair?.handoffReady) {
             this.handoffToPreparedPair(pair);
