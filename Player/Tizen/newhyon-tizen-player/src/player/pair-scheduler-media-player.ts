@@ -42,11 +42,13 @@ export class PairSchedulerMediaPlayer implements PairSchedulerPlayer {
     this.objectElement.type = 'application/avplayer';
     this.objectElement.className = 'avplay-object pair-scheduler-avplay';
     this.objectElement.setAttribute('aria-hidden', 'true');
-    this.objectElement.style.visibility = 'hidden';
+    this.objectElement.style.opacity = '0';
+    this.objectElement.style.zIndex = '0';
 
     this.imageElement.className = 'pair-scheduler-image';
     this.imageElement.setAttribute('aria-hidden', 'true');
-    this.imageElement.style.visibility = 'hidden';
+    this.imageElement.style.opacity = '0';
+    this.imageElement.style.zIndex = '0';
 
     this.host.append(this.objectElement, this.imageElement);
   }
@@ -177,18 +179,16 @@ export class PairSchedulerMediaPlayer implements PairSchedulerPlayer {
 
   setLayerRole(role: PairSchedulerLayerRole): void {
     this.role = role;
-    if (role === 'hidden') {
-      this.hideSurfaces();
-      return;
-    }
 
     if (this.currentItem?.item.contentType === 'Image') {
       this.showImage();
     } else if (this.currentItem?.item.contentType === 'Video') {
-      this.objectElement.style.visibility = 'visible';
+      this.objectElement.style.opacity = role === 'hidden' ? '0' : '1';
       this.objectElement.setAttribute('aria-hidden', 'false');
-      this.imageElement.style.visibility = 'hidden';
+      this.imageElement.style.opacity = '0';
       this.imageElement.setAttribute('aria-hidden', 'true');
+    } else {
+      this.hideSurfaces();
     }
 
     const zIndexByRole: Record<PairSchedulerLayerRole, string> = {
@@ -261,16 +261,16 @@ export class PairSchedulerMediaPlayer implements PairSchedulerPlayer {
   }
 
   private showImage(): void {
-    this.objectElement.style.visibility = 'hidden';
+    this.objectElement.style.opacity = '0';
     this.objectElement.setAttribute('aria-hidden', 'true');
-    this.imageElement.style.visibility = this.role === 'hidden' ? 'hidden' : 'visible';
-    this.imageElement.setAttribute('aria-hidden', this.role === 'hidden' ? 'true' : 'false');
+    this.imageElement.style.opacity = this.role === 'hidden' ? '0' : '1';
+    this.imageElement.setAttribute('aria-hidden', 'false');
   }
 
   private hideSurfaces(): void {
-    this.objectElement.style.visibility = 'hidden';
+    this.objectElement.style.opacity = '0';
     this.objectElement.setAttribute('aria-hidden', 'true');
-    this.imageElement.style.visibility = 'hidden';
+    this.imageElement.style.opacity = '0';
     this.imageElement.setAttribute('aria-hidden', 'true');
   }
 
