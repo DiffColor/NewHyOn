@@ -201,6 +201,19 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
         this.emitState();
     }
 
+    prepareHandoffPair(): void {
+        const pair = this.pairs[this.preparePairIndex];
+        if (!pair) {
+            this.failRun('prepare handoff pair failed: prepare pair is not initialized');
+            return;
+        }
+
+        this.preparePairForHandoff(pair)
+            .catch((error: Error) => {
+                this.failRun('prepare handoff pair failed: ' + error.message);
+            });
+    }
+
     getSnapshot(): PairSchedulerSnapshot<TItem> {
         const activePair = this.pairs[this.activePairIndex] || null;
         const preparePair = this.pairs[this.preparePairIndex] || null;
@@ -487,12 +500,13 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
         }
 
         const pair = this.pairs[this.activePairIndex];
-        if (pair.swapsInTurn < this.config.swapsBeforePairHandoff) {
-            this.switchInsideActivePair(pair);
+        const preparePair = this.pairs[this.preparePairIndex];
+        if (preparePair?.handoffReady) {
+            this.handoffToPreparedPair(pair);
             return;
         }
 
-        this.handoffToPreparedPair(pair);
+        this.switchInsideActivePair(pair);
     }
 
     private switchInsideActivePair(pair: PairSchedulerPair<TItem>): void {
@@ -512,29 +526,16 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
             this.options.onLayerRoleChange(nextSession.pairId, nextSession.slot, 'current');
             this.lowerAndStopCompletedSession(completedSession);
 
-            if (pair.swapsInTurn < this.config.swapsBeforePairHandoff) {
-                this.prepareNextInActivePair(pair)
-                    .then(() => {
-                        if (this.isRunCurrent(token)) {
-                            this.transitioning = false;
-                            this.scheduleNextTransition('pair-internal-ready');
-                        }
-                    })
-                    .catch((error: Error) => {
-                        this.failRun('prepare next failed: ' + error.message);
-                    });
-            } else {
-                this.preparePairForHandoff(this.pairs[this.preparePairIndex])
-                    .then(() => {
-                            if (this.isRunCurrent(token)) {
-                                this.transitioning = false;
-                                this.scheduleNextTransition('handoff-pair-ready');
-                            }
-                    })
-                    .catch((error: Error) => {
-                        this.failRun('prepare handoff pair failed: ' + error.message);
-                    });
-            }
+            this.prepareNextInActivePair(pair)
+                .then(() => {
+                    if (this.isRunCurrent(token)) {
+                        this.transitioning = false;
+                        this.scheduleNextTransition('pair-internal-ready');
+                    }
+                })
+                .catch((error: Error) => {
+                    this.failRun('prepare next failed: ' + error.message);
+                });
         });
     }
 

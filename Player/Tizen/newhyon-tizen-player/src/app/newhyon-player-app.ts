@@ -9,6 +9,13 @@ import {
 } from '../input/remote-control';
 import { type AvplaySessionPair, createAvplaySessionPair } from '../player/avplay-session';
 import { TizenAudioPolicy } from '../player/audio-policy';
+import {
+  PairScheduler,
+  type PairSchedulerConfig,
+  type PairSchedulerLayerRole,
+  type PairSchedulerSnapshot,
+} from '../player/pair-scheduler';
+import { PairSchedulerMediaPlayer, type PairSchedulerMediaItem } from '../player/pair-scheduler-media-player';
 import { SlotPlayer, type SlotPlayerTimelineSnapshot } from '../player/slot-player';
 import { RuntimeHealthReporter } from './runtime-health-reporter';
 import { collectRuntimeDiagnostics, formatRuntimeDiagnostics } from './runtime-diagnostics';
@@ -102,6 +109,13 @@ interface PagePlayOptions {
   readonly commitPageTimelineBeforeContentSwitch?: boolean;
 }
 
+interface PairSchedulerPlaybackOptions {
+  readonly activeItems?: readonly PairSchedulerMediaItem[];
+  readonly prepareItems?: readonly PairSchedulerMediaItem[];
+  readonly commitWhenItemIds?: ReadonlySet<string>;
+  readonly targetItems?: readonly PairSchedulerMediaItem[];
+}
+
 interface EmptyIntroVideoOptions {
   readonly hidden?: boolean;
   readonly makeCurrent?: boolean;
@@ -151,6 +165,11 @@ const SCHEDULE_PREPARE_LOOKAHEAD_MS = SCHEDULE_PREPARE_LEAD_MS + SCHEDULE_CHECK_
 const RUNTIME_HEALTH_RECENT_LOG_LIMIT = 200;
 const RUNTIME_HEALTH_LOG_FLUSH_DELAY_MS = 250;
 const VOLUME_TEST_AUDIO_URL = 'media/volume_sample.mp3';
+const PAIR_SCHEDULER_DISPLAY_METHOD_FILL = 'PLAYER_DISPLAY_MODE_FULL_SCREEN';
+const PAIR_SCHEDULER_DISPLAY_METHOD_CONTAIN = 'PLAYER_DISPLAY_MODE_LETTER_BOX';
+const PAIR_SCHEDULER_PREBUFFER_PROPERTY = 'PREBUFFER_MODE';
+const PAIR_SCHEDULER_PREBUFFER_START_POSITION = '0';
+const PAIR_SCHEDULER_BUFFERING_TIMEOUT_SECONDS = 30;
 
 function getRequiredElement<T extends HTMLElement>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -175,6 +194,22 @@ export class NewHyOnPlayerApp {
   private readonly pagePlans: SeamlessPagePlan[];
   private readonly slotPlayers: SlotPlayer[] = [];
   private readonly avplaySessionPairs: Array<AvplaySessionPair | null> = [];
+  private pairScheduler: PairScheduler<PairSchedulerMediaItem> | null = null;
+  private pairSchedulerSnapshot: PairSchedulerSnapshot<PairSchedulerMediaItem> | null = null;
+  private readonly pairSchedulerPlayers = new Map<string, PairSchedulerMediaPlayer>();
+  private readonly pairSchedulerPairItems = new Map<string, PairSchedulerMediaItem[]>();
+  private pairSchedulerItemRegistry: Map<string, PairSchedulerMediaItem> | null = null;
+  private pairSchedulerHostElement: HTMLElement | null = null;
+  private pairSchedulerCurrentItemId: string | null = null;
+  private pendingPairSchedulerStartResolve: (() => void) | null = null;
+  private pendingPairSchedulerPlaybackPlan: {
+    readonly pagePlans: readonly SeamlessPagePlan[];
+    readonly playbackMode: PlaybackMode;
+    readonly pageIndex: number;
+    readonly commitWhenItemIds?: ReadonlySet<string>;
+    readonly targetItems?: readonly PairSchedulerMediaItem[];
+    readonly stagedPairId?: string;
+  } | null = null;
   private readonly audioPolicy = new TizenAudioPolicy(this.logger);
   private readonly healthReporter = new RuntimeHealthReporter();
   private readonly volumeTestAudio = new Audio(VOLUME_TEST_AUDIO_URL);
@@ -287,7 +322,6 @@ export class NewHyOnPlayerApp {
     try {
       this.bindUi();
       this.registerInputKeys();
-      this.ensureFixedAvplaySessionPairs();
       this.settingsOverlay = new SettingsOverlay({
         onApply: (settings) => {
           this.stopVolumeTest();
@@ -344,6 +378,7 @@ export class NewHyOnPlayerApp {
   destroy(): void {
     this.destroyed = true;
     this.stopMasterTimer();
+    this.stopPairScheduler();
     this.stopSlots();
     this.requestOfflineHeartbeat();
     this.heartbeatReporter = null;
@@ -394,6 +429,344 @@ export class NewHyOnPlayerApp {
 
   private stopAvplaySessionPairs(): void {
     this.avplaySessionPairs.forEach((session) => session?.stop());
+  }
+
+  private async startPairSchedulerPlayback(
+    pagePlans: readonly SeamlessPagePlan[],
+    playbackMode: PlaybackMode,
+    pageIndex: number,
+    options: PairSchedulerPlaybackOptions = {},
+  ): Promise<void> {
+    const items = options.activeItems ?? this.buildPairSchedulerItems(pagePlans);
+    if (items.length === 0) {
+      throw new Error('pair-scheduler에 전달할 재생 콘텐츠가 없습니다.');
+    }
+
+    const normalizedItems = this.ensurePairSchedulerMinimumItems(items);
+    const normalizedPrepareItems = this.ensurePairSchedulerMinimumItems(options.prepareItems ?? normalizedItems);
+    const itemRegistry = new Map<string, PairSchedulerMediaItem>();
+    this.registerPairSchedulerItems(itemRegistry, normalizedItems);
+    this.registerPairSchedulerItems(itemRegistry, normalizedPrepareItems);
+    if (options.targetItems) {
+      this.registerPairSchedulerItems(itemRegistry, options.targetItems);
+    }
+
+    this.stopPairScheduler({ disposePlayers: false });
+    this.stopSlots();
+    this.removeLegacyStageSlots();
+    this.removeEmptyIntroVideo();
+    this.pendingPairSchedulerPlaybackPlan = {
+      pagePlans,
+      playbackMode,
+      pageIndex,
+      commitWhenItemIds: options.commitWhenItemIds,
+      targetItems: options.targetItems,
+    };
+    this.view.stage.style.setProperty('--canvas-width', String(pagePlans[pageIndex].canvasWidth));
+    this.view.stage.style.setProperty('--canvas-height', String(pagePlans[pageIndex].canvasHeight));
+    this.view.stage.style.aspectRatio = `${pagePlans[pageIndex].canvasWidth} / ${pagePlans[pageIndex].canvasHeight}`;
+    const schedulerHost = this.ensurePairSchedulerHost(pagePlans[pageIndex]);
+
+    const activePairItems = [...normalizedItems];
+    const preparePairItems = [...normalizedPrepareItems];
+    const config = this.buildPairSchedulerConfig(activePairItems, preparePairItems);
+    this.pairSchedulerItemRegistry = itemRegistry;
+    this.pairSchedulerPairItems.clear();
+    this.pairSchedulerPairItems.set('pair-a', activePairItems);
+    this.pairSchedulerPairItems.set('pair-b', preparePairItems);
+    const playerKeys = config.pairs.flatMap((pair) => [0, 1].map((slot) => `${pair.id}:${slot}`));
+    let playerIndex = 0;
+    this.pairScheduler = new PairScheduler<PairSchedulerMediaItem>({
+      config,
+      createPlayer: () => {
+        const key = playerKeys[playerIndex] ?? `pair-scheduler:${playerIndex}`;
+        const existing = this.pairSchedulerPlayers.get(key);
+        if (existing) {
+          existing.setRegistry(itemRegistry);
+          playerIndex += 1;
+          return existing;
+        }
+
+        const store = window.webapis?.avplaystore;
+        if (!store) {
+          throw new Error('AVPlayStore API를 찾지 못했습니다. pair-scheduler 재생에는 삼성 Tizen Signage 실장비의 webapis.avplaystore가 필요합니다.');
+        }
+
+        playerIndex += 1;
+        const player = store.getPlayer();
+        if (!player) {
+          throw new Error(`pair-scheduler AVPlay 플레이어를 확보하지 못했습니다: ${key}`);
+        }
+
+        const schedulerPlayer = new PairSchedulerMediaPlayer(key, player, schedulerHost, itemRegistry, this.logger);
+        this.pairSchedulerPlayers.set(key, schedulerPlayer);
+        return schedulerPlayer;
+      },
+      resolveUrl: (url) => url,
+      log: (message) => {
+        this.logger.info('pair-scheduler', message);
+      },
+      onLayerRoleChange: (pairId, slot, role) => {
+        this.applyPairSchedulerLayerRole(pairId, slot, role);
+      },
+      onStateChange: (snapshot) => {
+        this.handlePairSchedulerState(snapshot);
+      },
+    });
+
+    await new Promise<void>((resolve) => {
+      this.pendingPairSchedulerStartResolve = resolve;
+      this.pairScheduler?.init();
+      this.pairScheduler?.start();
+    });
+  }
+
+  private stagePairSchedulerPlaybackHandoff(
+    pagePlans: readonly SeamlessPagePlan[],
+    playbackMode: PlaybackMode,
+    pageIndex: number,
+  ): boolean {
+    if (
+      !this.pairScheduler
+      || !this.pairSchedulerSnapshot
+      || !this.pairSchedulerItemRegistry
+      || this.playbackMode !== 'content'
+      || playbackMode !== 'content'
+    ) {
+      return false;
+    }
+
+    const targetItems = this.ensurePairSchedulerMinimumItems(this.buildPairSchedulerItems(pagePlans));
+    if (targetItems.length === 0) {
+      throw new Error('pair-scheduler 예약 전환에 전달할 재생 콘텐츠가 없습니다.');
+    }
+
+    this.registerPairSchedulerItems(this.pairSchedulerItemRegistry, targetItems);
+    this.pendingPairSchedulerPlaybackPlan = {
+      pagePlans,
+      playbackMode,
+      pageIndex,
+      commitWhenItemIds: new Set(targetItems.map((item) => item.id)),
+      targetItems,
+    };
+    this.applyPendingPairSchedulerHandoff();
+
+    const currentItem = this.resolvePairSchedulerCurrentItem(this.pairSchedulerSnapshot);
+    if (currentItem) {
+      this.commitPendingPairSchedulerPlaybackPlan(currentItem);
+    }
+    this.render();
+    return true;
+  }
+
+  private buildPairSchedulerItems(pagePlans: readonly SeamlessPagePlan[]): PairSchedulerMediaItem[] {
+    const items: PairSchedulerMediaItem[] = [];
+    pagePlans.forEach((pagePlan, pageIndex) => {
+      let pageContentSeconds = 0;
+      const pageDurationSeconds = Math.max(1, pagePlan.durationSeconds);
+      const pageItems: PairSchedulerMediaItem[] = [];
+
+      pagePlan.slots.forEach((slotPlan, slotIndex) => {
+        slotPlan.items.forEach((item, itemIndex) => {
+          if (slotPlan.width <= 0 || slotPlan.height <= 0 || !this.isContentItemPlayable(item)) {
+            return;
+          }
+
+          if (pageItems.length > 0 && pageContentSeconds + Math.max(1, item.durationSeconds) > pageDurationSeconds) {
+            return;
+          }
+
+          const id = [
+            pagePlan.playlistName,
+            pageIndex,
+            pagePlan.pageName,
+            slotIndex,
+            itemIndex,
+            item.id,
+          ].join('::');
+          pageItems.push({
+            id,
+            title: `${pagePlan.pageName || `page-${pageIndex + 1}`} / ${slotPlan.elementName || `slot-${slotIndex + 1}`} / ${item.name}`,
+            url: `${item.sourceUrl}#pair-scheduler=${encodeURIComponent(id)}`,
+            pagePlan,
+            pageIndex,
+            slotPlan,
+            slotIndex,
+            item,
+            itemIndex,
+          });
+          pageContentSeconds += Math.max(1, item.durationSeconds);
+        });
+      });
+      items.push(...pageItems);
+    });
+    return items;
+  }
+
+  private ensurePairSchedulerHost(page: SeamlessPagePlan): HTMLElement {
+    if (!this.pairSchedulerHostElement) {
+      const element = document.createElement('section');
+      element.className = 'slot pair-scheduler-slot';
+      this.view.stage.appendChild(element);
+      this.pairSchedulerHostElement = element;
+    }
+
+    const host = this.pairSchedulerHostElement;
+    host.style.left = '0%';
+    host.style.top = '0%';
+    host.style.width = '100%';
+    host.style.height = '100%';
+    host.style.zIndex = String(Math.max(0, ...page.slots.map((slot) => slot.zIndex)));
+    return host;
+  }
+
+  private ensurePairSchedulerMinimumItems(items: readonly PairSchedulerMediaItem[]): PairSchedulerMediaItem[] {
+    if (items.length > 1) {
+      return [...items];
+    }
+
+    const onlyItem = items[0];
+    return [
+      onlyItem,
+      {
+        ...onlyItem,
+        id: `${onlyItem.id}::repeat`,
+        title: `${onlyItem.title} (repeat)`,
+        url: `${onlyItem.url}:repeat`,
+      },
+    ];
+  }
+
+  private registerPairSchedulerItems(
+    registry: Map<string, PairSchedulerMediaItem>,
+    items: readonly PairSchedulerMediaItem[],
+  ): void {
+    items.forEach((item) => {
+      registry.set(item.url, item);
+    });
+  }
+
+  private buildPairSchedulerConfig(
+    activeItems: PairSchedulerMediaItem[],
+    prepareItems: PairSchedulerMediaItem[] = activeItems,
+  ): PairSchedulerConfig<PairSchedulerMediaItem> {
+    const intervalMs = Math.max(1, activeItems[0]?.item.durationSeconds ?? 1) * 1000;
+    return {
+      swapsBeforePairHandoff: Math.max(1, activeItems.length),
+      transitionIntervalMs: intervalMs,
+      displayRect: { x: 0, y: 0, width: 1920, height: 1080 },
+      lowerRect: { x: 0, y: 1080, width: 1, height: 1 },
+      displayMethod: this.config.manifest.preserveAspectRatio
+        ? PAIR_SCHEDULER_DISPLAY_METHOD_CONTAIN
+        : PAIR_SCHEDULER_DISPLAY_METHOD_FILL,
+      prebufferProperty: PAIR_SCHEDULER_PREBUFFER_PROPERTY,
+      prebufferStartPosition: PAIR_SCHEDULER_PREBUFFER_START_POSITION,
+      bufferingTimeoutSeconds: PAIR_SCHEDULER_BUFFERING_TIMEOUT_SECONDS,
+      pairs: [
+        { id: 'pair-a', label: 'Pair A', items: activeItems },
+        { id: 'pair-b', label: 'Pair B', items: prepareItems },
+      ],
+    };
+  }
+
+  private applyPairSchedulerLayerRole(pairId: string, slot: number, role: PairSchedulerLayerRole): void {
+    const player = this.pairSchedulerPlayers.get(`${pairId}:${slot}`);
+    player?.setLayerRole(role);
+  }
+
+  private handlePairSchedulerState(snapshot: PairSchedulerSnapshot<PairSchedulerMediaItem>): void {
+    this.pairSchedulerSnapshot = snapshot;
+    this.applyPendingPairSchedulerHandoff(snapshot);
+    const currentItem = this.resolvePairSchedulerCurrentItem(snapshot);
+    if (currentItem) {
+      this.commitPendingPairSchedulerPlaybackPlan(currentItem);
+    }
+    if (currentItem && currentItem.id !== this.pairSchedulerCurrentItemId) {
+      const pageChanged = this.pairSchedulerCurrentItemId === null || this.pageIndex !== currentItem.pageIndex;
+      this.pairSchedulerCurrentItemId = currentItem.id;
+      this.pageIndex = currentItem.pageIndex;
+      if (pageChanged) {
+        this.pageStartedAt = performance.now();
+        this.pageStartCount += 1;
+      }
+      this.playing = true;
+      this.applyPageAudioPolicy(currentItem.pagePlan, 'pair-scheduler-current');
+      this.recordContentShown(currentItem.slotIndex, currentItem.item);
+      this.setMessage(`페이지 재생: ${currentItem.pagePlan.pageName}`);
+      this.pendingPairSchedulerStartResolve?.();
+      this.pendingPairSchedulerStartResolve = null;
+    }
+    this.render();
+  }
+
+  private applyPendingPairSchedulerHandoff(snapshot: PairSchedulerSnapshot<PairSchedulerMediaItem> | null = this.pairSchedulerSnapshot): void {
+    const pending = this.pendingPairSchedulerPlaybackPlan;
+    if (!pending?.targetItems || !snapshot?.preparePairId) {
+      return;
+    }
+
+    const preparePair = snapshot.pairs.find((pair) => pair.id === snapshot.preparePairId);
+    if (!preparePair || preparePair.handoffReady || pending.stagedPairId === preparePair.id) {
+      return;
+    }
+
+    const prepareItems = this.pairSchedulerPairItems.get(preparePair.id);
+    if (!prepareItems) {
+      return;
+    }
+
+    prepareItems.splice(0, prepareItems.length, ...pending.targetItems);
+    this.pendingPairSchedulerPlaybackPlan = {
+      ...pending,
+      stagedPairId: preparePair.id,
+    };
+    this.logger.info('pair-scheduler', `예약 전환 prepare pair 갱신: ${preparePair.id}, items=${pending.targetItems.length}`);
+    this.pairScheduler?.prepareHandoffPair();
+  }
+
+  private commitPendingPairSchedulerPlaybackPlan(currentItem: PairSchedulerMediaItem): void {
+    const pending = this.pendingPairSchedulerPlaybackPlan;
+    if (!pending) {
+      return;
+    }
+
+    if (pending.commitWhenItemIds && !pending.commitWhenItemIds.has(currentItem.id)) {
+      return;
+    }
+
+    this.commitPlaybackPlan(pending.pagePlans, pending.playbackMode, pending.pageIndex);
+    this.pendingPairSchedulerPlaybackPlan = null;
+  }
+
+  private resolvePairSchedulerCurrentItem(snapshot: PairSchedulerSnapshot<PairSchedulerMediaItem>): PairSchedulerMediaItem | null {
+    for (const pair of snapshot.pairs) {
+      for (const session of pair.sessions) {
+        if (session.state === 'playing' && session.item && pair.id === snapshot.activePairId && session.slot === pair.activeSlot) {
+          return session.item;
+        }
+      }
+    }
+    return null;
+  }
+
+  private stopPairScheduler(options: { readonly disposePlayers?: boolean } = {}): void {
+    this.pendingPairSchedulerStartResolve?.();
+    this.pendingPairSchedulerStartResolve = null;
+    this.pairScheduler?.stop();
+    this.pairScheduler = null;
+    this.pairSchedulerSnapshot = null;
+    this.pairSchedulerCurrentItemId = null;
+    this.pendingPairSchedulerPlaybackPlan = null;
+    this.pairSchedulerPairItems.clear();
+    this.pairSchedulerItemRegistry = null;
+    if (options.disposePlayers === false) {
+      return;
+    }
+
+    this.pairSchedulerPlayers.forEach((player) => player.dispose());
+    this.pairSchedulerPlayers.clear();
+    this.pairSchedulerHostElement?.remove();
+    this.pairSchedulerHostElement = null;
   }
 
   private readTvVolume(): number | null {
@@ -1488,6 +1861,7 @@ export class NewHyOnPlayerApp {
 
     if (!preserveIntroTransition) {
       this.clearTimers();
+      this.stopPairScheduler();
       this.stopSlots();
       this.removeStageSlots();
       this.removeEmptyIntroVideo();
@@ -1511,6 +1885,7 @@ export class NewHyOnPlayerApp {
           reportErrors: false,
         });
         this.clearTimers();
+        this.stopPairScheduler();
         this.stopSlots();
         this.removeStageSlots();
         this.removeEmptyIntroVideo();
@@ -1560,57 +1935,13 @@ export class NewHyOnPlayerApp {
     page: SeamlessPagePlan,
     commitPageTimelineBeforeContentSwitch: boolean,
   ): Promise<void> {
-    const previousState = commitPageTimelineBeforeContentSwitch ? this.capturePlaybackState() : null;
     this.logger.info('page', `prepare ${page.pageName} (${page.durationSeconds}s, page-content-transition)`);
-    this.view.stage.style.setProperty('--canvas-width', String(page.canvasWidth));
-    this.view.stage.style.setProperty('--canvas-height', String(page.canvasHeight));
-    this.view.stage.style.aspectRatio = `${page.canvasWidth} / ${page.canvasHeight}`;
-    this.ensureContentSlotSurfaces(targetPagePlans, page);
-
-    if (commitPageTimelineBeforeContentSwitch) {
-      this.commitPlaybackPlan(targetPagePlans, targetPlaybackMode, targetPageIndex);
-      this.applyPageAudioPolicy(page, 'page-commit-before-content-switch');
-      this.playing = true;
-      this.pageStartCount += 1;
-      this.pageStartedAt = performance.now();
-      this.render();
-      this.writeRuntimeHealth('page-started');
-    }
-
-    const pageDurationMs = Math.max(1, page.durationSeconds) * 1000;
-    const nextPageSlots = this.resolveLogicalNextPageSlots(targetPagePlans, targetPageIndex);
-    const startResults = await Promise.all(this.slotPlayers.map((slotPlayer, slotIndex) => {
-      const slot = page.slots[slotIndex] ?? this.createEmptySlotPlan(slotIndex, page);
-      slotPlayer.setPageTimeline(0, pageDurationMs, targetPagePlans.length <= 1);
-      slotPlayer.setLogicalNextContentTarget(this.resolveLogicalNextContentTarget(nextPageSlots[slotIndex] ?? null));
-      return slotPlayer.switchToSlotPlan(slot, page.canvasWidth, page.canvasHeight);
-    }));
-    const failed = startResults.some((started) => !started);
-    if (failed) {
-      if (previousState) {
-        this.restorePlaybackState(previousState);
-        this.render();
-      }
-      throw new Error(`페이지 콘텐츠 전환 준비 실패: ${this.formatSlotTransitionFailure(this.slotPlayers)}`);
-    }
-
-    if (!commitPageTimelineBeforeContentSwitch) {
-      this.commitPlaybackPlan(targetPagePlans, targetPlaybackMode, targetPageIndex);
-      this.applyPageAudioPolicy(page, 'page-commit-after-content-switch');
-    }
-    this.removeEmptyIntroVideo();
-    this.slotPlayers.forEach((slotPlayer) => slotPlayer.applyDisplayRect());
-    if (!commitPageTimelineBeforeContentSwitch) {
-      this.playing = true;
-      this.pageStartCount += 1;
-      this.pageStartedAt = performance.now();
-    }
+    void commitPageTimelineBeforeContentSwitch;
+    await this.startPairSchedulerPlayback(targetPagePlans, targetPlaybackMode, targetPageIndex);
     this.render();
     this.setMessage(`페이지 재생: ${page.pageName}`);
-    this.logger.info('page', `start ${page.pageName} (${page.durationSeconds}s, page-content-transition)`);
-    if (!commitPageTimelineBeforeContentSwitch) {
-      this.writeRuntimeHealth('page-started');
-    }
+    this.logger.info('page', `start ${page.pageName} (${page.durationSeconds}s, pair-scheduler)`);
+    this.writeRuntimeHealth('page-started');
     this.startMasterTimer();
   }
 
@@ -1778,6 +2109,9 @@ export class NewHyOnPlayerApp {
     const rawPageElapsedMs = this.currentPageRawElapsedMilliseconds();
     this.render();
     this.checkSchedules();
+    if (this.pairScheduler) {
+      return;
+    }
     const pageTransitionStarted = this.checkPageTransition(rawPageElapsedMs);
     if (!pageTransitionStarted && !this.pageTransitionInProgress && !this.isCurrentPageExpired(rawPageElapsedMs)) {
       this.scheduleSlotTimelineSync(pageElapsedMs, this.currentPageDurationMilliseconds(), this.pagePlans.length <= 1);
@@ -1912,6 +2246,7 @@ export class NewHyOnPlayerApp {
       || this.pageTransitionInProgress
       || this.remoteScheduleSwitchInProgress
       || this.remoteScheduleUpdateInProgress
+      || this.pendingPairSchedulerPlaybackPlan !== null
     ) {
       return;
     }
@@ -1994,15 +2329,20 @@ export class NewHyOnPlayerApp {
       }
 
       const resolution = this.createEffectiveUpdatePagePlans(this.currentContentManifest);
-      await this.playPage(0, {
-        preservePreviousUntilReady: true,
-        commitPageTimelineBeforeContentSwitch: true,
-        pagePlans: resolution.pagePlans,
-        playbackMode: resolution.mode,
-      });
+      const staged = this.stagePairSchedulerPlaybackHandoff(resolution.pagePlans, resolution.mode, 0);
+      if (!staged) {
+        await this.playPage(0, {
+          preservePreviousUntilReady: true,
+          commitPageTimelineBeforeContentSwitch: true,
+          pagePlans: resolution.pagePlans,
+          playbackMode: resolution.mode,
+        });
+      }
       this.activeRemoteSchedulePlaylistName = null;
-      this.setMessage(`예약 스케줄 종료: ${this.currentContentManifest.playlistName}`);
-      this.logger.info('schedule', `예약 스케줄 종료, 기본 playlist=${this.currentContentManifest.playlistName}`);
+      this.setMessage(staged
+        ? `예약 스케줄 종료 전환 준비: ${this.currentContentManifest.playlistName}`
+        : `예약 스케줄 종료: ${this.currentContentManifest.playlistName}`);
+      this.logger.info('schedule', `예약 스케줄 종료, 기본 playlist=${this.currentContentManifest.playlistName}, pairHandoff=${staged}`);
       return;
     }
 
@@ -2039,15 +2379,20 @@ export class NewHyOnPlayerApp {
       return;
     }
 
-    await this.playPage(0, {
-      preservePreviousUntilReady: true,
-      commitPageTimelineBeforeContentSwitch: true,
-      pagePlans,
-      playbackMode: 'content',
-    });
+    const staged = this.stagePairSchedulerPlaybackHandoff(pagePlans, 'content', 0);
+    if (!staged) {
+      await this.playPage(0, {
+        preservePreviousUntilReady: true,
+        commitPageTimelineBeforeContentSwitch: true,
+        pagePlans,
+        playbackMode: 'content',
+      });
+    }
     this.activeRemoteSchedulePlaylistName = decision.playlistName;
-    this.setMessage(`예약 스케줄 적용: ${decision.playlistName}`);
-    this.logger.info('schedule', `예약 스케줄 적용: playlist=${decision.playlistName}, schedule=${decision.scheduleId || '-'}`);
+    this.setMessage(staged
+      ? `예약 스케줄 전환 준비: ${decision.playlistName}`
+      : `예약 스케줄 적용: ${decision.playlistName}`);
+    this.logger.info('schedule', `예약 스케줄 적용: playlist=${decision.playlistName}, schedule=${decision.scheduleId || '-'}, pairHandoff=${staged}`);
   }
 
   private stopSlots(): void {
@@ -2057,6 +2402,10 @@ export class NewHyOnPlayerApp {
 
   private removeStageSlots(): void {
     this.view.stage.querySelectorAll('.slot').forEach((element) => element.remove());
+  }
+
+  private removeLegacyStageSlots(): void {
+    this.view.stage.querySelectorAll('.slot:not(.pair-scheduler-slot)').forEach((element) => element.remove());
   }
 
   private async playEmptyIntroVideo(options: EmptyIntroVideoOptions = {}): Promise<HTMLVideoElement> {
@@ -2160,7 +2509,7 @@ export class NewHyOnPlayerApp {
   }
 
   private hasActivePlaybackSurface(): boolean {
-    return this.slotPlayers.length > 0 || this.emptyIntroVideoElement !== null;
+    return this.pairScheduler !== null || this.slotPlayers.length > 0 || this.emptyIntroVideoElement !== null;
   }
 
   private clearTimers(): void {
@@ -2218,8 +2567,19 @@ export class NewHyOnPlayerApp {
     this.view.communication.textContent = this.formatCommunicationStatus();
     this.view.auth.textContent = `LicenseHub: ${this.authStatus} (${this.authStatusDetail})`;
     this.view.update.textContent = this.formatUpdateOverlayStatus();
-    this.view.slots.textContent = this.slotPlayers.map((slotPlayer) => slotPlayer.snapshot()).join('\n') || '-';
+    this.view.slots.textContent = this.formatPlaybackSurfaceSnapshot();
     this.view.timeline.innerHTML = this.formatPlaybackTimeline(page, pageElapsedMs);
+  }
+
+  private formatPlaybackSurfaceSnapshot(): string {
+    if (this.pairSchedulerSnapshot) {
+      return this.pairSchedulerSnapshot.pairs.map((pair) => (
+        `${pair.id} active=${pair.activeSlot} prepare=${pair.prepareSlot} swaps=${pair.swapsInTurn} handoff=${pair.handoffReady} `
+        + pair.sessions.map((session) => `${session.slot}:${session.state}:${session.item?.title ?? '-'}`).join(' | ')
+      )).join('\n');
+    }
+
+    return this.slotPlayers.map((slotPlayer) => slotPlayer.snapshot()).join('\n') || '-';
   }
 
   private formatPageElapsedText(page: SeamlessPagePlan, elapsedMs: number): string {
@@ -2725,7 +3085,9 @@ export class NewHyOnPlayerApp {
   private writeRuntimeHealth(stage: string): void {
     const page = this.pagePlans[this.pageIndex];
     const platform = formatRuntimeDiagnostics(collectRuntimeDiagnostics());
-    const slotSnapshots = this.slotPlayers.map((slotPlayer) => slotPlayer.snapshot());
+    const slotSnapshots = this.pairSchedulerSnapshot
+      ? this.formatPlaybackSurfaceSnapshot().split('\n')
+      : this.slotPlayers.map((slotPlayer) => slotPlayer.snapshot());
     const snapshot: RuntimeHealthSnapshot = {
       schemaVersion: 1,
       updatedAt: new Date().toISOString(),
@@ -2864,6 +3226,8 @@ export class NewHyOnPlayerApp {
     this.clearTimers();
     if (this.emptyIntroVideoElement) {
       this.emptyIntroVideoElement.pause();
+    } else if (this.pairScheduler) {
+      this.stopPairScheduler();
     } else {
       this.slotPlayers.forEach((slotPlayer) => slotPlayer.pause());
     }
@@ -2875,6 +3239,7 @@ export class NewHyOnPlayerApp {
     this.playing = false;
     this.pagePausedElapsedMs = 0;
     this.clearTimers();
+    this.stopPairScheduler();
     this.stopSlots();
     this.stopAvplaySessionPairs();
     this.stopVolumeTest();

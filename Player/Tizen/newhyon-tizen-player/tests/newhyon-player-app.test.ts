@@ -99,6 +99,33 @@ function createWebApis(
   };
 }
 
+async function advancePairSchedulerPairHandoff(listeners: readonly AVPlayListener[] = []): Promise<void> {
+  await vi.advanceTimersByTimeAsync(10000);
+  listeners.forEach((listener) => listener.oncurrentplaytime?.(0));
+  await Promise.resolve();
+  await Promise.resolve();
+  await vi.advanceTimersByTimeAsync(10000);
+  listeners.forEach((listener) => listener.oncurrentplaytime?.(0));
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+async function advancePairSchedulerUntil(
+  predicate: () => boolean,
+  listeners: readonly AVPlayListener[] = [],
+  maxSteps = 8,
+): Promise<void> {
+  for (let step = 0; step < maxSteps; step += 1) {
+    if (predicate()) {
+      return;
+    }
+    await vi.advanceTimersByTimeAsync(10000);
+    listeners.forEach((listener) => listener.oncurrentplaytime?.(0));
+    await Promise.resolve();
+    await Promise.resolve();
+  }
+}
+
 function createManifest(): PlayerManifest {
   return {
     playlistName: 'playlist',
@@ -159,6 +186,34 @@ function createTwoPageManifest(): PlayerManifest {
       },
     ],
   };
+}
+
+function createSinglePageTwoVideoManifest(): PlayerManifest {
+  const manifest = createManifest();
+  manifest.pages[0] = {
+    ...manifest.pages[0]!,
+    PIC_PlaytimeSecond: 20,
+    PIC_Elements: manifest.pages[0]!.PIC_Elements?.map((element) => ({
+      ...element,
+      EIF_ContentsInfoClassList: [
+        {
+          CIF_FileName: 'video.mp4',
+          CIF_FileFullPath: 'https://example.com/video.mp4',
+          CIF_ContentType: 'Video',
+          CIF_PlayMinute: '00',
+          CIF_PlaySec: '10',
+        },
+        {
+          CIF_FileName: 'second.mp4',
+          CIF_FileFullPath: 'https://example.com/second.mp4',
+          CIF_ContentType: 'Video',
+          CIF_PlayMinute: '00',
+          CIF_PlaySec: '10',
+        },
+      ],
+    })),
+  };
+  return manifest;
 }
 
 function createTwoPageNextImageManifest(): PlayerManifest {
@@ -566,7 +621,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(introVideo).not.toBeNull();
     expect(introVideo?.loop).toBe(true);
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
-    expect(open).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledTimes(2);
     app.destroy();
   });
 
@@ -615,7 +670,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelector('#status-auth')?.textContent).toContain('authenticated');
     expect(document.querySelector('.empty-intro-video')).toBeNull();
     expect(document.querySelector('.slot')).not.toBeNull();
-    expect(open).toHaveBeenCalledTimes(2);
+    expect(open).toHaveBeenCalledTimes(4);
     expect(play).toHaveBeenCalledTimes(2);
     app.destroy();
   });
@@ -710,9 +765,9 @@ describe('NewHyOnPlayerApp', () => {
     await vi.advanceTimersByTimeAsync(10000);
     await Promise.resolve();
 
-    expect(play).toHaveBeenCalledTimes(1);
+    expect(play).toHaveBeenCalledTimes(2);
     expect(stop).not.toHaveBeenCalled();
-    expect(close).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledTimes(1);
     expect(document.querySelector('#status-elapsed')?.textContent).toBe('0.0s / 10.0s');
 
     await vi.advanceTimersByTimeAsync(1200);
@@ -753,7 +808,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(play).toHaveBeenCalledTimes(1);
     expect(getPlayer).toHaveBeenCalledTimes(4);
     expect(players[0]?.prepareAsync).toHaveBeenCalledTimes(1);
-    expect(players[1]?.prepareAsync).not.toHaveBeenCalled();
+    expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(6499);
     await Promise.resolve();
@@ -761,7 +816,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelectorAll('.slot')).toHaveLength(1);
     expect(play).toHaveBeenCalledTimes(1);
     expect(getPlayer).toHaveBeenCalledTimes(4);
-    expect(players[1]?.prepareAsync).not.toHaveBeenCalled();
+    expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(3501);
     await vi.advanceTimersByTimeAsync(64);
@@ -773,6 +828,107 @@ describe('NewHyOnPlayerApp', () => {
     expect(getPlayer).toHaveBeenCalledTimes(4);
     expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
     expect(window.NEWHYON_PLAYER_HEALTH?.diagnostics.pageStartCount).toBe(2);
+    app.destroy();
+  });
+
+  it('단일 페이지 마지막 영상 다음 첫 영상은 같은 pair 내부에서 준비된 슬롯으로 전환한다', async () => {
+    vi.useFakeTimers();
+    const play = vi.fn();
+    const listeners: AVPlayListener[] = [];
+    const getPlayer = vi.fn(() => ({
+      ...createPlayer(play, (listener) => listeners.push(listener)),
+      getState: vi.fn(() => 'PLAYING'),
+    }));
+    window.webapis = createWebApis(createPlayer(play), vi.fn(), { getPlayer });
+
+    const app = new NewHyOnPlayerApp({
+      manifest: createSinglePageTwoVideoManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+    expect(document.querySelector('#status-slots')?.textContent).toContain('pair-a active=0');
+    expect(document.querySelector('#status-slots')?.textContent).toContain('0:playing:page / video / video.mp4');
+    expect(document.querySelector('#status-slots')?.textContent).toContain('1:ready:page / video / second.mp4');
+
+    await vi.advanceTimersByTimeAsync(10000);
+    listeners.forEach((listener) => listener.oncurrentplaytime?.(0));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(document.querySelector('#status-slots')?.textContent).toContain('pair-a active=1');
+    expect(document.querySelector('#status-slots')?.textContent).toContain('1:playing:page / video / second.mp4');
+    expect(document.querySelector('#status-slots')?.textContent).toContain('0:ready:page / video / video.mp4');
+
+    await vi.advanceTimersByTimeAsync(10000);
+    listeners.forEach((listener) => listener.oncurrentplaytime?.(0));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const slots = document.querySelector('#status-slots')?.textContent ?? '';
+    expect(slots).toContain('pair-a active=0');
+    expect(slots).toContain('0:playing:page / video / video.mp4');
+    expect(slots).toContain('1:ready:page / video / second.mp4');
+    expect(slots).not.toContain('handoff=true');
+    expect(slots).not.toContain('pair-b active=0 prepare=1 swaps=0 handoff=false 0:playing:page / video / video.mp4');
+    expect(play).toHaveBeenCalledTimes(3);
+    app.destroy();
+  });
+
+  it('페이지 루프도 logical 다음 콘텐츠를 같은 pair 내부 준비 슬롯에 제시한다', async () => {
+    vi.useFakeTimers();
+    const play = vi.fn();
+    const listeners: AVPlayListener[] = [];
+    const getPlayer = vi.fn(() => ({
+      ...createPlayer(play, (listener) => listeners.push(listener)),
+      getState: vi.fn(() => 'PLAYING'),
+    }));
+    window.webapis = createWebApis(createPlayer(play), vi.fn(), { getPlayer });
+
+    const app = new NewHyOnPlayerApp({
+      manifest: createTwoPageManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+    expect(document.querySelector('#status-slots')?.textContent).toContain('0:playing:first-page / video / video.mp4');
+    expect(document.querySelector('#status-slots')?.textContent).toContain('1:ready:second-page / second-video / second.mp4');
+
+    await vi.advanceTimersByTimeAsync(10000);
+    listeners.forEach((listener) => listener.oncurrentplaytime?.(0));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(document.querySelector('#status-slots')?.textContent).toContain('1:playing:second-page / second-video / second.mp4');
+    expect(document.querySelector('#status-slots')?.textContent).toContain('0:ready:first-page / video / video.mp4');
+
+    await vi.advanceTimersByTimeAsync(10000);
+    listeners.forEach((listener) => listener.oncurrentplaytime?.(0));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const slots = document.querySelector('#status-slots')?.textContent ?? '';
+    expect(slots).toContain('0:playing:first-page / video / video.mp4');
+    expect(slots).toContain('1:ready:second-page / second-video / second.mp4');
+    expect(slots).not.toContain('handoff=true');
     app.destroy();
   });
 
@@ -823,19 +979,19 @@ describe('NewHyOnPlayerApp', () => {
       await app.start();
       expect(document.querySelector('#status-page')?.textContent).toContain('first-page');
       expect(loadedSources.some((source) => source.includes('second.png'))).toBe(true);
-      expect(Array.from(document.querySelectorAll<HTMLImageElement>('.slot-image'))
+      expect(Array.from(document.querySelectorAll<HTMLImageElement>('.pair-scheduler-image'))
         .some((image) => image.getAttribute('src')?.includes('second.png'))).toBe(true);
-      expect(Array.from(document.querySelectorAll<HTMLImageElement>('.slot-image--visible'))
-        .some((image) => image.getAttribute('src')?.includes('second.png'))).toBe(false);
+      expect(Array.from(document.querySelectorAll<HTMLImageElement>('.pair-scheduler-image'))
+        .some((image) => image.getAttribute('src')?.includes('second.png') && image.style.visibility === 'visible')).toBe(false);
 
       await vi.advanceTimersByTimeAsync(9999);
       await vi.runAllTicks();
 
       expect(document.querySelector('#status-page')?.textContent).toContain('first-page');
-      expect(Array.from(document.querySelectorAll<HTMLImageElement>('.slot-image'))
+      expect(Array.from(document.querySelectorAll<HTMLImageElement>('.pair-scheduler-image'))
         .some((image) => image.getAttribute('src')?.includes('second.png'))).toBe(true);
-      expect(Array.from(document.querySelectorAll<HTMLImageElement>('.slot-image--visible'))
-        .some((image) => image.getAttribute('src')?.includes('second.png'))).toBe(false);
+      expect(Array.from(document.querySelectorAll<HTMLImageElement>('.pair-scheduler-image'))
+        .some((image) => image.getAttribute('src')?.includes('second.png') && image.style.visibility === 'visible')).toBe(false);
 
       await vi.advanceTimersByTimeAsync(1);
       await vi.advanceTimersByTimeAsync(96);
@@ -1010,10 +1166,6 @@ describe('NewHyOnPlayerApp', () => {
     expect(play).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(10000);
-    expect(document.querySelector('#status-page')?.textContent).toContain('first-page');
-    expect(play).toHaveBeenCalledTimes(1);
-
-    listeners[0]?.onstreamcompleted?.();
     await vi.advanceTimersByTimeAsync(32);
     await Promise.resolve();
     await Promise.resolve();
@@ -1149,7 +1301,12 @@ describe('NewHyOnPlayerApp', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 22, 9, 1, 0));
     const play = vi.fn();
-    window.webapis = createWebApis(createPlayer(play));
+    const listeners: AVPlayListener[] = [];
+    const getPlayer = vi.fn(() => ({
+      ...createPlayer(play, (listener) => listeners.push(listener)),
+      getState: vi.fn(() => 'PLAYING'),
+    }));
+    window.webapis = createWebApis(createPlayer(play), vi.fn(), { getPlayer });
     window.tizen = {
       filesystem: {
         toURI: (path) => `file:///opt/usr/home/owner/content/${path}`,
@@ -1238,9 +1395,138 @@ describe('NewHyOnPlayerApp', () => {
     await Promise.resolve();
     await Promise.resolve();
 
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
+    expect(document.querySelector('#status-slots')?.textContent).toContain('pair-b active=0');
+
+    await advancePairSchedulerUntil(
+      () => document.querySelector('#status-playlist')?.textContent === 'scheduled-list',
+      listeners,
+    );
+
     expect(document.querySelector('#status-playlist')?.textContent).toBe('scheduled-list');
     expect(document.querySelector('#status-page')?.textContent).toContain('scheduled-page');
     expect(document.querySelector('#status-slots')?.textContent).toContain('scheduled.mp4');
+    app.destroy();
+  });
+
+  it('예약 스케줄 종료 후 기본 playlist로 pair handoff 전환한다', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 22, 9, 1, 0));
+    const play = vi.fn();
+    const listeners: AVPlayListener[] = [];
+    const getPlayer = vi.fn(() => ({
+      ...createPlayer(play, (listener) => listeners.push(listener)),
+      getState: vi.fn(() => 'PLAYING'),
+    }));
+    window.webapis = createWebApis(createPlayer(play), vi.fn(), { getPlayer });
+    window.tizen = {
+      filesystem: {
+        toURI: (path) => `file:///opt/usr/home/owner/content/${path}`,
+        pathExists: (path) => path === 'downloads/scheduled.mp4',
+      },
+    };
+
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+    await (app as unknown as {
+      applyUpdateScheduleCommand(payload: UpdatePayload): Promise<boolean>;
+    }).applyUpdateScheduleCommand({
+      Schedule: {
+        GeneratedAt: '2026-06-22 09:00:00',
+        SpecialSchedules: [
+          {
+            Id: 'schedule-end',
+            PageListName: 'scheduled-list',
+            DayOfWeek1: false,
+            DayOfWeek2: true,
+            DayOfWeek3: false,
+            DayOfWeek4: false,
+            DayOfWeek5: false,
+            DayOfWeek6: false,
+            DayOfWeek7: false,
+            IsPeriodEnable: false,
+            DisplayStartH: 9,
+            DisplayStartM: 0,
+            DisplayEndH: 18,
+            DisplayEndM: 0,
+          },
+        ],
+        Playlists: [
+          {
+            PlaylistName: 'scheduled-list',
+            PageList: { PLI_PageListName: 'scheduled-list' },
+            Pages: [
+              {
+                PIC_PageName: 'scheduled-page',
+                PIC_PlaytimeSecond: 10,
+                PIC_CanvasWidth: 1920,
+                PIC_CanvasHeight: 1080,
+                PIC_Elements: [
+                  {
+                    EIF_Name: 'scheduled-video',
+                    EIF_Type: 'Media',
+                    EIF_Width: 1920,
+                    EIF_Height: 1080,
+                    EIF_PosLeft: 0,
+                    EIF_PosTop: 0,
+                    EIF_IsMuted: true,
+                    EIF_ContentsInfoClassList: [
+                      {
+                        CIF_FileName: 'scheduled.mp4',
+                        CIF_FileFullPath: 'downloads/scheduled.mp4',
+                        CIF_ContentType: 'Video',
+                        CIF_PlayMinute: '00',
+                        CIF_PlaySec: '10',
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
+    await advancePairSchedulerUntil(
+      () => document.querySelector('#status-playlist')?.textContent === 'scheduled-list',
+      listeners,
+    );
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('scheduled-list');
+    expect(document.querySelector('#status-slots')?.textContent).toContain('scheduled.mp4');
+
+    vi.setSystemTime(new Date(2026, 5, 22, 18, 1, 0));
+    await (app as unknown as {
+      applyRemoteScheduleSnapshot(
+        snapshot: NonNullable<ReturnType<typeof loadRemoteSchedule>>,
+        nowMs: number,
+        options?: { readonly force?: boolean },
+      ): Promise<void>;
+    }).applyRemoteScheduleSnapshot(loadRemoteSchedule()!, Date.now(), { force: true });
+
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('scheduled-list');
+    expect(document.querySelector('#status-slots')?.textContent).toContain('scheduled.mp4');
+
+    await advancePairSchedulerUntil(
+      () => document.querySelector('#status-playlist')?.textContent === 'playlist',
+      listeners,
+    );
+
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
+    expect(document.querySelector('#status-page')?.textContent).toContain('page');
+    expect(document.querySelector('#status-slots')?.textContent).toContain('video.mp4');
     app.destroy();
   });
 
@@ -1358,7 +1644,12 @@ describe('NewHyOnPlayerApp', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 22, 9, 1, 0));
     const play = vi.fn();
-    window.webapis = createWebApis(createPlayer(play));
+    const listeners: AVPlayListener[] = [];
+    const getPlayer = vi.fn(() => ({
+      ...createPlayer(play, (listener) => listeners.push(listener)),
+      getState: vi.fn(() => 'PLAYING'),
+    }));
+    window.webapis = createWebApis(createPlayer(play), vi.fn(), { getPlayer });
     window.tizen = {
       filesystem: {
         toURI: (path) => `file:///opt/usr/home/owner/content/${path}`,
@@ -1446,6 +1737,13 @@ describe('NewHyOnPlayerApp', () => {
     await vi.advanceTimersByTimeAsync(64);
     await firstSchedulePromise;
     await Promise.resolve();
+    await advancePairSchedulerUntil(
+      () => (
+        document.querySelector('#status-playlist')?.textContent === 'scheduled-list'
+        && document.querySelector('#status-slots')?.textContent?.includes('playing:scheduled-page / scheduled-video / first-scheduled.mp4') === true
+      ),
+      listeners,
+    );
     expect(document.querySelector('#status-slots')?.textContent).toContain('first-scheduled.mp4');
 
     const secondSchedulePromise = (app as unknown as {
@@ -1454,6 +1752,13 @@ describe('NewHyOnPlayerApp', () => {
     await vi.advanceTimersByTimeAsync(64);
     await secondSchedulePromise;
     await Promise.resolve();
+    await advancePairSchedulerUntil(
+      () => (
+        document.querySelector('#status-playlist')?.textContent === 'scheduled-list'
+        && document.querySelector('#status-slots')?.textContent?.includes('playing:scheduled-page / scheduled-video / second-scheduled.mp4') === true
+      ),
+      listeners,
+    );
 
     expect(document.querySelector('#status-playlist')?.textContent).toBe('scheduled-list');
     expect(document.querySelector('#status-slots')?.textContent).toContain('second-scheduled.mp4');
@@ -2112,7 +2417,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelector('#status-playlist')?.textContent).toBe('updated-list');
     expect(document.querySelector('#status-page')?.textContent).toContain('updated-page');
     expect(document.querySelector('.empty-intro-video')).toBeNull();
-    expect(open).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledTimes(2);
     expect(avplayPlay).toHaveBeenCalledTimes(1);
     app.destroy();
   });
@@ -2166,8 +2471,8 @@ describe('NewHyOnPlayerApp', () => {
     const introVideo = document.querySelector<HTMLVideoElement>('.empty-intro-video');
     expect(introVideo).not.toBeNull();
     expect(introVideo?.getAttribute('src')).toBe('media/intro.mp4');
-    expect(open).toHaveBeenCalledTimes(1);
-    expect(open).toHaveBeenLastCalledWith('https://example.com/video.mp4');
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(open).toHaveBeenCalledWith('https://example.com/video.mp4');
     expect(avplayPlay).toHaveBeenCalledTimes(1);
     app.destroy();
   });

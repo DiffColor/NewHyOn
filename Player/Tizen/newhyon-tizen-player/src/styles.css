@@ -289,6 +289,15 @@ body {
   pointer-events: none;
 }
 
+.pair-scheduler-image {
+  position: absolute;
+  display: block;
+  width: 1px;
+  height: 1px;
+  background: #000;
+  pointer-events: none;
+}
+
 .empty-intro-video {
   position: absolute;
   inset: 0;
