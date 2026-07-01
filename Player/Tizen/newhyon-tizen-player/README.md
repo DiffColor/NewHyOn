@@ -1,6 +1,6 @@
 # NewHyOn Tizen Player
 
-Windows NewHyOn Player의 `PageInfoClass -> ElementInfoClass -> ContentsInfoClass` 재생 모델을 Tizen Web App으로 옮긴 플레이어입니다. Android/Windows 원본처럼 페이지 안의 Media 요소를 배치하고, 각 요소 안의 이미지/영상 콘텐츠를 지정 시간만큼 재생합니다.
+NewHyOn Tizen Web App의 빌드, 배포, 디버깅 절차를 기록한 문서입니다.
 
 ## 리모컨 조작
 
@@ -9,14 +9,10 @@ Windows NewHyOn Player의 `PageInfoClass -> ElementInfoClass -> ContentsInfoClas
 - 방향키: 설정 항목 이동
 - Enter: 설정 입력 키패드 열기, 토글, 적용
 - Back, GoBack 또는 Return: 설정 닫기
-- MediaPlayPause: 재생/일시정지
-- MediaStop: 정지
-- MediaFastForward: 다음 페이지
-- MediaRewind: 이전 페이지
 
-HUD에는 마지막으로 들어온 리모컨 키, 앱 액션, 플랫폼 API 상태가 표시됩니다. 실디바이스에서 설정창이 열리지 않으면 먼저 초록 버튼으로 HUD를 켠 뒤, 빨간 버튼 입력이 `ColorF0Red -> open-settings`로 들어오는지 확인합니다. 영상이 나오지 않으면 `webapis`, `avplay`, `avplaystore`, `filesystem` 상태가 `OK`인지 먼저 확인합니다.
+HUD에는 마지막으로 들어온 리모컨 키, 앱 액션, 플랫폼 API 상태가 표시됩니다. 실디바이스에서 설정창이 열리지 않으면 먼저 초록 버튼으로 HUD를 켠 뒤, 빨간 버튼 입력이 `ColorF0Red -> open-settings`로 들어오는지 확인합니다.
 
-실장비 런타임 상태는 Tizen filesystem `documents/newhyon-tizen-player-health.json`에도 기록합니다. 장비 파일 접근이 가능한 환경에서는 이 파일로 마지막 페이지, 슬롯 상태, 플랫폼 API 상태, 마지막 리모컨 입력을 확인할 수 있습니다.
+실장비 런타임 상태는 Tizen filesystem `documents/newhyon-tizen-player-health.json`에도 기록합니다. 장비 파일 접근이 가능한 환경에서는 이 파일로 앱 내부 상태, 플랫폼 API 상태, 마지막 리모컨 입력을 확인할 수 있습니다.
 
 ## 플레이어 설정
 
@@ -24,12 +20,7 @@ HUD에는 마지막으로 들어온 리모컨 키, 앱 액션, 플랫폼 API 상
 
 - 기기 이름: 장비 식별값
 - 연결 주소: 관리자 서버 주소
-- Manifest URL: 외부 `PlayerManifest` JSON 주소
-- 화면 비율 유지: 이미지/영상 표시 비율 유지 여부
-- 현재 콘텐츠 종료 후 전환: 영상 슬롯에서 타이머보다 영상 종료 이벤트를 우선해 다음 콘텐츠로 전환
 - HUD 표시: 앱 시작 시 HUD 표시 여부
-
-`Manifest URL`을 비워두면 `src/app/default-manifest.ts`의 기본 재생 데이터가 사용됩니다.
 
 문자 입력은 별도 키보드 없이 설정창 안의 리모컨 키패드로 처리합니다. 입력 필드에서 Enter를 누르면 키패드가 열리고, 방향키와 Enter로 문자를 넣은 뒤 Back 또는 `완료`로 필드로 돌아갑니다.
 
@@ -158,71 +149,3 @@ sdb devices
 
 - 그래도 `sdb shell "echo ok"` 출력이 비거나 `closed`가 반복되면 장비 쪽 SDB/개발자 연결이 깨진 상태로 보고, 장비 개발자 모드/SDB 연결을 재설정하거나 물리 재부팅 후 다시 시도합니다.
 - 이 상태에서는 Web Inspector 확인 대신 앱 내 HUD와 `documents/newhyon-tizen-player-health.json` 헬스 스냅샷, 서버 `CommandQueue`/`CommandHistory` 상태를 우선 증거로 사용합니다.
-
-### 2026-06-28 플레이리스트 업데이트 후 상태 확인
-
-Web Inspector로 현재 플레이어를 직접 확인한 결과, 앱은 업데이트 실패나 통신 장애 상태가 아니었습니다.
-
-- 상태: `playing`
-- 플레이리스트: `단일`
-- 페이지: `1/1 No active content`
-- 업데이트: `대기`
-- 통신: `DB: 연결됨 / SignalR: 연결됨 / FTP: 연결됨 / Heartbeat: sent`
-- 인증: `LicenseHub: authenticated`
-
-저장된 `newhyon-tizen-player:remote-manifest`의 `단일` 플레이리스트에는 영상 2개가 있고 둘 다 `CIF_FileExist=true`입니다. 다만 `newhyon-tizen-player.content-periods.v1` 기준 두 콘텐츠가 현재일 `2026-06-28`에 모두 기간 만료입니다.
-
-- `a42b06ed-212d-47e2-8769-4a7108f68d29`: `2026-05-07` 종료
-- `3039db8c-2c4f-475b-8a99-c41e43e2b6f6`: `2026-06-27` 종료
-
-따라서 이 상태의 직접 원인은 플레이리스트 파일 다운로드 실패가 아니라 `content-period.ts`의 `isContentPeriodAllowed()`가 모든 콘텐츠를 제외하여 `newhyon-player-app.ts`의 `createBlackoutPagePlans()`로 진입한 것입니다.
-
-## Tizen 하드웨어 제약
-
-다음 제약은 코드 작성 시 반드시 지켜야 합니다.
-
-- `index.html`은 `$WEBAPIS/webapis/webapis.js`를 앱 모듈보다 먼저 로드해야 합니다. 이 스크립트가 빠지면 `webapis.avplay`/`webapis.avplaystore`를 안정적으로 사용할 수 없습니다.
-- `webapis.avplaystore.getPlayer()`는 독립 AVPlay 세션용 플레이어를 생성하며 동시에 최대 4개까지입니다.
-- 제한 초과 시 `QUOTA_EXCEEDED_ERR`와 `Max player count reached`가 발생합니다.
-- 앱 시작 시 영상 슬롯 수만큼 AVPlayStore 플레이어를 미리 만들면 QM32C에서 즉시 실패합니다.
-- AVPlay 세션 1개는 `getPlayer()`로 얻은 AVPlay 플레이어 1개와 해당 `<object>` 표면 1개입니다. 세션 1개 안에 `lane1/lane2`가 있는 모델로 이해하지 않습니다.
-- 현재 구현은 앱 시작 시 `createAvplaySessionPair()`로 독립 AVPlay 세션 2개짜리 고정 페어 2세트를 정확히 확보합니다. 즉 `2 sessions x 2 pairs = 4 getPlayer()`가 의도한 보유량이자 절대 한도입니다.
-- 페어 1개 안의 두 AVPlay 세션은 현재 콘텐츠 재생 세션과 다음 콘텐츠 준비 세션입니다. 콘텐츠 전환 때 두 세션의 역할이 교대됩니다.
-- 현재 재생 페어는 현재 스케줄/현재 playlist의 콘텐츠-콘텐츠 전환에만 사용합니다.
-- 나머지 대기 페어는 예약 스케줄 진입 또는 예약 스케줄 종료 후 기존 스케줄 복귀를 준비하기 위해 사용합니다.
-- 페어 간 전환은 예약 스케줄 진입/복귀에서만 발생합니다. 페이지 전환은 페어 전환 사유가 아닙니다.
-- 페이지-페이지 연결과 컨텐츠-컨텐츠 연결은 별도 표면 교체가 아니라 각 슬롯의 이미지/영상 콘텐츠 전환입니다. 페이지 전환은 같은 재생 페어 안에서 콘텐츠 계획만 바꾸는 동작입니다.
-- `SlotPlayer`의 컨텐츠 전환 상태(`preparedItemId`, `preparedImageId`)는 콘텐츠 id 기준을 유지합니다. 페이지 전환도 결국 슬롯 안의 이미지/영상 컨텐츠 전환이므로 이 논리 전환 키를 실제 소스 키로 바꾸지 않습니다.
-- 실제 재생 소스(`contentType + sourceUrl`) 기준 합류는 페어 안의 준비 세션 in-flight `prepareAsync` 직렬화 범위에서만 처리합니다. 같은 파일이 다른 페이지/명령 id로 들어오는 경우에도 준비 세션에 동일 소스를 다시 `open()`하면 안 되기 때문입니다.
-- AVPlay 준비 절차는 레퍼런스 샘플 `Player/Tizen/avplay-seamless-still-mode alias` 기준으로 `open -> setListener -> setDisplayRect -> setDisplayMethod -> prepareAsync 완료 -> play` 순서를 지킵니다.
-- `prepareAsync`가 진행 중인 준비 세션에는 `stop()`, `close()`, 다른 `open()`을 끼워 넣지 않습니다. `clearPrepared()`는 준비 메타 정리 요청이며 in-flight prepare를 폐기하는 명령이 아닙니다.
-- 다른 영상을 준비해야 하면 진행 중인 `prepareAsync`가 끝난 뒤 준비 세션을 `stop/close`하고 새 소스를 `open/prepareAsync`합니다.
-- 현재 재생 세션과 다음 준비 세션의 상태를 하나의 세션 상태로 뭉개지 않습니다. 페어는 두 독립 세션의 역할을 관리하는 상위 개념입니다.
-- `pool`/`lease` 방식으로 세션을 빌려주거나 반납하는 구조를 다시 만들지 않습니다.
-- AVPlayStore 한도 초과가 예상되면 추가 `getPlayer()`를 호출하지 않습니다. 초과 영상 슬롯은 앱 전체 오류로 전파하지 않고 HUD 슬롯 상태에 `ERROR`로 남깁니다.
-- 이미지 슬롯, 설정창, HUD 렌더링, snapshot, stop 처리에서는 AVPlayStore 세션을 새로 만들면 안 됩니다.
-- Tizen AVPlay는 상대 경로를 직접 열 수 없습니다. 패키지 로컬 파일은 Tizen filesystem으로 절대 경로로 변환해야 합니다.
-- AVPlay 표시 영역은 CSS만으로 끝나지 않습니다. `setDisplayRect()`를 1920x1080 기준 좌표로 다시 매핑해야 합니다.
-- 영상 비율 유지 설정은 AVPlay에도 직접 적용해야 합니다. `화면 비율 유지=ON`은 `PLAYER_DISPLAY_MODE_LETTER_BOX`, `OFF`는 `PLAYER_DISPLAY_MODE_FULL_SCREEN`을 사용합니다.
-- Tizen TV 오디오는 `tizen.tvaudiocontrol` 전역 제어입니다. Windows처럼 슬롯별 mute를 완전히 분리할 수 없어서 페이지에 unmuted 영상 슬롯이 하나라도 있으면 TV mute를 해제하고, 없으면 mute 처리합니다. 앱 정지/종료 시 시작 전 mute 상태를 복원합니다.
-- 런타임 헬스 스냅샷을 남기려면 `filesystem.write` 권한이 필요합니다. 이 파일은 화면 검증을 대체하지 않지만, Web App 로그를 수집하지 못하는 QM32C에서 앱 내부 상태를 확인하는 보조 증거입니다.
-- 일시정지/재개 시 페이지와 슬롯 콘텐츠 타이머는 남은 시간 기준으로 재개해야 합니다. 전체 시간을 다시 예약하면 원본 seamless 재생 타이밍과 어긋납니다.
-- TV Web App package id는 10자 규칙을 지키는 편이 안전합니다. NewHyOn Tizen Player는 `NewHyOnT01.Player` / `NewHyOnT01`을 사용합니다.
-
-### 2026-06-28 전환 회귀 주의
-
-- `2c8ed0bd`의 보호 플래그 계열 변경은 정상 구조가 아닙니다. 스케줄 전환 준비를 이유로 `syncToPageElapsed()`, `handleVideoEnded()`, `prepareNextContent()`가 조기 return 하게 만들면 현재 컨텐츠 전환과 신규 명령 처리가 멈출 수 있습니다.
-- 컨텐츠 준비는 `SlotPlayer.prepareNextContent()` 하나로 유지합니다. 이미지와 영상은 준비 과정만 다르며, 별도 페이지 시작점/경계 준비 함수를 만들지 않습니다. 예약 스케줄 진입/복귀 준비는 대기 페어 책임이며, 현재 재생 페어의 콘텐츠 전환을 막아서는 안 됩니다.
-
-## 주요 파일
-
-- `src/app/default-manifest.ts`: 기본 재생 데이터
-- `src/app/settings-overlay.ts`: 리모컨 설정창
-- `src/app/player-settings.ts`: 설정 저장/로드
-- `src/app/runtime-diagnostics.ts`: HUD 플랫폼 API 진단
-- `src/app/runtime-health-reporter.ts`: 실장비 런타임 헬스 스냅샷 기록
-- `src/domain/page-plan.ts`: Windows 모델을 Tizen 재생 플랜으로 변환
-- `src/player/avplay-session.ts`: AVPlay/AVPlayStore 세션 관리
-- `src/player/audio-policy.ts`: Tizen 전역 오디오 mute 정책
-- `src/player/slot-player.ts`: 슬롯별 이미지/영상 전환
-- `scripts/package-clean.sh`: WGT clean 패키징
