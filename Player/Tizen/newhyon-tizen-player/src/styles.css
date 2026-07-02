@@ -298,6 +298,14 @@ body {
   pointer-events: none;
 }
 
+.pair-scheduler-black-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  background: #000;
+  pointer-events: none;
+}
+
 .empty-intro-video {
   position: absolute;
   inset: 0;

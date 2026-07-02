@@ -10,6 +10,9 @@ import { resolveAvplaySourceUrl, resolveImageSourceUrl } from './source-resolver
 const AVPLAY_BASE_WIDTH = 1920;
 const AVPLAY_BASE_HEIGHT = 1080;
 const STOPPABLE_STATES = new Set(['READY', 'PLAYING', 'PAUSED']);
+const PAIR_LAYER_BOTTOM = '4';
+const PAIR_LAYER_TOP = '10';
+const PAIR_LAYER_TRANSITION = '12';
 
 export interface PairSchedulerMediaItem {
   readonly id: string;
@@ -89,7 +92,9 @@ export class PairSchedulerMediaPlayer implements PairSchedulerPlayer {
     const item = this.requireCurrentItem();
     if (item.item.contentType === 'Image') {
       this.showImage();
-      this.listener?.oncurrentplaytime(0);
+      this.afterPaint(() => {
+        this.listener?.oncurrentplaytime(0);
+      });
       return;
     }
 
@@ -183,7 +188,7 @@ export class PairSchedulerMediaPlayer implements PairSchedulerPlayer {
     if (this.currentItem?.item.contentType === 'Image') {
       this.showImage();
     } else if (this.currentItem?.item.contentType === 'Video') {
-      this.objectElement.style.opacity = role === 'hidden' ? '0' : '1';
+      this.objectElement.style.opacity = role === 'warming' ? '0' : '1';
       this.objectElement.setAttribute('aria-hidden', 'false');
       this.imageElement.style.opacity = '0';
       this.imageElement.setAttribute('aria-hidden', 'true');
@@ -192,13 +197,24 @@ export class PairSchedulerMediaPlayer implements PairSchedulerPlayer {
     }
 
     const zIndexByRole: Record<PairSchedulerLayerRole, string> = {
-      hidden: '0',
-      warming: '2',
-      held: '3',
-      current: '4',
+      hidden: PAIR_LAYER_BOTTOM,
+      warming: PAIR_LAYER_TRANSITION,
+      held: PAIR_LAYER_BOTTOM,
+      current: PAIR_LAYER_TOP,
     };
     this.objectElement.style.zIndex = zIndexByRole[role];
     this.imageElement.style.zIndex = zIndexByRole[role];
+  }
+
+  revealLayer(): void {
+    if (this.currentItem?.item.contentType === 'Image') {
+      this.imageElement.style.opacity = '1';
+      return;
+    }
+
+    if (this.currentItem?.item.contentType === 'Video') {
+      this.objectElement.style.opacity = '1';
+    }
   }
 
   dispose(): void {
@@ -263,7 +279,7 @@ export class PairSchedulerMediaPlayer implements PairSchedulerPlayer {
   private showImage(): void {
     this.objectElement.style.opacity = '0';
     this.objectElement.setAttribute('aria-hidden', 'true');
-    this.imageElement.style.opacity = this.role === 'hidden' ? '0' : '1';
+    this.imageElement.style.opacity = this.role === 'warming' ? '0' : '1';
     this.imageElement.setAttribute('aria-hidden', 'false');
   }
 
@@ -291,6 +307,12 @@ export class PairSchedulerMediaPlayer implements PairSchedulerPlayer {
 
   private applyImageDisplayMethod(): void {
     this.imageElement.style.objectFit = this.displayMethod === 'PLAYER_DISPLAY_MODE_LETTER_BOX' ? 'contain' : 'fill';
+  }
+
+  private afterPaint(callback: () => void): void {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(callback);
+    });
   }
 
   private callVideoSafe(operation: string, callback: () => void): void {

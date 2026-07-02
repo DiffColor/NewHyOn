@@ -607,6 +607,9 @@ export class NewHyOnPlayerApp {
     if (!this.pairSchedulerHostElement) {
       const element = document.createElement('section');
       element.className = 'slot pair-scheduler-slot';
+      const blackLayer = document.createElement('div');
+      blackLayer.className = 'pair-scheduler-black-layer';
+      element.appendChild(blackLayer);
       this.view.stage.appendChild(element);
       this.pairSchedulerHostElement = element;
     }

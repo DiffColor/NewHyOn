@@ -45,6 +45,7 @@ export interface PairSchedulerPlayer {
     setTimeoutForBuffering?: (seconds: number) => void;
     setStreamingProperty?: (property: string, value: string) => void;
     setVideoStillMode?: (enabled: string) => void;
+    revealLayer?: () => void;
 }
 
 export interface PairSchedulerPlayerListener {
@@ -456,6 +457,7 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
 
         const handler = session.firstFrameHandler;
         session.firstFrameHandler = null;
+        this.callOptional(session.player, 'revealLayer', []);
         this.options.log(pairId + slot + ' first frame: ' + currentTime + 'ms');
         handler(currentTime);
     }
@@ -528,8 +530,8 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
         pair.swapsInTurn += 1;
 
         this.playSessionForFrameHandoff(nextSession, () => {
-            this.options.onLayerRoleChange(nextSession.pairId, nextSession.slot, 'current');
             this.lowerAndStopCompletedSession(completedSession);
+            this.options.onLayerRoleChange(nextSession.pairId, nextSession.slot, 'current');
 
             this.prepareNextInActivePair(pair)
                 .then(() => {
@@ -573,8 +575,8 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
 
         this.holdCompletedFrame(completedSession);
         this.playSessionForFrameHandoff(newSession, () => {
-            this.options.onLayerRoleChange(newSession.pairId, newSession.slot, 'current');
             this.releaseInactivePair(oldPair);
+            this.options.onLayerRoleChange(newSession.pairId, newSession.slot, 'current');
 
             this.activePairIndex = this.preparePairIndex;
             this.preparePairIndex = oldPairIndex;
