@@ -7,12 +7,7 @@ import type {
 } from './pair-scheduler';
 import { resolveAvplaySourceUrl, resolveImageSourceUrl } from './source-resolver';
 
-const AVPLAY_BASE_WIDTH = 1920;
-const AVPLAY_BASE_HEIGHT = 1080;
 const STOPPABLE_STATES = new Set(['READY', 'PLAYING', 'PAUSED']);
-const PAIR_LAYER_BOTTOM = '4';
-const PAIR_LAYER_TOP = '10';
-const PAIR_LAYER_TRANSITION = '12';
 
 export interface PairSchedulerMediaItem {
   readonly id: string;
@@ -46,8 +41,6 @@ export class PairSchedulerMediaPlayer implements PairSchedulerPlayer {
     this.objectElement.type = 'application/avplayer';
     this.objectElement.className = 'avplay-object pair-scheduler-avplay';
     this.objectElement.setAttribute('aria-hidden', 'true');
-    this.objectElement.style.opacity = '0';
-    this.objectElement.style.zIndex = '0';
 
     this.imageElement.className = 'pair-scheduler-image';
     this.imageElement.setAttribute('aria-hidden', 'true');
@@ -203,22 +196,20 @@ export class PairSchedulerMediaPlayer implements PairSchedulerPlayer {
     if (this.currentItem?.item.contentType === 'Image') {
       this.showImage();
     } else if (this.currentItem?.item.contentType === 'Video') {
-      this.objectElement.style.opacity = role === 'warming' ? '0' : '1';
-      this.objectElement.setAttribute('aria-hidden', 'false');
+      this.objectElement.setAttribute('aria-hidden', role === 'hidden' ? 'true' : 'false');
       this.imageElement.style.opacity = '0';
       this.imageElement.setAttribute('aria-hidden', 'true');
     } else {
       this.hideSurfaces();
     }
 
-    const zIndexByRole: Record<PairSchedulerLayerRole, string> = {
-      hidden: PAIR_LAYER_BOTTOM,
-      warming: PAIR_LAYER_TRANSITION,
-      held: PAIR_LAYER_BOTTOM,
-      current: PAIR_LAYER_TOP,
+    const imageZIndexByRole: Record<PairSchedulerLayerRole, string> = {
+      hidden: '0',
+      warming: '2',
+      held: '3',
+      current: '4',
     };
-    this.objectElement.style.zIndex = zIndexByRole[role];
-    this.imageElement.style.zIndex = zIndexByRole[role];
+    this.imageElement.style.zIndex = imageZIndexByRole[role];
   }
 
   revealLayer(): void {
@@ -227,9 +218,7 @@ export class PairSchedulerMediaPlayer implements PairSchedulerPlayer {
       return;
     }
 
-    if (this.currentItem?.item.contentType === 'Video') {
-      this.objectElement.style.opacity = '1';
-    }
+    this.objectElement.setAttribute('aria-hidden', 'false');
   }
 
   dispose(): void {
@@ -292,31 +281,23 @@ export class PairSchedulerMediaPlayer implements PairSchedulerPlayer {
   }
 
   private showImage(): void {
-    this.objectElement.style.opacity = '0';
     this.objectElement.setAttribute('aria-hidden', 'true');
     this.imageElement.style.opacity = this.role === 'warming' ? '0' : '1';
     this.imageElement.setAttribute('aria-hidden', 'false');
   }
 
   private hideSurfaces(): void {
-    this.objectElement.style.opacity = '0';
     this.objectElement.setAttribute('aria-hidden', 'true');
     this.imageElement.style.opacity = '0';
     this.imageElement.setAttribute('aria-hidden', 'true');
   }
 
   private applySurfaceRect(x: number, y: number, width: number, height: number): void {
-    const viewportWidth = Math.max(document.documentElement.clientWidth || window.innerWidth || AVPLAY_BASE_WIDTH, 1);
-    const viewportHeight = Math.max(document.documentElement.clientHeight || window.innerHeight || AVPLAY_BASE_HEIGHT, 1);
-    const leftPx = (x / AVPLAY_BASE_WIDTH) * viewportWidth;
-    const topPx = (y / AVPLAY_BASE_HEIGHT) * viewportHeight;
-    const widthPx = (width / AVPLAY_BASE_WIDTH) * viewportWidth;
-    const heightPx = (height / AVPLAY_BASE_HEIGHT) * viewportHeight;
     for (const element of [this.objectElement, this.imageElement]) {
-      element.style.left = `${leftPx}px`;
-      element.style.top = `${topPx}px`;
-      element.style.width = `${widthPx}px`;
-      element.style.height = `${heightPx}px`;
+      element.style.left = `${x}px`;
+      element.style.top = `${y}px`;
+      element.style.width = `${width}px`;
+      element.style.height = `${height}px`;
     }
   }
 

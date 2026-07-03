@@ -21,6 +21,7 @@ export interface PairSchedulerPairConfig<TItem extends PairSchedulerItem> {
 export interface PairSchedulerConfig<TItem extends PairSchedulerItem> {
     swapsBeforePairHandoff: number;
     displayRect: PairSchedulerRect;
+    hiddenRect: PairSchedulerRect;
     displayMethod: string;
     prebufferProperty: string;
     prebufferStartPosition: string;
@@ -359,7 +360,7 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
         const session = pair.sessions[pair.activeSlot];
         const item = this.nextItem(pair);
 
-        return this.prepareSession(session, item).then(() => {
+        return this.prepareSession(session, item, this.config.displayRect).then(() => {
             this.options.log(pair.label + ' active loaded: ' + item.id);
             this.emitState();
         });
@@ -369,7 +370,7 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
         const session = pair.sessions[pair.prepareSlot];
         const item = this.nextItem(pair);
 
-        return this.prepareSession(session, item).then(() => {
+        return this.prepareSession(session, item, this.config.hiddenRect).then(() => {
             this.options.log(pair.label + ' hidden prepared: ' + session.pairId + session.slot + ' ' + item.id);
             this.emitState();
         });
@@ -390,8 +391,8 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
         const prepareItem = this.nextItem(pair);
 
         return Promise.all([
-            this.prepareSession(activeSession, activeItem),
-            this.prepareSession(prepareSession, prepareItem)
+            this.prepareSession(activeSession, activeItem, this.config.hiddenRect),
+            this.prepareSession(prepareSession, prepareItem, this.config.hiddenRect)
         ]).then(() => {
             pair.handoffReady = true;
             this.options.log(pair.label + ' handoff prepared: ' + activeItem.id + ', ' + prepareItem.id);
@@ -405,7 +406,7 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
         return item;
     }
 
-    private prepareSession(session: PairSchedulerSession<TItem>, item: TItem): Promise<void> {
+    private prepareSession(session: PairSchedulerSession<TItem>, item: TItem, rect: PairSchedulerRect): Promise<void> {
         const contentUrl = this.options.resolveUrl(item.url);
 
         this.releaseSession(session, 'prepare');
@@ -420,12 +421,7 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
         session.firstFrameHandler = null;
         session.player.open(contentUrl);
         session.player.setListener(this.createListener(session.pairId, session.slot));
-        this.callOptional(session.player, 'setDisplayRect', [
-            this.config.displayRect.x,
-            this.config.displayRect.y,
-            this.config.displayRect.width,
-            this.config.displayRect.height
-        ]);
+        this.applyDisplayRect(session, rect);
         this.callOptional(session.player, 'setLooping', [false]);
         this.callOptional(session.player, 'setDisplayMethod', [this.config.displayMethod]);
         this.callOptional(session.player, 'setTimeoutForBuffering', [this.config.bufferingTimeoutSeconds]);
@@ -451,12 +447,7 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
 
     private playSession(session: PairSchedulerSession<TItem>): void {
         session.firstFrameHandler = null;
-        this.callOptional(session.player, 'setDisplayRect', [
-            this.config.displayRect.x,
-            this.config.displayRect.y,
-            this.config.displayRect.width,
-            this.config.displayRect.height
-        ]);
+        this.applyDisplayRect(session, this.config.displayRect);
         this.callOptional(session.player, 'setVideoStillMode', ['false']);
         session.player.play();
         session.state = 'playing';
@@ -467,12 +458,7 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
 
     private playSessionForFrameHandoff(session: PairSchedulerSession<TItem>, onFirstFrame: (currentTime: number) => void): void {
         session.firstFrameHandler = onFirstFrame;
-        this.callOptional(session.player, 'setDisplayRect', [
-            this.config.displayRect.x,
-            this.config.displayRect.y,
-            this.config.displayRect.width,
-            this.config.displayRect.height
-        ]);
+        this.applyDisplayRect(session, this.config.hiddenRect);
         this.callOptional(session.player, 'setVideoStillMode', ['false']);
         this.options.onLayerRoleChange(session.pairId, session.slot, 'warming');
         session.state = 'playing';
@@ -491,7 +477,6 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
         if (session.firstFrameHandler) {
             const handler = session.firstFrameHandler;
             session.firstFrameHandler = null;
-            this.callOptional(session.player, 'revealLayer', []);
             this.options.log(pairId + slot + ' first frame: ' + currentTime + 'ms');
             handler(currentTime);
             return;
@@ -713,6 +698,8 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
 
         this.playSessionForFrameHandoff(nextSession, () => {
             this.lowerAndStopCompletedSession(completedSession);
+            this.applyDisplayRect(nextSession, this.config.displayRect);
+            this.callOptional(nextSession.player, 'revealLayer', []);
             this.options.onLayerRoleChange(nextSession.pairId, nextSession.slot, 'current');
 
             this.prepareNextInActivePair(pair)
@@ -758,6 +745,8 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
         this.holdCompletedFrame(completedSession);
         this.playSessionForFrameHandoff(newSession, () => {
             this.releaseInactivePair(oldPair);
+            this.applyDisplayRect(newSession, this.config.displayRect);
+            this.callOptional(newSession.player, 'revealLayer', []);
             this.options.onLayerRoleChange(newSession.pairId, newSession.slot, 'current');
 
             this.activePairIndex = this.preparePairIndex;
@@ -819,7 +808,14 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
     }
 
     private lowerSession(session: PairSchedulerSession<TItem>): void {
+        if (session.state === 'preparing' || session.state === 'ready' || session.state === 'playing' || session.state === 'held') {
+            this.applyDisplayRect(session, this.config.hiddenRect);
+        }
         this.options.onLayerRoleChange(session.pairId, session.slot, 'hidden');
+    }
+
+    private applyDisplayRect(session: PairSchedulerSession<TItem>, rect: PairSchedulerRect): void {
+        this.callOptional(session.player, 'setDisplayRect', [rect.x, rect.y, rect.width, rect.height]);
     }
 
     private findSession(pairId: string, slot: number): PairSchedulerSession<TItem> | null {

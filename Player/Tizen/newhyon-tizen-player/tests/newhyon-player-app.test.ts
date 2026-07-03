@@ -884,6 +884,59 @@ describe('NewHyOnPlayerApp', () => {
     app.destroy();
   });
 
+  it('pair scheduler 전환 중 AVPlay display rect는 크기 변경 없이 x 좌표만 화면 밖으로 이동한다', async () => {
+    vi.useFakeTimers();
+    const play = vi.fn();
+    const listeners: AVPlayListener[] = [];
+    const players: AVPlayApi[] = [];
+    const getPlayer = vi.fn(() => {
+      const player = {
+        ...createPlayer(play, (listener) => listeners.push(listener)),
+        getState: vi.fn(() => 'PLAYING'),
+      };
+      players.push(player);
+      return player;
+    });
+    window.webapis = createWebApis(createPlayer(play), vi.fn(), { getPlayer });
+
+    const app = new NewHyOnPlayerApp({
+      manifest: createSinglePageTwoVideoManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+    await vi.advanceTimersByTimeAsync(10000);
+    listeners.forEach((listener) => listener.oncurrentplaytime?.(0));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await vi.advanceTimersByTimeAsync(10000);
+    listeners.forEach((listener) => listener.oncurrentplaytime?.(0));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const rectCalls = players.flatMap((player) => (
+      (player.setDisplayRect as unknown as { mock: { calls: number[][] } }).mock.calls
+    ));
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    expect(rectCalls.length).toBeGreaterThan(0);
+    expect(rectCalls.every(([x, y, callWidth, callHeight]) => (
+      (x === 0 || x === width) && y === 0 && callWidth === width && callHeight === height
+    ))).toBe(true);
+    expect(rectCalls.some(([x]) => x === width)).toBe(true);
+    app.destroy();
+  });
+
   it('페이지 루프도 logical 다음 콘텐츠를 같은 pair 내부 준비 슬롯에 제시한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn();

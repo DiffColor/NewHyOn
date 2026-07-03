@@ -608,9 +608,6 @@ export class NewHyOnPlayerApp {
     if (!this.pairSchedulerHostElement) {
       const element = document.createElement('section');
       element.className = 'slot pair-scheduler-slot';
-      const blackLayer = document.createElement('div');
-      blackLayer.className = 'pair-scheduler-black-layer';
-      element.appendChild(blackLayer);
       this.view.stage.appendChild(element);
       this.pairSchedulerHostElement = element;
     }
@@ -658,6 +655,7 @@ export class NewHyOnPlayerApp {
     return {
       swapsBeforePairHandoff: Math.max(1, activeItems.length),
       displayRect,
+      hiddenRect: this.buildPairSchedulerHiddenRect(displayRect),
       displayMethod: this.config.manifest.preserveAspectRatio
         ? PAIR_SCHEDULER_DISPLAY_METHOD_CONTAIN
         : PAIR_SCHEDULER_DISPLAY_METHOD_FILL,
@@ -672,9 +670,32 @@ export class NewHyOnPlayerApp {
   }
 
   private buildPairSchedulerDisplayRect(): PairSchedulerConfig<PairSchedulerMediaItem>['displayRect'] {
-    const width = Math.max(1, Math.round(window.innerWidth || document.documentElement.clientWidth || 1920));
-    const height = Math.max(1, Math.round(window.innerHeight || document.documentElement.clientHeight || 1080));
+    const width = this.resolveCurrentViewportDimension('width');
+    const height = this.resolveCurrentViewportDimension('height');
     return { x: 0, y: 0, width, height };
+  }
+
+  private buildPairSchedulerHiddenRect(
+    displayRect: PairSchedulerConfig<PairSchedulerMediaItem>['displayRect'],
+  ): PairSchedulerConfig<PairSchedulerMediaItem>['hiddenRect'] {
+    return {
+      x: displayRect.x + displayRect.width,
+      y: displayRect.y,
+      width: displayRect.width,
+      height: displayRect.height,
+    };
+  }
+
+  private resolveCurrentViewportDimension(axis: 'width' | 'height'): number {
+    const visualViewport = window.visualViewport;
+    const dimension = axis === 'width'
+      ? visualViewport?.width || window.innerWidth || document.documentElement.clientWidth || window.screen?.width
+      : visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || window.screen?.height;
+    const rounded = Math.round(Number(dimension));
+    if (!Number.isFinite(rounded) || rounded <= 0) {
+      throw new Error(`pair-scheduler 화면 ${axis}를 확인하지 못했습니다.`);
+    }
+    return rounded;
   }
 
   private applyPairSchedulerLayerRole(pairId: string, slot: number, role: PairSchedulerLayerRole): void {

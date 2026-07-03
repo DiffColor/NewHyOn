@@ -290,9 +290,7 @@ body {
 }
 
 .pair-scheduler-avplay {
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  display: block;
 }
 
 .pair-scheduler-image {
@@ -301,14 +299,6 @@ body {
   inset: 0;
   width: 100%;
   height: 100%;
-  background: #000;
-  pointer-events: none;
-}
-
-.pair-scheduler-black-layer {
-  position: absolute;
-  inset: 0;
-  z-index: 8;
   background: #000;
   pointer-events: none;
 }
