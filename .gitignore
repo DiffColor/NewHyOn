@@ -220,6 +220,7 @@ Test/
 # Tizen web player generated build/package outputs
 Player/Tizen/newhyon-tizen-player/dist/
 Player/Tizen/newhyon-tizen-player/Player/
+Player/Tizen/newhyon-tizen-player/NewHyOnTizenPlayer/
 Player/Tizen/newhyon-tizen-player/Build/
 
 # Restored from GitHub Release runtime assets during Windows player builds.

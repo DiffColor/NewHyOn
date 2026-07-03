@@ -25,19 +25,20 @@ VS Code Insiders의 Tizen Extension은 Web App 디버깅 시 직접 `sdb shell "
 
 ```bash
 /Users/jazzlife/.tizen-extension-platform/server/sdktools/data/tools/tizen-core/tz run-chain \
-  --proj-dir=/Users/jazzlife/Documents/Workspaces/Products/NewHyOn/Player/Tizen/newhyon-tizen-player/Player \
+  --proj-dir=/Users/jazzlife/Documents/Workspaces/Products/NewHyOn/Player/Tizen/newhyon-tizen-player/NewHyOnTizenPlayer \
   --serial=192.168.50.180:26101 \
   --debug-mode
 ```
 
-`--proj-dir`는 repo 루트가 아니라 실제 Tizen 웹 프로젝트인 `Player/Tizen/newhyon-tizen-player/Player`여야 한다. repo 루트를 주면 `not a valid project`로 실패한다.
+`--proj-dir`는 repo 루트가 아니라 실제 Tizen 웹 프로젝트인 `Player/Tizen/newhyon-tizen-player/NewHyOnTizenPlayer`여야 한다. repo 루트를 주면 `not a valid project`로 실패한다.
 
-현재 QM32C에서는 위 기본 명령만으로는 `NewHyOnT01.Player` uninstall 단계에서 실패한다. 디버거를 실제로 붙일 때는 빌드된 WGT를 `--package-path`로 같이 넘겨야 한다.
+2026-07-03 수정 전에는 확장용 프로젝트 폴더명이 `Player`라서 VS Code Extension 기본 명령이 `Player/Debug/Player.wgt`를 만들고 `NewHyOnT01.Player` uninstall 단계에서 실패했다. 현재는 확장용 프로젝트 폴더명을 `NewHyOnTizenPlayer`로 맞춰서 Extension 기본 `run-chain --debug-mode` 경로가 `NewHyOnTizenPlayer.wgt`를 만들도록 수정했다.
+
+수정 후 디버거 직접 확인 명령은 다음과 같다.
 
 ```bash
 /Users/jazzlife/.tizen-extension-platform/server/sdktools/data/tools/tizen-core/tz run-chain \
-  --proj-dir=/Users/jazzlife/Documents/Workspaces/Products/NewHyOn/Player/Tizen/newhyon-tizen-player/Player \
-  --package-path=/Users/jazzlife/Documents/Workspaces/Products/NewHyOn/Player/Tizen/newhyon-tizen-player/Build/NewHyOnTizenPlayer.wgt \
+  --proj-dir=/Users/jazzlife/Documents/Workspaces/Products/NewHyOn/Player/Tizen/newhyon-tizen-player/NewHyOnTizenPlayer \
   --serial=192.168.50.180:26101 \
   --debug-mode
 ```
@@ -51,10 +52,11 @@ curl http://127.0.0.1:<port>/json/list
 
 ### 2026-06-28 확인된 실패 원인
 
-- `tz run-chain --debug-mode`는 현재 `uninstall NewHyOnT01.Player` 단계에서 `uninstall failed[132]`로 실패한다.
+- `tz run-chain --debug-mode`는 기존 `Player` 폴더 기준이면 `uninstall NewHyOnT01.Player` 단계에서 `uninstall failed[132]`로 실패한다.
 - `tz run-chain --proj-dir=.../Player --package-id=NewHyOnT01 --debug-mode`도 같은 `NewHyOnT01.Player` uninstall 단계에서 실패한다. `--package-id`만 추가하는 시도는 반복하지 않는다.
 - 반면 실제 배포에 쓰는 `tz install -p Build/NewHyOnTizenPlayer.wgt -e 192.168.50.180:26101`는 `NewHyOnT01.NewHyOnTizenPlayer`를 uninstall/install 대상으로 처리하며 성공한다.
 - `tz run-chain --proj-dir=.../Player --package-path=.../Build/NewHyOnTizenPlayer.wgt --serial=192.168.50.180:26101 --debug-mode`는 `NewHyOnT01.NewHyOnTizenPlayer`를 대상으로 uninstall/install 후 `debug 1 port: 36009`로 성공했다.
+- `tz run-chain --proj-dir=.../NewHyOnTizenPlayer --serial=192.168.50.180:26101 --debug-mode`는 Extension 기본 방식 그대로 `NewHyOnTizenPlayer/Debug/NewHyOnTizenPlayer.wgt`를 만들고 `NewHyOnT01.NewHyOnTizenPlayer` 대상으로 성공한다.
 - WGT 내부 `config.xml`에는 `<tizen:application id="NewHyOnT01.Player" package="NewHyOnT01" ... />`가 들어 있다.
 - 즉 현재 디버거 실패의 핵심은 Web Inspector 포트 문제가 아니라, `run-chain`이 제거하려는 app id(`NewHyOnT01.Player`)와 장비/설치 체인에서 실제로 처리되는 app id(`NewHyOnT01.NewHyOnTizenPlayer`)가 어긋나는 것이다.
 - `tz run -p NewHyOnT01 -e 192.168.50.180:26101 -d`가 `debug 0`을 반환하면 디버거 연결이 아니다. 기존 일반 실행 인스턴스를 재사용한 것이다.

@@ -48,6 +48,10 @@ npm test
 npm run build
 ```
 
+`npm run build`는 Vite 산출물 `dist/`와 VS Code Tizen Extension이 직접 인식할 Tizen Web Project `NewHyOnTizenPlayer/`를 함께 생성합니다. VS Code에서 빌드/실행/디버그할 때는 repo 루트나 `Player/`가 아니라 `Player/Tizen/newhyon-tizen-player/NewHyOnTizenPlayer` 폴더를 Tizen Working Project로 선택합니다.
+
+루트 `.vscode/settings.json`에는 `tizen.v2.working.project`가 위 경로로 고정되어 있습니다. 이 설정이 있어야 Tizen Actions 메뉴의 `Build Project`, `Run Project`, `Debug Project` 버튼이 `Working project is not set` 없이 동작합니다.
+
 ## QM32C 배포 절차
 
 현재 실장비 배포는 Tizen SDK의 `tz`와 `sdb`를 직접 사용합니다. 같은 시행착오를 반복하지 않도록 아래 순서를 기준으로 합니다.
@@ -92,15 +96,16 @@ sdb -s "$TIZEN_SERIAL" shell "0 applist" | grep "NewHyOn Tizen Player"
 - 확장 구현 확인 위치: `dist/extension.js`의 `src/device-operations/debuggers/web/web-debugger.ts`
 - Web App 디버그 버튼의 실제 실행 방식: `tz run-chain --proj-dir=<Tizen web project> --serial=<device> --debug-mode`
 - repo 루트(`/Player/Tizen/newhyon-tizen-player`)로 `run-chain`을 실행하면 `not a valid project`로 실패합니다.
-- 실제 Tizen 웹 프로젝트 디렉터리는 `/Player/Tizen/newhyon-tizen-player/Player`입니다.
-- `Player/`를 대상으로 `run-chain --debug-mode`를 실행하면 현재 장비에서는 `uninstall NewHyOnT01.Player` 다음 `uninstall failed[132]`로 실패했습니다.
+- 실제 Tizen 웹 프로젝트 디렉터리는 `/Player/Tizen/newhyon-tizen-player/NewHyOnTizenPlayer`입니다.
+- 기존 `Player/`를 대상으로 `run-chain --debug-mode`를 실행하면 현재 장비에서는 `uninstall NewHyOnT01.Player` 다음 `uninstall failed[132]`로 실패했습니다.
 - `--package-id=NewHyOnT01`를 추가해도 같은 `NewHyOnT01.Player` uninstall 단계에서 실패합니다.
 - 성공한 디버그 연결 명령은 `--package-path=Build/NewHyOnTizenPlayer.wgt`를 함께 넘기는 방식입니다. 이때 `NewHyOnT01.NewHyOnTizenPlayer`를 uninstall/install 대상으로 처리하고 `debug 1 port: 36009`로 성공했습니다.
+- 2026-07-03 수정: VS Code Extension이 `--package-path` 없이도 같은 대상명으로 패키징하도록 확장용 프로젝트 폴더명을 `NewHyOnTizenPlayer/`로 변경했습니다. `tz run-chain --proj-dir=.../NewHyOnTizenPlayer --serial=192.168.50.180:26101 --debug-mode`는 `NewHyOnTizenPlayer/Debug/NewHyOnTizenPlayer.wgt`를 만들고 `NewHyOnT01.NewHyOnTizenPlayer` 대상으로 성공했습니다.
 - `/tmp`에서 `tz run --package-id=NewHyOnT01 --serial=192.168.50.180:26101 --debug-mode`를 실행하면 `successfully launched ... with debug 0`이 반환됩니다. 이것은 기존 일반 실행 인스턴스 재사용이며 디버거 연결이 아닙니다.
 - 같은 시점에 `sdb -s 192.168.50.180:26101 shell "0 applist | grep -i NewHyOn"`은 `closed`를 반환했습니다. `sdb devices`에 장비가 보여도 shell 채널은 깨질 수 있습니다.
 - 추가 확인: `tz install -p Build/NewHyOnTizenPlayer.wgt -e 192.168.50.180:26101`는 `NewHyOnT01.NewHyOnTizenPlayer`를 uninstall/install 대상으로 처리하며 성공합니다.
-- 추가 확인: `Build/NewHyOnTizenPlayer.wgt`와 `Player/Debug/Player.wgt` 내부 `config.xml`은 모두 `<tizen:application id="NewHyOnT01.Player" package="NewHyOnT01" ... />`입니다.
-- 결론: 현재 디버거 실패의 핵심은 Web Inspector 포트가 아니라 `run-chain`이 제거하려는 app id(`NewHyOnT01.Player`)와 실제 설치 체인에서 처리되는 app id(`NewHyOnT01.NewHyOnTizenPlayer`)가 어긋나는 것입니다.
+- 추가 확인: `Build/NewHyOnTizenPlayer.wgt`와 기존 실패 산출물 `Player/Debug/Player.wgt` 내부 `config.xml`은 모두 `<tizen:application id="NewHyOnT01.Player" package="NewHyOnT01" ... />`입니다.
+- 결론: 기존 `Player/` 폴더 기준 디버거 실패의 핵심은 Web Inspector 포트가 아니라 `run-chain`이 제거하려는 app id(`NewHyOnT01.Player`)와 실제 설치 체인에서 처리되는 app id(`NewHyOnT01.NewHyOnTizenPlayer`)가 어긋나는 것입니다. 현재 확장용 프로젝트는 이 문제를 피하기 위해 `NewHyOnTizenPlayer/` 폴더명으로 생성합니다.
 - `/tmp/sdb.log`가 root 소유일 경우 `sdb start-server`가 `failed to open '/tmp/sdb.log'`로 실패할 수 있습니다.
 
 ### VS Code Insiders 확장과 같은 디버그 실행 경로
@@ -109,16 +114,14 @@ sdb -s "$TIZEN_SERIAL" shell "0 applist" | grep "NewHyOn Tizen Player"
 
 ```bash
 /Users/jazzlife/.tizen-extension-platform/server/sdktools/data/tools/tizen-core/tz run-chain \
-  --proj-dir=/Users/jazzlife/Documents/Workspaces/Products/NewHyOn/Player/Tizen/newhyon-tizen-player/Player \
-  --package-path=/Users/jazzlife/Documents/Workspaces/Products/NewHyOn/Player/Tizen/newhyon-tizen-player/Build/NewHyOnTizenPlayer.wgt \
+  --proj-dir=/Users/jazzlife/Documents/Workspaces/Products/NewHyOn/Player/Tizen/newhyon-tizen-player/NewHyOnTizenPlayer \
   --serial=192.168.50.180:26101 \
   --debug-mode
 ```
 
-- `run-chain --debug-mode`는 Tizen 웹 프로젝트 디렉터리만 받습니다. repo 루트는 `not a valid project`로 실패하므로 `Player/`를 지정해야 합니다.
-- 현재 QM32C에서는 `--package-path` 없이 실행하면 `NewHyOnT01.Player` uninstall 단계에서 실패합니다. 위 명령처럼 배포 WGT를 직접 지정해야 Web Inspector 포트가 열립니다.
-- `run-chain --debug-mode`가 `uninstall NewHyOnT01.Player` 이후 `uninstall failed[132]`로 실패하면 Web Inspector 포트 이전 단계에서 막힌 것입니다. 이때 `sdb forward`나 `json/list`를 반복하지 말고, 실행 중인 앱/장비 SDB 상태를 먼저 정상화해야 합니다.
-- 단, 2026-06-28 현재는 단순 실행 상태 문제가 아니라 app id 불일치가 확인되었습니다. `run-chain`이 `NewHyOnT01.Player`를 제거하려는 동안 정상 배포 체인은 `NewHyOnT01.NewHyOnTizenPlayer`를 제거/설치합니다. 이 불일치를 해결하기 전에는 같은 디버그 명령을 반복하지 않습니다.
+- `run-chain --debug-mode`는 Tizen 웹 프로젝트 디렉터리만 받습니다. repo 루트는 `not a valid project`로 실패하므로 `NewHyOnTizenPlayer/`를 지정해야 합니다.
+- 기존 `Player/` 폴더로 실행하면 `NewHyOnT01.Player` uninstall 단계에서 실패합니다. 이 폴더는 더 이상 생성하지 않습니다.
+- `run-chain --debug-mode`가 `uninstall NewHyOnT01.Player` 이후 `uninstall failed[132]`로 실패하면 Web Inspector 포트 이전 단계에서 막힌 것입니다. VS Code Working Project가 `NewHyOnTizenPlayer/`인지 먼저 확인합니다.
 - `successfully launched ... with debug 1 port: <port>`가 나오면 아래처럼 포워딩 후 타겟을 확인합니다.
 
 ```bash
@@ -133,8 +136,8 @@ curl http://127.0.0.1:<port>/json/list
 
 ### 다음 디버깅 시 판단 순서
 
-- 먼저 VS Code 확장과 같은 `tz run-chain --debug-mode` 명령을 `Player/` 디렉터리 대상으로 실행합니다.
-- `not a valid project`가 나오면 경로를 repo 루트로 잘못 준 것입니다. 다른 디버그 방법을 시도하지 말고 `Player/` 경로로 고칩니다.
+- 먼저 VS Code 확장과 같은 `tz run-chain --debug-mode` 명령을 `NewHyOnTizenPlayer/` 디렉터리 대상으로 실행합니다.
+- `not a valid project`가 나오면 경로를 repo 루트로 잘못 준 것입니다. 다른 디버그 방법을 시도하지 말고 `NewHyOnTizenPlayer/` 경로로 고칩니다.
 - `uninstall failed[132]`가 나오면 디버거 포트 단계까지 가지 못한 것입니다. 이때 `sdb forward`, `json/list`, `0 debug`를 반복하지 않습니다.
 - `debug 0`이 나오면 디버거 연결 성공이 아닙니다. 기존 일반 실행 인스턴스를 재사용한 상태로 판단합니다.
 - `sdb shell`이 비거나 `closed`이면 장비가 목록에 보여도 shell 채널이 깨진 상태입니다. 앱 코드 문제가 아니라 장비 SDB/개발자 연결 상태를 먼저 의심합니다.

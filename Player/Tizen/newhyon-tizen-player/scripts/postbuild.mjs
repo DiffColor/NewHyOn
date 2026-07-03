@@ -5,8 +5,9 @@ import { fileURLToPath } from 'node:url';
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const sampleRoot = path.resolve(scriptDir, '..');
 const distDir = path.join(sampleRoot, 'dist');
-const extensionProjectDir = path.join(sampleRoot, 'Player');
 const outputName = 'NewHyOnTizenPlayer';
+const extensionProjectDir = path.join(sampleRoot, outputName);
+const legacyExtensionProjectDir = path.join(sampleRoot, 'Player');
 
 const tizenProjectYaml = `# Project type [web_app, test_runner]
 project_type: web_app
@@ -84,6 +85,7 @@ async function listFiles(directory, relative = '') {
     }
 
     if (
+      path.posix.basename(entryRelative) === '.DS_Store' ||
       entryRelative === 'tizen_web_project.yaml' ||
       entryRelative === '.manifest.tmp' ||
       entryRelative === 'author-signature.xml' ||
@@ -105,6 +107,7 @@ async function main() {
   const renderedFiles = files.map((file) => `  - ${file}`).join('\n');
   await writeFile(path.join(distDir, 'tizen_web_project.yaml'), tizenProjectYaml.replace('__FILES__', renderedFiles), 'utf8');
 
+  await rm(legacyExtensionProjectDir, { recursive: true, force: true });
   await rm(extensionProjectDir, { recursive: true, force: true });
   await cp(distDir, extensionProjectDir, { recursive: true });
 }
