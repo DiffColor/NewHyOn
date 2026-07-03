@@ -594,6 +594,7 @@ export class NewHyOnPlayerApp {
             slotIndex,
             item,
             itemIndex,
+            durationMs: Math.max(1, item.durationSeconds) * 1000,
           });
           pageContentSeconds += Math.max(1, item.durationSeconds);
         });
@@ -653,13 +654,10 @@ export class NewHyOnPlayerApp {
     activeItems: PairSchedulerMediaItem[],
     prepareItems: PairSchedulerMediaItem[] = activeItems,
   ): PairSchedulerConfig<PairSchedulerMediaItem> {
-    const intervalMs = Math.max(1, activeItems[0]?.item.durationSeconds ?? 1) * 1000;
     const displayRect = this.buildPairSchedulerDisplayRect();
     return {
       swapsBeforePairHandoff: Math.max(1, activeItems.length),
-      transitionIntervalMs: intervalMs,
       displayRect,
-      lowerRect: this.buildPairSchedulerLowerRect(displayRect),
       displayMethod: this.config.manifest.preserveAspectRatio
         ? PAIR_SCHEDULER_DISPLAY_METHOD_CONTAIN
         : PAIR_SCHEDULER_DISPLAY_METHOD_FILL,
@@ -677,26 +675,6 @@ export class NewHyOnPlayerApp {
     const width = Math.max(1, Math.round(window.innerWidth || document.documentElement.clientWidth || 1920));
     const height = Math.max(1, Math.round(window.innerHeight || document.documentElement.clientHeight || 1080));
     return { x: 0, y: 0, width, height };
-  }
-
-  private buildPairSchedulerLowerRect(
-    displayRect: PairSchedulerConfig<PairSchedulerMediaItem>['displayRect'],
-  ): PairSchedulerConfig<PairSchedulerMediaItem>['lowerRect'] {
-    if (displayRect.width >= displayRect.height) {
-      return {
-        x: displayRect.x,
-        y: displayRect.y + displayRect.height - 1,
-        width: displayRect.width,
-        height: 1,
-      };
-    }
-
-    return {
-      x: displayRect.x + displayRect.width - 1,
-      y: displayRect.y,
-      width: 1,
-      height: displayRect.height,
-    };
   }
 
   private applyPairSchedulerLayerRole(pairId: string, slot: number, role: PairSchedulerLayerRole): void {

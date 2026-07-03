@@ -24,6 +24,7 @@ export interface PairSchedulerMediaItem {
   readonly slotIndex: number;
   readonly item: SeamlessContentItem;
   readonly itemIndex: number;
+  readonly durationMs: number;
 }
 
 export class PairSchedulerMediaPlayer implements PairSchedulerPlayer {
@@ -180,6 +181,20 @@ export class PairSchedulerMediaPlayer implements PairSchedulerPlayer {
     this.callVideoSafe('setVideoStillMode', () => {
       this.player.setVideoStillMode?.(enabled);
     });
+  }
+
+  setLooping(enabled: boolean): void {
+    this.callVideoSafe('setLooping', () => {
+      this.player.setLooping?.(enabled);
+    });
+  }
+
+  getDuration(): number {
+    if (this.currentItem?.item.contentType === 'Image') {
+      return 0;
+    }
+
+    return this.player.getDuration?.() ?? 0;
   }
 
   setLayerRole(role: PairSchedulerLayerRole): void {

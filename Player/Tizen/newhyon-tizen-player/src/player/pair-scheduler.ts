@@ -9,6 +9,7 @@ export interface PairSchedulerItem {
     id: string;
     title: string;
     url: string;
+    durationMs?: number;
 }
 
 export interface PairSchedulerPairConfig<TItem extends PairSchedulerItem> {
@@ -19,9 +20,7 @@ export interface PairSchedulerPairConfig<TItem extends PairSchedulerItem> {
 
 export interface PairSchedulerConfig<TItem extends PairSchedulerItem> {
     swapsBeforePairHandoff: number;
-    transitionIntervalMs?: number;
     displayRect: PairSchedulerRect;
-    lowerRect: PairSchedulerRect;
     displayMethod: string;
     prebufferProperty: string;
     prebufferStartPosition: string;
@@ -38,14 +37,16 @@ export interface PairSchedulerPlayer {
     play(): void;
     stop(): void;
     prepareAsync(onSuccess: () => void, onError: (error: unknown) => void): void;
-    setDisplayRect(x: number, y: number, width: number, height: number): void;
     setListener(listener: PairSchedulerPlayerListener): void;
+    setDisplayRect?: (x: number, y: number, width: number, height: number) => void;
     getState?: () => string;
     setDisplayMethod?: (method: string) => void;
     setTimeoutForBuffering?: (seconds: number) => void;
     setStreamingProperty?: (property: string, value: string) => void;
     setVideoStillMode?: (enabled: string) => void;
     revealLayer?: () => void;
+    setLooping?: (enabled: boolean) => void;
+    getDuration?: () => number;
 }
 
 export interface PairSchedulerPlayerListener {
@@ -83,7 +84,6 @@ export interface PairSchedulerSnapshot<TItem extends PairSchedulerItem> {
     activePairId: string | null;
     preparePairId: string | null;
     swapsBeforePairHandoff: number;
-    transitionIntervalMs: number;
     pairs: Array<PairSchedulerPairSnapshot<TItem>>;
 }
 
@@ -102,6 +102,12 @@ interface PairSchedulerSession<TItem extends PairSchedulerItem> {
     player: PairSchedulerPlayer;
     item: TItem | null;
     state: PairSchedulerSessionState;
+    playbackDurationMs: number;
+    mediaDurationMs: number;
+    previousPlaytimeMs: number;
+    completedLoopCount: number;
+    loopBoundaryHandled: boolean;
+    transitionMode: 'none' | 'streamcompleted';
     firstFrameHandler: ((currentTime: number) => void) | null;
 }
 
@@ -117,12 +123,11 @@ interface PairSchedulerPair<TItem extends PairSchedulerItem> {
     sessions: Array<PairSchedulerSession<TItem>>;
 }
 
-const DEFAULT_TRANSITION_INTERVAL_MS = 10000;
+const TRANSITION_TIMING_TOLERANCE_MS = 1000;
 
 export class PairScheduler<TItem extends PairSchedulerItem> {
     private readonly options: PairSchedulerOptions<TItem>;
     private readonly config: PairSchedulerConfig<TItem>;
-    private readonly transitionIntervalMs: number;
     private readonly pairs: Array<PairSchedulerPair<TItem>> = [];
     private activePairIndex = 0;
     private preparePairIndex = 1;
@@ -134,7 +139,6 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
     constructor(options: PairSchedulerOptions<TItem>) {
         this.options = options;
         this.config = options.config;
-        this.transitionIntervalMs = options.config.transitionIntervalMs || DEFAULT_TRANSITION_INTERVAL_MS;
     }
 
     init(): void {
@@ -173,7 +177,7 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
                 if (!this.isRunCurrent(token)) {
                     return;
                 }
-                this.scheduleNextTransition('startup-ready');
+                this.configureCurrentSessionTransition(activePair, 'startup-ready');
             })
             .catch((error: Error) => {
                 this.failRun('start failed: ' + error.message);
@@ -225,7 +229,6 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
             activePairId: activePair ? activePair.id : null,
             preparePairId: preparePair ? preparePair.id : null,
             swapsBeforePairHandoff: this.config.swapsBeforePairHandoff,
-            transitionIntervalMs: this.transitionIntervalMs,
             pairs: this.pairs.map((pair) => ({
                 id: pair.id,
                 label: pair.label,
@@ -284,6 +287,12 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
             player: this.options.createPlayer(),
             item: null,
             state: 'idle',
+            playbackDurationMs: 0,
+            mediaDurationMs: 0,
+            previousPlaytimeMs: 0,
+            completedLoopCount: 0,
+            loopBoundaryHandled: false,
+            transitionMode: 'none',
             firstFrameHandler: null
         };
 
@@ -350,7 +359,7 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
         const session = pair.sessions[pair.activeSlot];
         const item = this.nextItem(pair);
 
-        return this.prepareSession(session, item, this.config.displayRect).then(() => {
+        return this.prepareSession(session, item).then(() => {
             this.options.log(pair.label + ' active loaded: ' + item.id);
             this.emitState();
         });
@@ -360,7 +369,7 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
         const session = pair.sessions[pair.prepareSlot];
         const item = this.nextItem(pair);
 
-        return this.prepareSession(session, item, this.config.lowerRect).then(() => {
+        return this.prepareSession(session, item).then(() => {
             this.options.log(pair.label + ' hidden prepared: ' + session.pairId + session.slot + ' ' + item.id);
             this.emitState();
         });
@@ -381,8 +390,8 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
         const prepareItem = this.nextItem(pair);
 
         return Promise.all([
-            this.prepareSession(activeSession, activeItem, this.config.lowerRect),
-            this.prepareSession(prepareSession, prepareItem, this.config.lowerRect)
+            this.prepareSession(activeSession, activeItem),
+            this.prepareSession(prepareSession, prepareItem)
         ]).then(() => {
             pair.handoffReady = true;
             this.options.log(pair.label + ' handoff prepared: ' + activeItem.id + ', ' + prepareItem.id);
@@ -396,15 +405,28 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
         return item;
     }
 
-    private prepareSession(session: PairSchedulerSession<TItem>, item: TItem, rect: PairSchedulerRect): Promise<void> {
+    private prepareSession(session: PairSchedulerSession<TItem>, item: TItem): Promise<void> {
         const contentUrl = this.options.resolveUrl(item.url);
 
         this.releaseSession(session, 'prepare');
         session.item = item;
         session.state = 'preparing';
+        session.playbackDurationMs = item.durationMs || 0;
+        session.mediaDurationMs = 0;
+        session.previousPlaytimeMs = 0;
+        session.completedLoopCount = 0;
+        session.loopBoundaryHandled = false;
+        session.transitionMode = 'none';
+        session.firstFrameHandler = null;
         session.player.open(contentUrl);
         session.player.setListener(this.createListener(session.pairId, session.slot));
-        this.applyDisplayRect(session, rect);
+        this.callOptional(session.player, 'setDisplayRect', [
+            this.config.displayRect.x,
+            this.config.displayRect.y,
+            this.config.displayRect.width,
+            this.config.displayRect.height
+        ]);
+        this.callOptional(session.player, 'setLooping', [false]);
         this.callOptional(session.player, 'setDisplayMethod', [this.config.displayMethod]);
         this.callOptional(session.player, 'setTimeoutForBuffering', [this.config.bufferingTimeoutSeconds]);
         this.callOptional(session.player, 'setStreamingProperty', [this.config.prebufferProperty, this.config.prebufferStartPosition]);
@@ -415,6 +437,7 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
             session.player.prepareAsync(
                 () => {
                     session.state = 'ready';
+                    session.mediaDurationMs = this.readPlayerDurationMs(session.player);
                     this.options.log(session.pairId + session.slot + ' prepareAsync ready: ' + contentUrl);
                     this.emitState();
                     resolve();
@@ -428,7 +451,12 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
 
     private playSession(session: PairSchedulerSession<TItem>): void {
         session.firstFrameHandler = null;
-        this.applyDisplayRect(session, this.config.displayRect);
+        this.callOptional(session.player, 'setDisplayRect', [
+            this.config.displayRect.x,
+            this.config.displayRect.y,
+            this.config.displayRect.width,
+            this.config.displayRect.height
+        ]);
         this.callOptional(session.player, 'setVideoStillMode', ['false']);
         session.player.play();
         session.state = 'playing';
@@ -439,11 +467,16 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
 
     private playSessionForFrameHandoff(session: PairSchedulerSession<TItem>, onFirstFrame: (currentTime: number) => void): void {
         session.firstFrameHandler = onFirstFrame;
-        this.applyDisplayRect(session, this.config.displayRect);
+        this.callOptional(session.player, 'setDisplayRect', [
+            this.config.displayRect.x,
+            this.config.displayRect.y,
+            this.config.displayRect.width,
+            this.config.displayRect.height
+        ]);
         this.callOptional(session.player, 'setVideoStillMode', ['false']);
         this.options.onLayerRoleChange(session.pairId, session.slot, 'warming');
-        session.player.play();
         session.state = 'playing';
+        session.player.play();
         this.options.log(session.pairId + session.slot + ' warming: ' + session.item!.id + ' ' + session.item!.title);
         this.emitState();
     }
@@ -451,33 +484,127 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
     private onCurrentPlaytime(pairId: string, slot: number, currentTime: number): void {
         const session = this.findSession(pairId, slot);
 
-        if (!session || !session.firstFrameHandler) {
+        if (!session || session.state !== 'playing') {
             return;
         }
 
-        const handler = session.firstFrameHandler;
-        session.firstFrameHandler = null;
-        this.callOptional(session.player, 'revealLayer', []);
-        this.options.log(pairId + slot + ' first frame: ' + currentTime + 'ms');
-        handler(currentTime);
+        if (session.firstFrameHandler) {
+            const handler = session.firstFrameHandler;
+            session.firstFrameHandler = null;
+            this.callOptional(session.player, 'revealLayer', []);
+            this.options.log(pairId + slot + ' first frame: ' + currentTime + 'ms');
+            handler(currentTime);
+            return;
+        }
+
+        if (session.transitionMode !== 'none') {
+            return;
+        }
+
+        this.updateLoopTransitionBoundary(session, currentTime);
     }
 
     private onStreamCompleted(pairId: string, slot: number): void {
-        this.options.log(pairId + slot + ' stream completed before scheduled transition');
+        const session = this.findSession(pairId, slot);
+
+        if (!session) {
+            this.options.log(pairId + slot + ' stream completed for unknown session');
+            return;
+        }
+
+        if (!this.isActiveSession(session)) {
+            this.options.log(pairId + slot + ' stream completed ignored: inactive');
+            return;
+        }
+
+        if (session.transitionMode !== 'streamcompleted') {
+            this.options.log(pairId + slot + ' stream completed ignored: mode=' + session.transitionMode);
+            return;
+        }
+
+        this.options.log(pairId + slot + ' stream completed transition');
+        this.transitionActivePair();
     }
 
-    private scheduleNextTransition(reason: string): void {
-        const token = this.runToken;
+    private isRunCurrent(token: number): boolean {
+        return this.running && this.runToken === token;
+    }
+
+    private configureCurrentSessionTransition(pair: PairSchedulerPair<TItem>, reason: string): void {
+        const session = pair.sessions[pair.activeSlot];
+        const playbackDurationMs = Math.max(1, session.playbackDurationMs || session.mediaDurationMs || 1);
+        const mediaDurationMs = Math.max(0, session.mediaDurationMs || this.readPlayerDurationMs(session.player));
 
         this.clearTransitionTimer();
-        this.options.log('next frame handoff in ' + (this.transitionIntervalMs / 1000) + 's: ' + reason);
+        session.playbackDurationMs = playbackDurationMs;
+        session.mediaDurationMs = mediaDurationMs;
+        session.previousPlaytimeMs = 0;
+        session.completedLoopCount = 0;
+        session.loopBoundaryHandled = false;
+
+        if (mediaDurationMs <= 0) {
+            session.transitionMode = 'none';
+            this.callOptional(session.player, 'setLooping', [true]);
+            this.scheduleCurrentSessionTimer(session, playbackDurationMs, reason + ': no-media-duration');
+            return;
+        }
+
+        const durationDeltaMs = Math.abs(playbackDurationMs - mediaDurationMs);
+        if (durationDeltaMs <= TRANSITION_TIMING_TOLERANCE_MS) {
+            session.transitionMode = 'streamcompleted';
+            this.callOptional(session.player, 'setLooping', [false]);
+            this.options.log(
+                session.pairId + session.slot
+                + ' transition waits streamcompleted: playback=' + playbackDurationMs
+                + 'ms media=' + mediaDurationMs + 'ms'
+            );
+            this.scheduleCurrentSessionTimer(session, playbackDurationMs, reason + ': streamcompleted-guard');
+            return;
+        }
+
+        if (playbackDurationMs < mediaDurationMs) {
+            session.transitionMode = 'streamcompleted';
+            this.callOptional(session.player, 'setLooping', [false]);
+            this.options.log(
+                session.pairId + session.slot
+                + ' transition waits streamcompleted: playback shorter than media, playback='
+                + playbackDurationMs + 'ms media=' + mediaDurationMs + 'ms'
+            );
+            this.scheduleCurrentSessionTimer(session, playbackDurationMs, reason + ': shorter-than-media');
+            return;
+        }
+
+        session.transitionMode = 'none';
+        this.callOptional(session.player, 'setLooping', [true]);
+        this.options.log(
+            session.pairId + session.slot
+            + ' loop enabled: playback=' + playbackDurationMs
+            + 'ms media=' + mediaDurationMs + 'ms'
+        );
+        this.scheduleCurrentSessionTimer(session, playbackDurationMs, reason + ': timed-loop');
+    }
+
+    private scheduleCurrentSessionTimer(session: PairSchedulerSession<TItem>, delayMs: number, reason: string): void {
+        const token = this.runToken;
+        const pairId = session.pairId;
+        const slot = session.slot;
+
+        this.options.log(pairId + slot + ' transition timer in ' + Math.round(delayMs) + 'ms: ' + reason);
         this.transitionTimerId = window.setTimeout(() => {
             this.transitionTimerId = null;
             if (!this.isRunCurrent(token)) {
                 return;
             }
+
+            const currentSession = this.findSession(pairId, slot);
+            if (!currentSession || !this.isActiveSession(currentSession)) {
+                return;
+            }
+
+            currentSession.transitionMode = 'none';
+            this.options.log(pairId + slot + ' transition timer fired');
             this.transitionActivePair();
-        }, this.transitionIntervalMs);
+        }, delayMs);
     }
 
     private clearTransitionTimer(): void {
@@ -487,8 +614,62 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
         }
     }
 
-    private isRunCurrent(token: number): boolean {
-        return this.running && this.runToken === token;
+    private updateLoopTransitionBoundary(session: PairSchedulerSession<TItem>, currentTime: number): void {
+        const mediaDurationMs = Math.max(0, session.mediaDurationMs);
+        if (mediaDurationMs <= 0) {
+            return;
+        }
+
+        if (currentTime < session.previousPlaytimeMs - TRANSITION_TIMING_TOLERANCE_MS) {
+            session.loopBoundaryHandled = false;
+        }
+        session.previousPlaytimeMs = currentTime;
+
+        if (session.loopBoundaryHandled || currentTime < mediaDurationMs) {
+            return;
+        }
+
+        session.loopBoundaryHandled = true;
+        session.completedLoopCount += 1;
+
+        const elapsedAtLoopBoundaryMs = session.completedLoopCount * mediaDurationMs;
+        const remainingMs = session.playbackDurationMs - elapsedAtLoopBoundaryMs;
+
+        if (remainingMs > mediaDurationMs + TRANSITION_TIMING_TOLERANCE_MS) {
+            this.options.log(
+                session.pairId + session.slot
+                + ' loop boundary keep looping: remaining=' + Math.round(remainingMs)
+                + 'ms media=' + Math.round(mediaDurationMs) + 'ms'
+            );
+            return;
+        }
+
+        this.callOptional(session.player, 'setLooping', [false]);
+
+        if (remainingMs <= 0) {
+            session.transitionMode = 'none';
+            this.options.log(session.pairId + session.slot + ' loop boundary transition immediately');
+            this.transitionActivePair();
+            return;
+        }
+
+        if (Math.abs(remainingMs - mediaDurationMs) <= TRANSITION_TIMING_TOLERANCE_MS) {
+            session.transitionMode = 'streamcompleted';
+            this.options.log(
+                session.pairId + session.slot
+                + ' loop disabled; final cycle waits streamcompleted: remaining='
+                + Math.round(remainingMs) + 'ms media=' + Math.round(mediaDurationMs) + 'ms'
+            );
+            return;
+        }
+
+        session.transitionMode = 'none';
+        this.options.log(
+            session.pairId + session.slot
+            + ' loop final partial transition immediately: remaining='
+            + Math.round(remainingMs) + 'ms media=' + Math.round(mediaDurationMs) + 'ms'
+        );
+        this.transitionActivePair();
     }
 
     private failRun(message: string): void {
@@ -501,6 +682,7 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
             return;
         }
 
+        this.clearTransitionTimer();
         const pair = this.pairs[this.activePairIndex];
         if (pair.swapsInTurn < this.config.swapsBeforePairHandoff) {
             this.switchInsideActivePair(pair);
@@ -537,12 +719,12 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
                 .then(() => {
                     if (this.isRunCurrent(token)) {
                         this.transitioning = false;
-                        this.scheduleNextTransition('pair-internal-ready');
+                        this.configureCurrentSessionTransition(pair, 'pair-internal-ready');
                     }
                 })
-                .catch((error: Error) => {
-                    this.failRun('prepare next failed: ' + error.message);
-                });
+            .catch((error: Error) => {
+                this.failRun('prepare next failed: ' + error.message);
+            });
         });
     }
 
@@ -585,13 +767,15 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
             this.options.log('pair handoff complete: active=' + newPair.label + ', prepare=' + oldPair.label);
             if (this.isRunCurrent(token)) {
                 this.transitioning = false;
-                this.scheduleNextTransition('new-active-pair-ready');
+                this.configureCurrentSessionTransition(newPair, 'new-active-pair-ready');
             }
             this.emitState();
         });
     }
 
     private holdCompletedFrame(session: PairSchedulerSession<TItem>): void {
+        session.transitionMode = 'none';
+        session.firstFrameHandler = null;
         this.callOptional(session.player, 'setVideoStillMode', ['true']);
         session.state = 'held';
         this.options.onLayerRoleChange(session.pairId, session.slot, 'held');
@@ -610,6 +794,7 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
     }
 
     private lowerAndStopCompletedSession(session: PairSchedulerSession<TItem>): void {
+        session.transitionMode = 'none';
         session.firstFrameHandler = null;
         this.callOptional(session.player, 'setVideoStillMode', ['true']);
         this.lowerSession(session);
@@ -622,7 +807,9 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
     }
 
     private releaseSession(session: PairSchedulerSession<TItem>, reason: string): void {
+        session.transitionMode = 'none';
         session.firstFrameHandler = null;
+        this.callOptional(session.player, 'setLooping', [false]);
         this.lowerSession(session);
         this.safeStop(session.player);
         this.safeClose(session.player);
@@ -632,14 +819,7 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
     }
 
     private lowerSession(session: PairSchedulerSession<TItem>): void {
-        if (session.state === 'preparing' || session.state === 'ready' || session.state === 'playing' || session.state === 'held') {
-            this.applyDisplayRect(session, this.config.lowerRect);
-        }
         this.options.onLayerRoleChange(session.pairId, session.slot, 'hidden');
-    }
-
-    private applyDisplayRect(session: PairSchedulerSession<TItem>, rect: PairSchedulerRect): void {
-        session.player.setDisplayRect(rect.x, rect.y, rect.width, rect.height);
     }
 
     private findSession(pairId: string, slot: number): PairSchedulerSession<TItem> | null {
@@ -658,6 +838,11 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
             }
         }
         return null;
+    }
+
+    private isActiveSession(session: PairSchedulerSession<TItem>): boolean {
+        const activePair = this.pairs[this.activePairIndex];
+        return Boolean(activePair && activePair.id === session.pairId && activePair.activeSlot === session.slot);
     }
 
     private safeStop(player: PairSchedulerPlayer): void {
@@ -681,6 +866,15 @@ export class PairScheduler<TItem extends PairSchedulerItem> {
             return player.getState();
         }
         return 'UNKNOWN';
+    }
+
+    private readPlayerDurationMs(player: PairSchedulerPlayer): number {
+        if (typeof player.getDuration !== 'function') {
+            return 0;
+        }
+
+        const duration = player.getDuration();
+        return Number.isFinite(duration) && duration > 0 ? duration : 0;
     }
 
     private callOptional(player: PairSchedulerPlayer, methodName: keyof PairSchedulerPlayer, args: unknown[]): void {
