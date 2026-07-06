@@ -294,6 +294,7 @@ export class NewHyOnPlayerApp {
           this.stopVolumeTest();
           this.applyPlayerSettings(settings);
           this.settingsVolumePreviewed = false;
+          this.resumeSlotsAfterSettingsKey('settings-apply-resume', { allowOverlayOpen: true });
         },
         onClose: (reason) => {
           const shouldReapplyAudio = this.settingsVolumePreviewed || this.isVolumeTestPlaying();
@@ -304,7 +305,7 @@ export class NewHyOnPlayerApp {
           }
           this.settingsVolumePreviewed = false;
           if (reason === 'return-key') {
-            this.resumeSlotsAfterReturnKeyClose();
+            this.resumeSlotsAfterSettingsKey('settings-return-resume');
           }
         },
         getCurrentVolume: () => this.readTvVolume() ?? this.config.settings.defaultVolume,
@@ -467,19 +468,27 @@ export class NewHyOnPlayerApp {
     return !this.volumeTestAudio.paused;
   }
 
-  private resumeSlotsAfterReturnKeyClose(): void {
+  private resumeSlotsAfterSettingsKey(
+    healthStage: 'settings-apply-resume' | 'settings-return-resume',
+    options: { readonly allowOverlayOpen?: boolean } = {},
+  ): void {
     if (this.destroyed || !this.playing || !this.broadcastOnAir || this.slotPlayers.length === 0) {
       return;
     }
 
     [0, 250, 800].forEach((delayMs) => {
       window.setTimeout(() => {
-        if (this.destroyed || !this.playing || !this.broadcastOnAir || this.settingsOverlay?.isOpen) {
+        if (
+          this.destroyed
+          || !this.playing
+          || !this.broadcastOnAir
+          || (options.allowOverlayOpen !== true && this.settingsOverlay?.isOpen)
+        ) {
           return;
         }
 
         this.slotPlayers.forEach((slotPlayer) => slotPlayer.resume());
-        this.writeRuntimeHealth('settings-return-resume');
+        this.writeRuntimeHealth(healthStage);
       }, delayMs);
     });
   }
