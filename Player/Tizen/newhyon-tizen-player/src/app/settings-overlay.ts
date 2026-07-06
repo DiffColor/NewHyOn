@@ -395,14 +395,10 @@ export class SettingsOverlay {
       candidate.classList.remove('settings-control--active');
       delete candidate.dataset.settingActive;
     });
-    this.root.querySelectorAll('.settings-row--active').forEach((row) => {
-      row.classList.remove('settings-row--active');
-    });
 
     this.selectedControlIndex = normalizedIndex;
     control.classList.add('settings-control--active');
     control.dataset.settingActive = 'true';
-    control.closest('.settings-row')?.classList.add('settings-row--active');
   }
 
   private focusRelative(offset: number): void {
