@@ -309,8 +309,9 @@ export class NewHyOnPlayerApp {
           }
         },
         onVolumePreview: (volume) => {
-          this.settingsVolumePreviewed = true;
-          this.applyTvVolume(volume, 'settings-preview');
+          if (this.applyDefaultVolumePreviewToCurrentPage(volume)) {
+            this.settingsVolumePreviewed = true;
+          }
         },
         onPlayVolumeTest: (volume) => {
           this.settingsVolumePreviewed = true;
@@ -1304,6 +1305,16 @@ export class NewHyOnPlayerApp {
 
     this.audioPolicy.forgetLastApplied();
     this.applyPageAudioPolicy(page, 'settings-apply');
+  }
+
+  private applyDefaultVolumePreviewToCurrentPage(volume: number): boolean {
+    const page = this.pagePlans[this.pageIndex];
+    if (!page || page.hasExplicitVolume || shouldMutePageAudio(page)) {
+      return false;
+    }
+
+    this.applyTvVolume(volume, 'settings-preview');
+    return true;
   }
 
   private applyPageAudioPolicy(page: SeamlessPagePlan, _source: string): void {

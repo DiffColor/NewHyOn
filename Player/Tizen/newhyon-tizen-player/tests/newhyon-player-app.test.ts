@@ -1402,6 +1402,13 @@ describe('NewHyOnPlayerApp', () => {
     expect(play).toHaveBeenCalledTimes(1);
     expect(player.setDisplayMethod).toHaveBeenCalledWith('PLAYER_DISPLAY_MODE_FULL_SCREEN');
     expect(setVolume).toHaveBeenCalledWith(20);
+    setVolume.mockClear();
+
+    expect(
+      (app as unknown as { applyDefaultVolumePreviewToCurrentPage(volume: number): boolean }).applyDefaultVolumePreviewToCurrentPage(42),
+    ).toBe(true);
+    expect(setVolume).toHaveBeenCalledWith(42);
+    setVolume.mockClear();
 
     (app as unknown as { applyPlayerSettings(settings: typeof DEFAULT_PLAYER_SETTINGS): void }).applyPlayerSettings({
       ...DEFAULT_PLAYER_SETTINGS,
@@ -1449,6 +1456,11 @@ describe('NewHyOnPlayerApp', () => {
     await app.start();
     expect(setVolume).toHaveBeenCalledWith(0);
     setVolume.mockClear();
+
+    expect(
+      (app as unknown as { applyDefaultVolumePreviewToCurrentPage(volume: number): boolean }).applyDefaultVolumePreviewToCurrentPage(42),
+    ).toBe(false);
+    expect(setVolume).not.toHaveBeenCalled();
 
     (app as unknown as { applyPlayerSettings(settings: typeof DEFAULT_PLAYER_SETTINGS): void }).applyPlayerSettings({
       ...DEFAULT_PLAYER_SETTINGS,
