@@ -1985,6 +1985,17 @@ describe('NewHyOnPlayerApp', () => {
       listeners,
     );
     expect(document.querySelector('#status-slots')?.textContent).toContain('first-scheduled.mp4');
+    const playCountAfterFirstSchedule = play.mock.calls.length;
+
+    const unchangedSchedulePromise = (app as unknown as {
+      applyUpdateScheduleCommand(payload: UpdatePayload): Promise<boolean>;
+    }).applyUpdateScheduleCommand(buildSchedulePayload('first-scheduled.mp4'));
+    await vi.advanceTimersByTimeAsync(64);
+    await unchangedSchedulePromise;
+    await Promise.resolve();
+
+    expect(play).toHaveBeenCalledTimes(playCountAfterFirstSchedule);
+    expect(document.querySelector('#status-slots')?.textContent).toContain('first-scheduled.mp4');
 
     const secondSchedulePromise = (app as unknown as {
       applyUpdateScheduleCommand(payload: UpdatePayload): Promise<boolean>;
@@ -2389,6 +2400,92 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelector('#log-output')?.textContent).toContain('use prepared lane role=next-update-content');
     expect(getPlayer).toHaveBeenCalledTimes(4);
     expect(loadRemoteManifest()?.playlistName).toBe('updated-list');
+    app.destroy();
+  });
+
+  it('현재 페이지가 아닌 자동 배포 페이지는 저장 데이터만 갱신하고 다음 페이지 전환 때 반영한다', async () => {
+    vi.useFakeTimers();
+    const play = vi.fn();
+    const listeners: AVPlayListener[] = [];
+    const players: AVPlayApi[] = [];
+    const getPlayer = vi.fn(() => {
+      const player = createStatefulStorePlayer(play, (listener) => listeners.push(listener));
+      players.push(player);
+      return player;
+    });
+    window.webapis = createWebApis(createPlayer(play), vi.fn(), { getPlayer });
+    window.tizen = {
+      filesystem: {
+        toURI: (path) => `file:///opt/usr/home/owner/content/${path}`,
+        pathExists: (path) => path === 'downloads/video.mp4'
+          || path === 'downloads/second.mp4'
+          || path === 'downloads/second-updated.mp4',
+      },
+    };
+    const manifest = createTwoPageManifest();
+    manifest.pages.forEach((page) => {
+      page.PIC_Elements?.forEach((element) => {
+        element.EIF_ContentsInfoClassList?.forEach((content) => {
+          content.CIF_FileFullPath = `downloads/${content.CIF_FileName}`;
+        });
+      });
+    });
+    const app = new NewHyOnPlayerApp({
+      manifest,
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+    await app.start();
+    expect(document.querySelector('#status-page')?.textContent).toContain('first-page');
+    expect(play).toHaveBeenCalledTimes(1);
+
+    const updatedSecondPage = {
+      ...manifest.pages[1]!,
+      PIC_Elements: manifest.pages[1]!.PIC_Elements?.map((element) => ({
+        ...element,
+        EIF_ContentsInfoClassList: element.EIF_ContentsInfoClassList?.map((content) => ({
+          ...content,
+          CIF_FileName: 'second-updated.mp4',
+          CIF_FileFullPath: 'downloads/second-updated.mp4',
+        })),
+      })),
+    };
+    await (app as unknown as {
+      applyUpdateListCommand(
+        payload: UpdatePayload,
+        urgent: boolean,
+        commandId: string | null,
+      ): Promise<unknown>;
+    }).applyUpdateListCommand({
+      PageList: { PLI_PageListName: 'playlist' },
+      Pages: [
+        manifest.pages[0]!,
+        updatedSecondPage,
+      ],
+    }, false, 'cmd-second-page-only');
+
+    expect(document.querySelector('#status-page')?.textContent).toContain('first-page');
+    expect(document.querySelector('#status-slots')?.textContent).toContain('video.mp4');
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(loadRemoteManifest()?.pages[1]?.PIC_Elements?.[0]?.EIF_ContentsInfoClassList?.[0]?.CIF_FileName).toBe('second-updated.mp4');
+
+    await vi.advanceTimersByTimeAsync(10000);
+    listeners[0]?.onstreamcompleted?.();
+    await vi.advanceTimersByTimeAsync(64);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(document.querySelector('#status-page')?.textContent).toContain('second-page');
+    expect(document.querySelector('#status-slots')?.textContent).toContain('second-updated.mp4');
+    expect(play).toHaveBeenCalledTimes(2);
     app.destroy();
   });
 

@@ -1,6 +1,7 @@
 import type { RuntimeConfig } from './runtime-config';
 import { normalizeVolume, type PlayerSettings } from './player-settings';
 import { RingLogger } from '../core/logger';
+import type { PageInfoClass, PlayerManifest } from '../domain/models';
 import { buildPagePlan, type BuildPagePlanOptions, type SeamlessContentItem, type SeamlessPagePlan, type SeamlessSlotPlan } from '../domain/page-plan';
 import {
   REMOTE_KEY_REGISTRATION_LIST,
@@ -821,7 +822,7 @@ export class NewHyOnPlayerApp {
   }
 
   private async applyManifest(manifest: RuntimeConfig['manifest'], source: string): Promise<void> {
-    this.currentContentManifest = manifest;
+    const previousManifest = this.currentContentManifest;
     const resolution = this.createEffectiveUpdatePagePlans(manifest);
     const previousState = this.capturePlaybackState();
     const canRestoreCurrentPlayback = this.broadcastOnAir
@@ -835,6 +836,16 @@ export class NewHyOnPlayerApp {
     this.contentReplacementInProgress = true;
     try {
       if (this.broadcastOnAir) {
+        if (!this.shouldApplyManifestToVisiblePlayback(previousManifest, manifest, resolution)) {
+          this.currentContentManifest = manifest;
+          this.refreshPlaybackPlanForUpdatedData(manifest, resolution, previousManifest);
+          this.logger.info('manifest', `${source} 저장 데이터 갱신: 현재 재생 페이지는 유지하고 다음 전환부터 새 데이터를 사용합니다.`);
+          this.render();
+          this.writeRuntimeHealth('manifest-data-refreshed');
+          return;
+        }
+
+        this.currentContentManifest = manifest;
         if (resolution.mode === 'content') {
           this.prepareContentSetTransition(resolution.pagePlans[0] ?? null, 'next-update-content');
         }
@@ -847,6 +858,7 @@ export class NewHyOnPlayerApp {
         return;
       }
 
+      this.currentContentManifest = manifest;
       this.commitPlaybackPlan(resolution.pagePlans, resolution.mode, 0);
       this.render();
       this.writeRuntimeHealth('manifest-applied');
@@ -903,6 +915,125 @@ export class NewHyOnPlayerApp {
     }
 
     this.startMasterTimer();
+  }
+
+  private shouldApplyManifestToVisiblePlayback(
+    previousManifest: PlayerManifest,
+    nextManifest: PlayerManifest,
+    resolution: PagePlanResolution,
+  ): boolean {
+    if (this.activeRemoteSchedulePlaylistName !== null) {
+      return false;
+    }
+
+    if (this.playbackMode !== 'content' || resolution.mode !== 'content') {
+      return true;
+    }
+
+    if (!this.sameText(previousManifest.playlistName, nextManifest.playlistName)) {
+      return true;
+    }
+
+    const currentPageIndex = this.resolveCurrentManifestPageIndex(previousManifest);
+    const previousPage = previousManifest.pages[currentPageIndex] ?? null;
+    if (!previousPage) {
+      return true;
+    }
+
+    const nextPageIndex = this.findMatchingManifestPageIndex(nextManifest, previousPage, currentPageIndex);
+    const nextPage = nextPageIndex >= 0 ? nextManifest.pages[nextPageIndex] ?? null : null;
+    if (!nextPage) {
+      return true;
+    }
+
+    return this.pageSignature(previousPage) !== this.pageSignature(nextPage);
+  }
+
+  private refreshPlaybackPlanForUpdatedData(
+    nextManifest: PlayerManifest,
+    resolution: PagePlanResolution,
+    previousManifest: PlayerManifest,
+  ): void {
+    if (this.activeRemoteSchedulePlaylistName !== null) {
+      return;
+    }
+
+    const previousPage = previousManifest.pages[this.resolveCurrentManifestPageIndex(previousManifest)] ?? null;
+    const nextPageIndex = previousPage
+      ? this.findMatchingManifestPageIndex(nextManifest, previousPage, this.pageIndex)
+      : this.pageIndex;
+    this.pagePlans.splice(0, this.pagePlans.length, ...resolution.pagePlans);
+    this.playbackMode = resolution.mode;
+    this.pageIndex = this.clampPageIndex(nextPageIndex >= 0 ? nextPageIndex : this.pageIndex);
+  }
+
+  private resolveCurrentManifestPageIndex(manifest: PlayerManifest): number {
+    if (manifest.pages.length === 0) {
+      return 0;
+    }
+
+    return Math.min(Math.max(0, this.pageIndex), manifest.pages.length - 1);
+  }
+
+  private findMatchingManifestPageIndex(
+    manifest: PlayerManifest,
+    page: PageInfoClass,
+    fallbackIndex: number,
+  ): number {
+    const pageKey = this.pageIdentityKey(page, fallbackIndex);
+    const byKey = manifest.pages.findIndex((candidate, index) => this.pageIdentityKey(candidate, index) === pageKey);
+    if (byKey >= 0) {
+      return byKey;
+    }
+
+    return fallbackIndex >= 0 && fallbackIndex < manifest.pages.length ? fallbackIndex : -1;
+  }
+
+  private pageIdentityKey(page: PageInfoClass, index: number): string {
+    const guid = page.PIC_GUID?.trim();
+    if (guid) {
+      return `guid:${guid.toLowerCase()}`;
+    }
+
+    const pageName = page.PIC_PageName?.trim();
+    if (pageName) {
+      return `name:${pageName.toLowerCase()}`;
+    }
+
+    return `index:${index}`;
+  }
+
+  private pageSignature(page: PageInfoClass): string {
+    return JSON.stringify(this.normalizeForSignature(page));
+  }
+
+  private normalizeForSignature(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((item) => this.normalizeForSignature(item));
+    }
+
+    if (value && typeof value === 'object') {
+      return Object.keys(value as Record<string, unknown>)
+        .sort()
+        .reduce<Record<string, unknown>>((normalized, key) => {
+          normalized[key] = this.normalizeForSignature((value as Record<string, unknown>)[key]);
+          return normalized;
+        }, {});
+    }
+
+    return value;
+  }
+
+  private sameText(left: string, right: string): boolean {
+    return left.trim().toLowerCase() === right.trim().toLowerCase();
+  }
+
+  private clampPageIndex(index: number): number {
+    if (this.pagePlans.length === 0) {
+      return 0;
+    }
+
+    return Math.min(Math.max(0, index), this.pagePlans.length - 1);
   }
 
   private setUpdateOverlayState(
@@ -2060,7 +2191,10 @@ export class NewHyOnPlayerApp {
     }
 
     const activeKey = decision.isFromSchedule ? decision.playlistName : null;
-    if (options.force !== true && this.activeRemoteSchedulePlaylistName === activeKey) {
+    if (
+      this.activeRemoteSchedulePlaylistName === activeKey
+      && (options.force !== true || !this.shouldApplyRemoteScheduleToVisiblePlayback(snapshot, decision))
+    ) {
       return;
     }
 
@@ -2144,6 +2278,69 @@ export class NewHyOnPlayerApp {
     this.activeRemoteSchedulePlaylistName = decision.playlistName;
     this.setMessage(`예약 스케줄 적용: ${decision.playlistName}`);
     this.logger.info('schedule', `예약 스케줄 적용: playlist=${decision.playlistName}, schedule=${decision.scheduleId || '-'}`);
+  }
+
+  private shouldApplyRemoteScheduleToVisiblePlayback(
+    snapshot: RemoteScheduleSnapshot,
+    decision: RemoteScheduleDecision,
+  ): boolean {
+    if (!decision.isFromSchedule) {
+      return this.activeRemoteSchedulePlaylistName !== null;
+    }
+
+    if (!this.sameText(this.activeRemoteSchedulePlaylistName ?? '', decision.playlistName)) {
+      return true;
+    }
+
+    if (this.playbackMode !== 'content') {
+      return true;
+    }
+
+    const manifest = buildManifestFromRemoteSchedulePlaylist(
+      snapshot,
+      decision.playlistName,
+      this.config.manifest.preserveAspectRatio,
+    );
+    if (!manifest) {
+      return true;
+    }
+
+    const pagePlans = this.createContentPagePlans(manifest);
+    if (pagePlans.length === 0) {
+      return true;
+    }
+
+    const currentPage = this.pagePlans[this.pageIndex] ?? null;
+    if (!currentPage) {
+      return true;
+    }
+
+    const nextPage = this.findMatchingPagePlan(pagePlans, currentPage, this.pageIndex);
+    if (!nextPage) {
+      return true;
+    }
+
+    return this.pagePlanSignature(currentPage) !== this.pagePlanSignature(nextPage);
+  }
+
+  private findMatchingPagePlan(
+    pagePlans: readonly SeamlessPagePlan[],
+    page: SeamlessPagePlan,
+    fallbackIndex: number,
+  ): SeamlessPagePlan | null {
+    const normalizedName = page.pageName.trim().toLowerCase();
+    if (normalizedName) {
+      const byName = pagePlans.find((candidate) => candidate.pageName.trim().toLowerCase() === normalizedName);
+      if (byName) {
+        return byName;
+      }
+    }
+
+    return fallbackIndex >= 0 && fallbackIndex < pagePlans.length ? pagePlans[fallbackIndex] ?? null : null;
+  }
+
+  private pagePlanSignature(page: SeamlessPagePlan): string {
+    return JSON.stringify(this.normalizeForSignature(page));
   }
 
   private prepareRemoteScheduleLookahead(
