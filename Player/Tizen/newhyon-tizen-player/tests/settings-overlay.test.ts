@@ -55,6 +55,13 @@ describe('SettingsOverlay', () => {
 
     overlay.handleKeyDown(keyEvent('ArrowDown'));
     expect(activeSettingName()).toBe('defaultVolume');
+    expect(document.querySelector('[data-setting-name="defaultVolume"]')?.closest('.settings-row')?.classList.contains('settings-row--active')).toBe(true);
+    overlay.handleKeyDown(keyEvent('ArrowLeft'));
+    expect(document.querySelector<HTMLInputElement>('[data-setting-name="defaultVolume"]')?.value).toBe('99');
+    overlay.handleKeyDown(keyEvent('ArrowRight'));
+    expect(document.querySelector<HTMLInputElement>('[data-setting-name="defaultVolume"]')?.value).toBe('100');
+    overlay.handleKeyDown(keyEvent('Enter'));
+    expect(document.querySelector('.remote-keypad')).toBeNull();
     overlay.handleKeyDown(keyEvent('ArrowLeft'));
     expect(document.querySelector<HTMLInputElement>('[data-setting-name="defaultVolume"]')?.value).toBe('99');
 
