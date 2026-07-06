@@ -377,6 +377,10 @@ export class SlotPlayer {
     };
   }
 
+  avplayDebugSnapshot(): RuntimeAvplaySessionSnapshot | null {
+    return this.videoSession?.debugSnapshot() ?? null;
+  }
+
   private currentItem(): SeamlessContentItem | null {
     return this.slot.items[this.itemIndex] ?? null;
   }
@@ -494,8 +498,7 @@ export class SlotPlayer {
         }
         this.recordVideoDuration(item, playbackInfo?.durationMs ?? null);
         this.videoSession = nextVideoSession;
-        this.currentVideoLoopState = null;
-        this.updateCurrentVideoLoopState(item, true);
+        this.applyCurrentVideoLoopStateAfterPlay(item, playbackInfo?.durationMs ?? null);
         this.hideImages();
         this.prepareNextImageForCurrentVideo(generation);
       }
@@ -585,6 +588,9 @@ export class SlotPlayer {
     }
 
     if (this.canAdvanceContent()) {
+      if (typeof this.videoSession?.stopCurrentForCompletedStream === 'function') {
+        this.videoSession.stopCurrentForCompletedStream();
+      }
       await this.advance();
     }
     return true;
@@ -934,6 +940,26 @@ export class SlotPlayer {
 
     this.videoSession.setLooping?.(shouldLoop);
     this.currentVideoLoopState = shouldLoop;
+  }
+
+  private applyCurrentVideoLoopStateAfterPlay(item: SeamlessContentItem, durationMs: number | null): void {
+    const shouldLoop = this.shouldLoopCurrentVideo(item);
+    const playLoopState = this.shouldLoopForPlaybackDuration(item, durationMs);
+    const loopingAppliedByPlay = typeof this.videoSession?.appliesLoopingDuringPlay === 'function'
+      && this.videoSession.appliesLoopingDuringPlay();
+    if (!loopingAppliedByPlay || shouldLoop !== playLoopState) {
+      this.videoSession?.setLooping?.(shouldLoop);
+    }
+    this.currentVideoLoopState = shouldLoop;
+  }
+
+  private shouldLoopForPlaybackDuration(item: SeamlessContentItem, durationMs: number | null): boolean {
+    if (durationMs === null || !Number.isFinite(durationMs) || durationMs <= 0) {
+      return item.shouldLoop;
+    }
+
+    const displayMs = Math.max(1, item.durationSeconds) * 1000;
+    return item.shouldLoop || displayMs > durationMs + VIDEO_DURATION_MATCH_TOLERANCE_MS;
   }
 
   private shouldLoopCurrentVideo(item: SeamlessContentItem): boolean {

@@ -80,7 +80,7 @@ describe('AvplaySession', () => {
     expect(document.body.querySelectorAll('object.avplay-object')).toHaveLength(2);
   });
 
-  it('화면 비율 유지 설정에 맞춰 AVPlay display method를 적용한다', async () => {
+  it('재생 hot path에서는 AVPlay display method를 호출하지 않는다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
     const session = new AvplaySession(0, [
@@ -94,14 +94,14 @@ describe('AvplaySession', () => {
     document.body.appendChild(slotElement);
 
     await session.play(createVideoItem(), createSlotPlan(), slotElement, true, vi.fn());
-    expect(playerA.prepareAsync).toHaveBeenCalledTimes(1);
-    expect(playerA.prepare).not.toHaveBeenCalled();
-    expect(playerA.setDisplayMethod).toHaveBeenLastCalledWith('PLAYER_DISPLAY_MODE_LETTER_BOX');
+    expect(playerA.prepare).toHaveBeenCalledTimes(1);
+    expect(playerA.prepareAsync).not.toHaveBeenCalled();
+    expect(playerA.setDisplayMethod).not.toHaveBeenCalled();
 
     await session.play(createVideoItem(), createSlotPlan(), slotElement, false, vi.fn());
-    expect(playerB.prepareAsync).toHaveBeenCalledTimes(1);
-    expect(playerB.prepare).not.toHaveBeenCalled();
-    expect(playerB.setDisplayMethod).toHaveBeenLastCalledWith('PLAYER_DISPLAY_MODE_FULL_SCREEN');
+    expect(playerB.prepare).toHaveBeenCalledTimes(1);
+    expect(playerB.prepareAsync).not.toHaveBeenCalled();
+    expect(playerB.setDisplayMethod).not.toHaveBeenCalled();
   });
 
   it('런타임 화면 비율 유지 OFF는 IDLE 상태 응답이어도 FULL_SCREEN을 재적용한다', async () => {
@@ -184,7 +184,7 @@ describe('AvplaySession', () => {
     slotElement.remove();
   });
 
-  it('루프 영상은 검은 프레임 방지를 위해 still mode를 켠다', async () => {
+  it('재생 hot path는 샘플처럼 loop, still, audio 제어를 호출하지 않는다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
     playerA.getState = vi.fn(() => 'PLAYING');
@@ -202,12 +202,14 @@ describe('AvplaySession', () => {
     };
 
     await session.play(loopItem, createSlotPlan(), document.createElement('section'), false, vi.fn());
-
     await session.play(createVideoItem(), createSlotPlan(), document.createElement('section'), false, vi.fn());
 
-    expect(playerA.setVideoStillMode).toHaveBeenCalledWith('true');
-    expect(playerA.setLooping).toHaveBeenCalledWith(true);
-    expect(playerB.setVideoStillMode).toHaveBeenCalledWith('false');
+    expect(playerA.setVideoStillMode).not.toHaveBeenCalled();
+    expect(playerA.setLooping).not.toHaveBeenCalled();
+    expect(playerA.disableAudioStream).not.toHaveBeenCalled();
+    expect(playerB.setVideoStillMode).not.toHaveBeenCalled();
+    expect(playerB.setLooping).not.toHaveBeenCalled();
+    expect(playerB.disableAudioStream).not.toHaveBeenCalled();
   });
 
   it('전환 후 현재 lane만 위에 두고 이전 lane은 숨긴다', async () => {
@@ -243,23 +245,16 @@ describe('AvplaySession', () => {
     expect(laneB.style.visibility).toBe('hidden');
   });
 
-  it('영상 전환 시 다음 lane 준비 전에는 현재 lane을 멈추지 않고 play 후 이전 lane을 정지한다', async () => {
+  it('영상 전환 시 샘플처럼 현재 lane을 먼저 stop하고 다음 lane을 prepare/play한다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
     const callOrder: string[] = [];
     playerA.getState = vi.fn(() => 'PLAYING');
-    playerA.setVideoStillMode = vi.fn((mode) => {
-      callOrder.push(`a.still:${mode}`);
-    });
-    playerA.disableAudioStream = vi.fn(() => {
-      callOrder.push('a.disableAudioStream');
-    });
     playerA.stop = vi.fn(() => {
       callOrder.push('a.stop');
     });
-    playerB.prepareAsync = vi.fn((successCallback: () => void) => {
-      callOrder.push('b.prepareAsync');
-      successCallback();
+    playerB.prepare = vi.fn(() => {
+      callOrder.push('b.prepare');
     });
     playerB.play = vi.fn(() => {
       callOrder.push('b.play');
@@ -281,11 +276,7 @@ describe('AvplaySession', () => {
 
     await session.play(second, slot, slotElement, false, vi.fn());
 
-    expect(callOrder[0]).toBe('b.prepareAsync');
-    expect(callOrder[1]).toBe('b.play');
-    expect(callOrder[2]).toBe('a.disableAudioStream');
-    expect(callOrder[3]).toBe('a.still:true');
-    expect(callOrder[4]).toBe('a.stop');
+    expect(callOrder).toEqual(['a.stop', 'b.prepare', 'b.play']);
     expect(playerB.play).toHaveBeenCalledTimes(1);
   });
 
@@ -376,7 +367,7 @@ describe('AvplaySession', () => {
     expect(playerA.stop).not.toHaveBeenCalled();
   });
 
-  it('정지된 lane을 새 영상으로 재사용하기 전 close로 IDLE 전환을 보장한다', async () => {
+  it('정지된 lane을 새 영상으로 재사용할 때 샘플처럼 close 없이 stop 후 open한다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
     const callOrder: string[] = [];
@@ -413,11 +404,12 @@ describe('AvplaySession', () => {
 
     await session.play(createVideoItem('third.mp4'), createSlotPlan(), document.createElement('section'), false, vi.fn());
 
-    expect(callOrder.slice(0, 3)).toEqual(['a.stop', 'a.close', 'a.open']);
+    expect(callOrder.slice(0, 3)).toEqual(['a.stop', 'a.open', 'a.play']);
+    expect(playerA.close).not.toHaveBeenCalled();
     expect(playerA.play).toHaveBeenCalledTimes(2);
   });
 
-  it('첫 프레임 대기 옵션은 재생 시간 이벤트 전까지 play 완료를 보류한다', async () => {
+  it('첫 프레임 대기 옵션이 들어와도 샘플 흐름처럼 play 직후 완료한다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
     const listenerRef: { current: AVPlayListener | null } = { current: null };
@@ -433,30 +425,20 @@ describe('AvplaySession', () => {
       onError: vi.fn(),
     });
 
-    let resolved = false;
-    const playPromise = session.play(
+    await expect(session.play(
       createVideoItem('ready.mp4'),
       createSlotPlan(),
       document.createElement('section'),
       false,
       vi.fn(),
       { waitForFirstFrame: true },
-    ).then(() => {
-      resolved = true;
-    });
-    await Promise.resolve();
-
-    expect(resolved).toBe(false);
+    )).resolves.toEqual({ durationMs: null });
     expect(playerA.play).toHaveBeenCalledTimes(1);
-    expect(laneA.style.visibility).toBe('hidden');
-    listenerRef.current?.oncurrentplaytime?.(0);
-    await playPromise;
-
-    expect(resolved).toBe(true);
     expect(laneA.style.visibility).toBe('visible');
+    listenerRef.current?.oncurrentplaytime?.(0);
   });
 
-  it('첫 프레임 대기는 500ms 안에 재생 시간 이벤트가 없으면 영상을 강제로 표출한다', async () => {
+  it('첫 프레임 이벤트가 없어도 play 직후 영상을 표출한다', async () => {
     vi.useFakeTimers();
     const playerA = createPlayer();
     const playerB = createPlayer();
@@ -469,26 +451,14 @@ describe('AvplaySession', () => {
       onError: vi.fn(),
     });
 
-    const playPromise = session.play(
+    await expect(session.play(
       createVideoItem('timeout.mp4'),
       createSlotPlan(),
       document.createElement('section'),
       false,
       vi.fn(),
       { waitForFirstFrame: true },
-    );
-    let settled = false;
-    void playPromise.then(() => {
-      settled = true;
-    });
-
-    await vi.advanceTimersByTimeAsync(499);
-    await Promise.resolve();
-    expect(settled).toBe(false);
-    expect(laneA.style.visibility).toBe('hidden');
-
-    await vi.advanceTimersByTimeAsync(1);
-    await playPromise;
+    )).resolves.toEqual({ durationMs: null });
     expect(laneA.style.visibility).toBe('visible');
   });
 
@@ -552,14 +522,11 @@ describe('AvplaySession', () => {
     expect(playerA.play).toHaveBeenCalledTimes(1);
   });
 
-  it('폐기된 prepareAsync 완료는 play까지 진행하지 않는다', async () => {
+  it('prepare 실패 시 play까지 진행하지 않는다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
-    const prepareGate = {
-      resolve: null as (() => void) | null,
-    };
-    playerA.prepareAsync = vi.fn((successCallback: () => void) => {
-      prepareGate.resolve = successCallback;
+    playerA.prepare = vi.fn(() => {
+      throw new Error('prepare failed');
     });
     const session = new AvplaySession(0, [
       { player: playerA, objectElement: document.createElement('object') },
@@ -569,13 +536,13 @@ describe('AvplaySession', () => {
       onError: vi.fn(),
     });
 
-    const playPromise = session.play(createVideoItem('stale.mp4'), createSlotPlan(), document.createElement('section'), false, vi.fn());
-    await Promise.resolve();
-
-    session.stop();
-    prepareGate.resolve?.();
-
-    await expect(playPromise).rejects.toThrow('AVPlay 작업이 폐기되었습니다');
+    await expect(session.play(
+      createVideoItem('prepare-failed.mp4'),
+      createSlotPlan(),
+      document.createElement('section'),
+      false,
+      vi.fn(),
+    )).rejects.toThrow('AVPlay prepare 오류');
     expect(playerA.play).not.toHaveBeenCalled();
   });
 

@@ -2787,6 +2787,8 @@ export class NewHyOnPlayerApp {
     const page = this.pagePlans[this.pageIndex];
     const platform = formatRuntimeDiagnostics(collectRuntimeDiagnostics());
     const slotSnapshots = this.slotPlayers.map((slotPlayer) => slotPlayer.snapshot());
+    window.NEWHYON_AVPLAY_DEBUG = () => this.collectAvplayDebugSnapshots();
+    const avplaySessions = this.collectAvplayDebugSnapshots();
     const snapshot: RuntimeHealthSnapshot = {
       schemaVersion: 1,
       updatedAt: new Date().toISOString(),
@@ -2799,6 +2801,7 @@ export class NewHyOnPlayerApp {
       lastAction: this.lastRemoteAction,
       platform,
       slots: slotSnapshots,
+      avplaySessions,
       message: this.view.message.textContent ?? '',
       recentLogs: this.logger.snapshot(RUNTIME_HEALTH_RECENT_LOG_LIMIT).map((entry) => ({ ...entry })),
       diagnostics: {
@@ -2846,6 +2849,12 @@ export class NewHyOnPlayerApp {
     void this.healthReporter.write(snapshot).catch((error) => {
       this.logger.warn('runtime', `헬스 스냅샷 기록 실패: ${formatError(error)}`);
     });
+  }
+
+  private collectAvplayDebugSnapshots(): RuntimeAvplaySessionSnapshot[] {
+    return this.slotPlayers
+      .map((slotPlayer) => slotPlayer.avplayDebugSnapshot())
+      .filter((snapshot): snapshot is RuntimeAvplaySessionSnapshot => snapshot !== null);
   }
 
   private scheduleRuntimeHealthLogFlush(delayMs: number): void {

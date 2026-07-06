@@ -6,6 +6,7 @@ declare global {
     webapis?: WebApisGlobal;
     NEWHYON_PLAYER_MANIFEST?: unknown;
     NEWHYON_PLAYER_HEALTH?: RuntimeHealthSnapshot;
+    NEWHYON_AVPLAY_DEBUG?: () => RuntimeAvplaySessionSnapshot[];
   }
 
   interface TizenGlobal {
@@ -115,6 +116,7 @@ declare global {
     lastAction: string;
     platform: string;
     slots: string[];
+    avplaySessions?: RuntimeAvplaySessionSnapshot[];
     message: string;
     recentLogs: Array<{
       readonly timestamp: string;
@@ -160,6 +162,35 @@ declare global {
       defaultVolume: number;
       hudInitiallyVisible: boolean;
     };
+  }
+
+  interface RuntimeAvplaySessionSnapshot {
+    readonly sessionIndex: number;
+    readonly currentLaneIndex: number | null;
+    readonly heldLaneIndex: number | null;
+    readonly currentItemName: string | null;
+    readonly lanes: RuntimeAvplayLaneSnapshot[];
+  }
+
+  interface RuntimeAvplayLaneSnapshot {
+    readonly laneIndex: number;
+    readonly role: 'current' | 'held' | 'idle';
+    readonly itemName: string | null;
+    readonly state: string;
+    readonly queriedCurrentTimeMs: number | null;
+    readonly queriedDurationMs: number | null;
+    readonly callbackCurrentTimeMs: number | null;
+    readonly callbackAgeMs: number | null;
+    readonly buffering: boolean;
+    readonly lastPlayAt: string | null;
+    readonly lastPrepareCompletedAt: string | null;
+    readonly lastBufferingStartAt: string | null;
+    readonly lastBufferingCompleteAt: string | null;
+    readonly lastStreamCompletedAt: string | null;
+    readonly lastError: string | null;
+    readonly visibility: string;
+    readonly zIndex: string;
+    readonly rect: string;
   }
 
   interface TizenFile {

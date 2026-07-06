@@ -797,8 +797,8 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelector('#status-page')?.textContent).toContain('first-page');
     expect(play).toHaveBeenCalledTimes(1);
     expect(getPlayer).toHaveBeenCalledTimes(4);
-    expect(players[0]?.prepareAsync).toHaveBeenCalledTimes(1);
-    expect(players[1]?.prepareAsync).not.toHaveBeenCalled();
+    expect(players[0]?.prepare).toHaveBeenCalledTimes(1);
+    expect(players[1]?.prepare).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(6499);
     await Promise.resolve();
@@ -806,7 +806,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelectorAll('.slot')).toHaveLength(1);
     expect(play).toHaveBeenCalledTimes(1);
     expect(getPlayer).toHaveBeenCalledTimes(4);
-    expect(players[1]?.prepareAsync).not.toHaveBeenCalled();
+    expect(players[1]?.prepare).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(3501);
     await vi.advanceTimersByTimeAsync(64);
@@ -816,7 +816,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelectorAll('.slot')).toHaveLength(1);
     expect(play).toHaveBeenCalledTimes(2);
     expect(getPlayer).toHaveBeenCalledTimes(4);
-    expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
+    expect(players[1]?.prepare).toHaveBeenCalledTimes(1);
     expect(window.NEWHYON_PLAYER_HEALTH?.diagnostics.pageStartCount).toBe(2);
     app.destroy();
   });
@@ -916,9 +916,11 @@ describe('NewHyOnPlayerApp', () => {
     await vi.runAllTicks();
     await Promise.resolve();
     await Promise.resolve();
-    expect(players[1]?.setDisplayRect).toHaveBeenLastCalledWith(0, 0, width, height);
-    expect(players[1]?.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');
-    expect(players[1]?.setStreamingProperty).toHaveBeenCalledWith('SET_MIXEDFRAME');
+    expect(players[0]?.setDisplayRect).toHaveBeenCalledTimes(2);
+    expect(players[0]?.setDisplayRect).toHaveBeenLastCalledWith(0, 0, width, height);
+    expect(players[0]?.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');
+    expect(players[0]?.setStreamingProperty).toHaveBeenCalledWith('SET_MIXEDFRAME');
+    expect(players[1]?.setDisplayRect).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(10000);
     listeners[1]?.onstreamcompleted?.();
