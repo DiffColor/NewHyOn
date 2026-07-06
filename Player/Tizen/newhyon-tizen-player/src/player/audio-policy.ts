@@ -36,7 +36,7 @@ export function resolvePageAudioVolume(page: SeamlessPagePlan, defaultVolume = 1
     return 0;
   }
 
-  return page.hasExplicitVolume ? page.volume : normalizeVolume(defaultVolume);
+  return normalizeVolume(defaultVolume);
 }
 
 export class TizenAudioPolicy {

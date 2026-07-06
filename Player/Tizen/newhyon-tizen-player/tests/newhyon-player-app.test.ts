@@ -1379,6 +1379,7 @@ describe('NewHyOnPlayerApp', () => {
       },
     };
     const manifest = createManifest();
+    manifest.pages[0]!.PIC_Volume = 0;
     manifest.pages[0]!.PIC_Elements![0] = {
       ...manifest.pages[0]!.PIC_Elements![0]!,
       EIF_IsMuted: false,

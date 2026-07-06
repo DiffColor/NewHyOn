@@ -1299,7 +1299,7 @@ export class NewHyOnPlayerApp {
 
   private applyDefaultVolumeChangeToCurrentPage(): void {
     const page = this.pagePlans[this.pageIndex];
-    if (!page || page.hasExplicitVolume || shouldMutePageAudio(page)) {
+    if (!page || shouldMutePageAudio(page)) {
       return;
     }
 
@@ -1309,7 +1309,7 @@ export class NewHyOnPlayerApp {
 
   private applyDefaultVolumePreviewToCurrentPage(volume: number): boolean {
     const page = this.pagePlans[this.pageIndex];
-    if (!page || page.hasExplicitVolume || shouldMutePageAudio(page)) {
+    if (!page || shouldMutePageAudio(page)) {
       return false;
     }
 

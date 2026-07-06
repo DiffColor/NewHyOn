@@ -50,7 +50,7 @@ describe('TizenAudioPolicy', () => {
     expect(shouldMutePageAudio(createPage(false))).toBe(false);
     expect(resolvePageAudioVolume(createPage(true))).toBe(0);
     expect(resolvePageAudioVolume(createPage(false), 55)).toBe(55);
-    expect(resolvePageAudioVolume({ ...createPage(false), hasExplicitVolume: true }, 55)).toBe(35);
+    expect(resolvePageAudioVolume({ ...createPage(false), volume: 0, hasExplicitVolume: true }, 55)).toBe(55);
   });
 
   it('페이지 오디오 정책을 TV audio volume에 적용한다', () => {
