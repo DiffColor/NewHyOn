@@ -204,6 +204,7 @@ export class SettingsOverlay {
   private saveStatus: HTMLElement | null = null;
   private selectedControlIndex = 0;
   private openState = false;
+  private volumeSliderSelected = false;
 
   constructor(private readonly options: SettingsOverlayOptions) {
     this.root.className = 'settings-overlay settings-overlay--hidden';
@@ -221,11 +222,13 @@ export class SettingsOverlay {
     this.root.classList.remove('settings-overlay--hidden');
     this.root.setAttribute('aria-hidden', 'false');
     this.openState = true;
+    this.volumeSliderSelected = false;
     this.focusControl(0);
   }
 
   close(reason: SettingsCloseReason = 'programmatic'): void {
     this.closeKeypad();
+    this.setVolumeSliderSelected(null, false);
     this.root.classList.add('settings-overlay--hidden');
     this.root.setAttribute('aria-hidden', 'true');
     this.openState = false;
@@ -259,7 +262,7 @@ export class SettingsOverlay {
 
     if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
       const active = this.selectedControl();
-      if (active instanceof HTMLInputElement && active.type === 'range' && event.key === 'ArrowRight') {
+      if (active instanceof HTMLInputElement && active.type === 'range' && event.key === 'ArrowRight' && this.volumeSliderSelected) {
         event.preventDefault();
         this.adjustVolumeSlider(active, 1);
         return true;
@@ -271,7 +274,7 @@ export class SettingsOverlay {
 
     if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
       const active = this.selectedControl();
-      if (active instanceof HTMLInputElement && active.type === 'range' && event.key === 'ArrowLeft') {
+      if (active instanceof HTMLInputElement && active.type === 'range' && event.key === 'ArrowLeft' && this.volumeSliderSelected) {
         event.preventDefault();
         this.adjustVolumeSlider(active, -1);
         return true;
@@ -285,6 +288,7 @@ export class SettingsOverlay {
       const active = this.selectedControl();
       if (active instanceof HTMLInputElement && active.type === 'range') {
         event.preventDefault();
+        this.setVolumeSliderSelected(active, !this.volumeSliderSelected);
         return true;
       }
 
@@ -314,6 +318,7 @@ export class SettingsOverlay {
     this.root.textContent = '';
     this.controls.splice(0);
     this.selectedControlIndex = 0;
+    this.volumeSliderSelected = false;
 
     const panel = document.createElement('section');
     panel.className = 'settings-panel';
@@ -399,11 +404,23 @@ export class SettingsOverlay {
     this.selectedControlIndex = normalizedIndex;
     control.classList.add('settings-control--active');
     control.dataset.settingActive = 'true';
+    if (!(control instanceof HTMLInputElement && control.type === 'range')) {
+      this.setVolumeSliderSelected(null, false);
+    }
   }
 
   private focusRelative(offset: number): void {
     const nextIndex = (this.selectedControlIndex + offset + this.controls.length) % this.controls.length;
     this.focusControl(nextIndex);
+  }
+
+  private setVolumeSliderSelected(slider: HTMLInputElement | null, selected: boolean): void {
+    this.volumeSliderSelected = selected;
+    this.root.querySelectorAll<HTMLInputElement>('.settings-volume-slider').forEach((candidate) => {
+      const isSelected = selected && candidate === slider;
+      candidate.classList.toggle('settings-volume-slider--selected', isSelected);
+      candidate.dataset.volumeSliderSelected = String(isSelected);
+    });
   }
 
   private adjustVolumeSlider(slider: HTMLInputElement, delta: number): void {

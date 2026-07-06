@@ -55,15 +55,28 @@ describe('SettingsOverlay', () => {
 
     overlay.handleKeyDown(keyEvent('ArrowDown'));
     expect(activeSettingName()).toBe('defaultVolume');
-    expect(document.querySelector('[data-setting-name="defaultVolume"]')?.classList.contains('settings-control--active')).toBe(true);
+    const volumeSlider = document.querySelector<HTMLInputElement>('[data-setting-name="defaultVolume"]');
+    expect(volumeSlider?.classList.contains('settings-control--active')).toBe(true);
+    expect(volumeSlider?.classList.contains('settings-volume-slider--selected')).toBe(false);
     overlay.handleKeyDown(keyEvent('ArrowLeft'));
-    expect(document.querySelector<HTMLInputElement>('[data-setting-name="defaultVolume"]')?.value).toBe('99');
-    overlay.handleKeyDown(keyEvent('ArrowRight'));
-    expect(document.querySelector<HTMLInputElement>('[data-setting-name="defaultVolume"]')?.value).toBe('100');
+    expect(volumeSlider?.value).toBe('100');
+    expect(activeSettingName()).toBe('switchOnContentEnd');
+
+    overlay.handleKeyDown(keyEvent('ArrowDown'));
+    expect(activeSettingName()).toBe('defaultVolume');
     overlay.handleKeyDown(keyEvent('Enter'));
+    expect(volumeSlider?.classList.contains('settings-volume-slider--selected')).toBe(true);
     expect(document.querySelector('.remote-keypad')).toBeNull();
     overlay.handleKeyDown(keyEvent('ArrowLeft'));
-    expect(document.querySelector<HTMLInputElement>('[data-setting-name="defaultVolume"]')?.value).toBe('99');
+    expect(volumeSlider?.value).toBe('99');
+    overlay.handleKeyDown(keyEvent('ArrowRight'));
+    expect(volumeSlider?.value).toBe('100');
+    overlay.handleKeyDown(keyEvent('Enter'));
+    expect(volumeSlider?.classList.contains('settings-volume-slider--selected')).toBe(false);
+    expect(document.querySelector('.remote-keypad')).toBeNull();
+    overlay.handleKeyDown(keyEvent('Enter'));
+    overlay.handleKeyDown(keyEvent('ArrowLeft'));
+    expect(volumeSlider?.value).toBe('99');
 
     overlay.handleKeyDown(keyEvent('ArrowDown'));
     expect(activeSettingName()).toBe('test-volume');

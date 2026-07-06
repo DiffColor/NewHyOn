@@ -673,20 +673,28 @@ body {
 .settings-volume-slider {
   flex: 1;
   min-width: 220px;
-  accent-color: #69d49f;
+  accent-color: #8b949e;
 }
 
-.settings-volume-slider.settings-control--active {
-  accent-color: #f3c84b;
-}
-
-.settings-volume-slider.settings-control--active::-webkit-slider-runnable-track {
-  background: rgba(243, 200, 75, 0.42);
+.settings-volume-slider::-webkit-slider-runnable-track {
+  background: rgba(139, 148, 158, 0.42);
   border-radius: 999px;
 }
 
-.settings-volume-slider.settings-control--active::-webkit-slider-thumb {
-  background: #f3c84b;
+.settings-volume-slider::-webkit-slider-thumb {
+  background: #8b949e;
+}
+
+.settings-volume-slider.settings-volume-slider--selected {
+  accent-color: #69d49f;
+}
+
+.settings-volume-slider.settings-volume-slider--selected::-webkit-slider-runnable-track {
+  background: rgba(105, 212, 159, 0.42);
+}
+
+.settings-volume-slider.settings-volume-slider--selected::-webkit-slider-thumb {
+  background: #69d49f;
 }
 
 .settings-volume-value {
