@@ -18,6 +18,7 @@ import { clearRemoteManifest } from './update-payload';
 type SettingControl = HTMLInputElement | HTMLButtonElement;
 type KeypadAction = 'backspace' | 'clear' | 'space' | 'done' | 'cancel';
 type WeeklyScheduleField = 'startHour' | 'startMinute' | 'endHour' | 'endMinute';
+type SettingsCloseReason = 'button' | 'return-key' | 'auth' | 'programmatic';
 
 interface KeypadKey {
   readonly label: string;
@@ -27,7 +28,7 @@ interface KeypadKey {
 
 interface SettingsOverlayOptions {
   readonly onApply: (settings: PlayerSettings) => void;
-  readonly onClose?: () => void;
+  readonly onClose?: (reason: SettingsCloseReason) => void;
   readonly onAuthenticate?: () => void;
   readonly getCurrentVolume?: () => number | null;
   readonly onVolumePreview?: (volume: number) => void;
@@ -226,13 +227,13 @@ export class SettingsOverlay {
     this.focusControl(0);
   }
 
-  close(): void {
+  close(reason: SettingsCloseReason = 'programmatic'): void {
     this.unbindTvVolumeSync();
     this.closeKeypad();
     this.root.classList.add('settings-overlay--hidden');
     this.root.setAttribute('aria-hidden', 'true');
     this.openState = false;
-    this.options.onClose?.();
+    this.options.onClose?.(reason);
   }
 
   handleKeyDown(event: KeyboardEvent): boolean {
@@ -240,6 +241,7 @@ export class SettingsOverlay {
       return false;
     }
 
+    this.consumeKeyEvent(event);
     if (this.keypadRoot) {
       return this.handleKeypadKeyDown(event);
     }
@@ -255,7 +257,7 @@ export class SettingsOverlay {
       || event.keyCode === 10182
     ) {
       event.preventDefault();
-      this.close();
+      this.close('return-key');
       return true;
     }
 
@@ -299,6 +301,12 @@ export class SettingsOverlay {
     }
 
     return false;
+  }
+
+  private consumeKeyEvent(event: KeyboardEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
   }
 
   private render(settings: PlayerSettings): void {
@@ -667,12 +675,12 @@ export class SettingsOverlay {
     }
 
     if (action === 'close') {
-      this.close();
+      this.close('button');
       return;
     }
 
     if (action === 'auth') {
-      this.close();
+      this.close('auth');
       this.options.onAuthenticate?.();
     }
   }

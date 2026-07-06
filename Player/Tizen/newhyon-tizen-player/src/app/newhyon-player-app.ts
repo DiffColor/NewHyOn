@@ -291,18 +291,11 @@ export class NewHyOnPlayerApp {
       this.registerInputKeys();
       this.settingsOverlay = new SettingsOverlay({
         onApply: (settings) => {
-          const shouldReapplyAudio = this.settingsVolumePreviewed
-            || this.isVolumeTestPlaying()
-            || this.config.settings.defaultVolume !== settings.defaultVolume;
           this.stopVolumeTest();
           this.applyPlayerSettings(settings);
-          if (shouldReapplyAudio && !this.destroyed) {
-            this.audioPolicy.forgetLastApplied();
-            this.applyCurrentPageAudioPolicy('settings-apply');
-          }
           this.settingsVolumePreviewed = false;
         },
-        onClose: () => {
+        onClose: (reason) => {
           const shouldReapplyAudio = this.settingsVolumePreviewed || this.isVolumeTestPlaying();
           this.stopVolumeTest();
           if (shouldReapplyAudio && !this.destroyed) {
@@ -310,6 +303,9 @@ export class NewHyOnPlayerApp {
             this.applyCurrentPageAudioPolicy('settings-close');
           }
           this.settingsVolumePreviewed = false;
+          if (reason === 'return-key') {
+            this.resumeSlotsAfterReturnKeyClose();
+          }
         },
         getCurrentVolume: () => this.readTvVolume() ?? this.config.settings.defaultVolume,
         onVolumePreview: (volume) => {
@@ -366,7 +362,8 @@ export class NewHyOnPlayerApp {
     this.settingsOverlay?.close();
     this.authOverlay?.close();
     window.removeEventListener('resize', this.handleResize);
-    window.removeEventListener('keydown', this.handleKeyDown);
+    window.removeEventListener('keydown', this.handleKeyDown, true);
+    window.removeEventListener('keyup', this.handleKeyUp, true);
     window.removeEventListener('pagehide', this.handlePageHide);
     window.removeEventListener('beforeunload', this.handleBeforeUnload);
     document.removeEventListener('visibilitychange', this.handleVisibilityChange);
@@ -470,6 +467,23 @@ export class NewHyOnPlayerApp {
     return !this.volumeTestAudio.paused;
   }
 
+  private resumeSlotsAfterReturnKeyClose(): void {
+    if (this.destroyed || !this.playing || !this.broadcastOnAir || this.slotPlayers.length === 0) {
+      return;
+    }
+
+    [0, 250, 800].forEach((delayMs) => {
+      window.setTimeout(() => {
+        if (this.destroyed || !this.playing || !this.broadcastOnAir || this.settingsOverlay?.isOpen) {
+          return;
+        }
+
+        this.slotPlayers.forEach((slotPlayer) => slotPlayer.resume());
+        this.writeRuntimeHealth('settings-return-resume');
+      }, delayMs);
+    });
+  }
+
   private applyPlayerSettings(settings: PlayerSettings): void {
     const preserveChanged = this.config.settings.preserveAspectRatio !== settings.preserveAspectRatio;
     const switchOnEndChanged = this.config.settings.switchOnContentEnd !== settings.switchOnContentEnd;
@@ -488,30 +502,12 @@ export class NewHyOnPlayerApp {
       ...this.currentContentManifest,
       preserveAspectRatio: settings.preserveAspectRatio,
     };
-    this.slotPlayers.forEach((slotPlayer) => {
-      slotPlayer.updatePlaybackSettings(settings.preserveAspectRatio, settings.switchOnContentEnd, {
-        applyVideoDisplayMethod: false,
-      });
-    });
-    this.applyEmptyIntroDisplayMode();
-    if (defaultVolumeChanged) {
-      this.applyCurrentPageAudioPolicy('settings-default-volume');
-    }
-    this.setHudVisible(settings.hudInitiallyVisible);
-    this.setMessage([
-      '설정 적용 완료',
-      `비율대로표출=${settings.preserveAspectRatio ? 'ON' : 'OFF'}`,
-      `컨텐츠 종료시 전환=${settings.switchOnContentEnd ? 'ON' : 'OFF'}`,
-      `기본볼륨=${settings.defaultVolume}`,
-    ].join(' / '));
     if (preserveChanged || switchOnEndChanged || defaultVolumeChanged) {
       this.logger.info(
         'settings',
-        `playback settings applied: preserveAspectRatio=${settings.preserveAspectRatio}, switchOnContentEnd=${settings.switchOnContentEnd}, defaultVolume=${settings.defaultVolume}`,
+        `settings saved for next playback context: preserveAspectRatio=${settings.preserveAspectRatio}, switchOnContentEnd=${settings.switchOnContentEnd}, defaultVolume=${settings.defaultVolume}`,
       );
     }
-    this.render();
-    this.writeRuntimeHealth('settings-applied');
   }
 
   private bindUi(): void {
@@ -526,7 +522,8 @@ export class NewHyOnPlayerApp {
       }
     });
     window.addEventListener('resize', this.handleResize);
-    window.addEventListener('keydown', this.handleKeyDown);
+    window.addEventListener('keydown', this.handleKeyDown, true);
+    window.addEventListener('keyup', this.handleKeyUp, true);
     window.addEventListener('pagehide', this.handlePageHide);
     window.addEventListener('beforeunload', this.handleBeforeUnload);
     document.addEventListener('visibilitychange', this.handleVisibilityChange);
@@ -3081,5 +3078,15 @@ export class NewHyOnPlayerApp {
       void this.playPage(this.pageIndex - 1, { preservePreviousUntilReady: true })
         .catch((error) => this.handleAsyncPagePlaybackError('이전 페이지 전환', error));
     }
+  };
+
+  private handleKeyUp = (event: KeyboardEvent): void => {
+    if (!this.authOverlay?.isOpen && !this.settingsOverlay?.isOpen) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
   };
 }
