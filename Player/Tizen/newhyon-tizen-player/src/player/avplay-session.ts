@@ -134,7 +134,9 @@ export class AvplaySessionPair {
         this.prepareLane(nextLaneIndex, item.name);
         this.assertOperationCurrent(operationId, nextLaneIndex, 'play.prepare', item.name);
       }
-      this.setLaneMixedFrame(nextLaneIndex, item.name);
+      if (!usePreparedLane) {
+        this.setLaneMixedFrame(nextLaneIndex, item.name);
+      }
       this.applyDisplayRectToLane(nextLaneIndex, slot, slotElement);
       this.assertOperationCurrent(operationId, nextLaneIndex, 'play.beforePlay', item.name);
       this.callLane(nextLaneIndex, 'play', () => {
@@ -329,6 +331,8 @@ export class AvplaySessionPair {
     this.logger.info('avplay', `slot ${this.index} lane ${laneIndex + 1} prepare-next: ${item.name}`);
     this.resetLaneForPlayback(laneIndex);
     this.configureLaneForItem(laneIndex, item, sourceUrl);
+    this.applyOffscreenRectToLane(laneIndex, item.name);
+    this.setLaneMixedFrame(laneIndex, item.name);
     this.prepareLane(laneIndex, item.name);
     if (this.laneState(laneIndex) !== 'READY') {
       const state = this.laneState(laneIndex);
@@ -508,6 +512,24 @@ export class AvplaySessionPair {
     this.callLaneSafe(laneIndex, 'setStreamingProperty.SET_MIXEDFRAME', () => {
       lane.player.setStreamingProperty?.(STREAMING_PROPERTY_SET_MIXEDFRAME);
     }, itemName);
+  }
+
+  private applyOffscreenRectToLane(laneIndex: number, itemName: string): void {
+    const lane = this.lanes[laneIndex];
+    const viewportWidth = Math.max(window.visualViewport?.width ?? 0, document.documentElement.clientWidth, window.innerWidth, 1);
+    const viewportHeight = Math.max(window.visualViewport?.height ?? 0, document.documentElement.clientHeight, window.innerHeight, 1);
+    const targetWidth = Math.max(window.screen?.width ?? 0, Math.round(viewportWidth * (window.devicePixelRatio || 1)), viewportWidth);
+    const targetHeight = Math.max(window.screen?.height ?? 0, Math.round(viewportHeight * (window.devicePixelRatio || 1)), viewportHeight);
+    const left = Math.max(1, Math.round(targetWidth + 1));
+    const top = Math.max(1, Math.round(targetHeight + 1));
+
+    lane.objectElement.style.left = `${Math.round(viewportWidth + 1)}px`;
+    lane.objectElement.style.top = `${Math.round(viewportHeight + 1)}px`;
+    lane.objectElement.style.width = '1px';
+    lane.objectElement.style.height = '1px';
+    this.callLaneSafe(laneIndex, 'setDisplayRect.offscreen', () => {
+      lane.player.setDisplayRect(left, top, 1, 1);
+    }, `${itemName} ${left},${top},1x1`);
   }
 
   private afterNextFrame(action: () => void): Promise<void> {

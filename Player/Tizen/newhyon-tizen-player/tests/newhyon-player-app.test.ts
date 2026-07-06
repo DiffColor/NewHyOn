@@ -818,7 +818,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(getPlayer).toHaveBeenCalledTimes(4);
     expect(players[0]?.prepare).toHaveBeenCalledTimes(1);
     expect(players[1]?.prepare).toHaveBeenCalledTimes(1);
-    expect(players[1]?.setDisplayRect).not.toHaveBeenCalled();
+    expect(players[1]?.setDisplayRect).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(6499);
     await Promise.resolve();
@@ -889,7 +889,7 @@ describe('NewHyOnPlayerApp', () => {
     app.destroy();
   });
 
-  it('MixedFrame 슬롯은 다음 AVPlay를 READY까지 사전 준비하고 전환 시 display rect를 적용한다', async () => {
+  it('MixedFrame 슬롯은 다음 AVPlay를 화면 밖 mixedframe으로 사전 준비하고 전환 시 display rect만 적용한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn();
     const listeners: AVPlayListener[] = [];
@@ -921,10 +921,10 @@ describe('NewHyOnPlayerApp', () => {
     expect(players[0]?.setDisplayRect).toHaveBeenLastCalledWith(0, 0, width, height);
     expect(players[0]?.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');
     expect(players[0]?.setStreamingProperty).toHaveBeenCalledWith('SET_MIXEDFRAME');
-    expect(players[1]?.setDisplayRect).not.toHaveBeenCalled();
+    expect(players[1]?.setDisplayRect).toHaveBeenCalledTimes(1);
     expect(players[1]?.prepare).toHaveBeenCalledTimes(1);
     expect(players[1]?.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');
-    expect(players[1]?.setStreamingProperty).not.toHaveBeenCalledWith('SET_MIXEDFRAME');
+    expect(players[1]?.setStreamingProperty).toHaveBeenCalledWith('SET_MIXEDFRAME');
 
     await vi.advanceTimersByTimeAsync(10000);
     listeners[0]?.onstreamcompleted?.();
@@ -932,9 +932,9 @@ describe('NewHyOnPlayerApp', () => {
     await vi.runAllTicks();
     await Promise.resolve();
     await Promise.resolve();
-    expect(players[1]?.setDisplayRect).toHaveBeenCalledTimes(1);
+    expect(players[1]?.setDisplayRect).toHaveBeenCalledTimes(2);
     expect(players[1]?.setDisplayRect).toHaveBeenLastCalledWith(0, 0, width, height);
-    expect(players[1]?.setStreamingProperty).toHaveBeenCalledWith('SET_MIXEDFRAME');
+    expect(players[1]?.setStreamingProperty).toHaveBeenCalledTimes(2);
 
     await vi.advanceTimersByTimeAsync(10000);
     listeners[1]?.onstreamcompleted?.();
@@ -946,10 +946,14 @@ describe('NewHyOnPlayerApp', () => {
     const rectCalls = players.flatMap((player) => (
       (player.setDisplayRect as unknown as { mock: { calls: number[][] } }).mock.calls
     ));
-    expect(rectCalls.length).toBeGreaterThan(0);
-    expect(rectCalls.every(([x, y, callWidth, callHeight]) => (
+    const visibleRectCalls = rectCalls.filter(([x, y, callWidth, callHeight]) => (
       x === 0 && y === 0 && callWidth === width && callHeight === height
-    ))).toBe(true);
+    ));
+    const offscreenRectCalls = rectCalls.filter(([x, y, callWidth, callHeight]) => (
+      x > width && y > height && callWidth === 1 && callHeight === 1
+    ));
+    expect(visibleRectCalls.length).toBeGreaterThan(0);
+    expect(offscreenRectCalls.length).toBeGreaterThan(0);
     app.destroy();
   });
 

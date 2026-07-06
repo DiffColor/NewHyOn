@@ -281,7 +281,7 @@ describe('AvplaySession', () => {
     expect(playerB.play).toHaveBeenCalledTimes(1);
   });
 
-  it('사전 준비된 영상 lane은 전환 시 open/prepare를 건너뛰고 mixedframe 후 play한다', async () => {
+  it('사전 준비된 영상 lane은 화면 밖 mixedframe 준비 후 전환 시 rect와 play만 실행한다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
     const callOrder: string[] = [];
@@ -332,6 +332,8 @@ describe('AvplaySession', () => {
     expect(callOrder).toEqual([
       'b.open',
       'b.USE_VIDEOMIXER',
+      'b.rect',
+      'b.SET_MIXEDFRAME',
       'b.prepare',
     ]);
     callOrder.length = 0;
@@ -339,7 +341,6 @@ describe('AvplaySession', () => {
     await session.play(createVideoItem('second.mp4'), slot, slotElement, false, vi.fn());
 
     expect(callOrder).toEqual([
-      'b.SET_MIXEDFRAME',
       'b.rect',
       'b.play',
       'a.stop',
