@@ -1366,6 +1366,59 @@ describe('NewHyOnPlayerApp', () => {
     app.destroy();
   });
 
+  it('저장된 비율유지와 기본 볼륨 설정을 현재 재생에 즉시 적용한다', async () => {
+    const play = vi.fn();
+    const player = createPlayer(play);
+    const setVolume = vi.fn();
+    window.webapis = createWebApis(player);
+    window.tizen = {
+      tvaudiocontrol: {
+        getVolume: vi.fn(() => 20),
+        setVolume,
+        setMute: vi.fn(),
+      },
+    };
+    const manifest = createManifest();
+    manifest.pages[0]!.PIC_Elements![0] = {
+      ...manifest.pages[0]!.PIC_Elements![0]!,
+      EIF_IsMuted: false,
+    };
+    const app = new NewHyOnPlayerApp({
+      manifest,
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        defaultVolume: 20,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(player.setDisplayMethod).toHaveBeenCalledWith('PLAYER_DISPLAY_MODE_FULL_SCREEN');
+    expect(setVolume).toHaveBeenCalledWith(20);
+
+    (app as unknown as { applyPlayerSettings(settings: typeof DEFAULT_PLAYER_SETTINGS): void }).applyPlayerSettings({
+      ...DEFAULT_PLAYER_SETTINGS,
+      playerId: '',
+      managerAddress: '',
+      manifestUrl: '',
+      preserveAspectRatio: true,
+      switchOnContentEnd: true,
+      defaultVolume: 42,
+      hudInitiallyVisible: false,
+    });
+
+    expect(player.setDisplayMethod).toHaveBeenCalledWith('PLAYER_DISPLAY_MODE_LETTER_BOX');
+    expect(setVolume).toHaveBeenLastCalledWith(42);
+    app.destroy();
+  });
+
   it('updateschedule 수신 후 활성 예약 playlist로 전환한다', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 22, 9, 1, 0));

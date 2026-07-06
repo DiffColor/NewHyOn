@@ -135,6 +135,7 @@ export class AvplaySessionPair {
         this.prepareLane(nextLaneIndex, item.name);
         this.assertOperationCurrent(operationId, nextLaneIndex, 'play.prepare', item.name);
       }
+      this.setLaneDisplayMethod(nextLaneIndex, preserveAspectRatio ? DISPLAY_METHOD_CONTAIN : DISPLAY_METHOD_FILL);
       this.applyDisplayRectToLane(nextLaneIndex, slot, slotElement);
       this.assertOperationCurrent(operationId, nextLaneIndex, 'play.beforePlay', item.name);
       this.callLane(nextLaneIndex, 'play', () => {

@@ -512,9 +512,18 @@ export class NewHyOnPlayerApp {
       preserveAspectRatio: settings.preserveAspectRatio,
     };
     if (preserveChanged || switchOnEndChanged || defaultVolumeChanged) {
+      if (preserveChanged || switchOnEndChanged) {
+        this.slotPlayers.forEach((slotPlayer) => {
+          slotPlayer.updatePlaybackSettings(settings.preserveAspectRatio, settings.switchOnContentEnd);
+        });
+      }
+      if (defaultVolumeChanged) {
+        this.audioPolicy.forgetLastApplied();
+        this.applyCurrentPageAudioPolicy('settings-apply');
+      }
       this.logger.info(
         'settings',
-        `settings saved for next playback context: preserveAspectRatio=${settings.preserveAspectRatio}, switchOnContentEnd=${settings.switchOnContentEnd}, defaultVolume=${settings.defaultVolume}`,
+        `settings applied: preserveAspectRatio=${settings.preserveAspectRatio}, switchOnContentEnd=${settings.switchOnContentEnd}, defaultVolume=${settings.defaultVolume}`,
       );
     }
   }

@@ -81,7 +81,7 @@ describe('AvplaySession', () => {
     expect(document.body.querySelectorAll('object.avplay-object')).toHaveLength(4);
   });
 
-  it('재생 hot path에서는 AVPlay display method를 호출하지 않는다', async () => {
+  it('재생 시작 시 AVPlay display method에 비율 유지 설정을 적용한다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
     const session = new AvplaySession(0, [
@@ -97,12 +97,12 @@ describe('AvplaySession', () => {
     await session.play(createVideoItem(), createSlotPlan(), slotElement, true, vi.fn());
     expect(playerA.prepare).toHaveBeenCalledTimes(1);
     expect(playerA.prepareAsync).not.toHaveBeenCalled();
-    expect(playerA.setDisplayMethod).not.toHaveBeenCalled();
+    expect(playerA.setDisplayMethod).toHaveBeenCalledWith('PLAYER_DISPLAY_MODE_LETTER_BOX');
 
     await session.play(createVideoItem(), createSlotPlan(), slotElement, false, vi.fn());
     expect(playerB.prepare).toHaveBeenCalledTimes(1);
     expect(playerB.prepareAsync).not.toHaveBeenCalled();
-    expect(playerB.setDisplayMethod).not.toHaveBeenCalled();
+    expect(playerB.setDisplayMethod).toHaveBeenCalledWith('PLAYER_DISPLAY_MODE_FULL_SCREEN');
   });
 
   it('런타임 화면 비율 유지 OFF는 IDLE 상태 응답이어도 FULL_SCREEN을 재적용한다', async () => {
