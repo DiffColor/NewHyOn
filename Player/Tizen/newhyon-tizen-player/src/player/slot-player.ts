@@ -1,6 +1,6 @@
 import type { RingLogger } from '../core/logger';
 import type { SeamlessContentItem, SeamlessSlotPlan } from '../domain/page-plan';
-import type { AvplaySessionPair } from './avplay-session';
+import type { AvplayPreparedRole, AvplaySessionPair } from './avplay-session';
 import { resolveImageSourceUrl } from './source-resolver';
 
 type ContentShownHandler = (slotIndex: number, item: SeamlessContentItem) => void;
@@ -813,28 +813,30 @@ export class SlotPlayer {
       return;
     }
 
-    const target = this.resolvePreparedContentTarget();
-    if (!target) {
+    const targets = this.resolvePreparedContentTargets();
+    if (targets.length === 0) {
       this.clearPreparedContent();
       return;
     }
 
-    if (target.item.contentType === 'Video') {
-      this.prepareVideoContent(target.item, currentItem);
-      return;
-    }
-
-    if (target.item.contentType !== 'Image') {
-      return;
-    }
-
-    try {
-      await this.prepareImageContent(target.item, { underVideo: currentItem.contentType === 'Video' });
-      if (!this.isContentGenerationCurrent(generation)) {
-        return;
+    for (const target of targets) {
+      if (target.item.contentType === 'Video') {
+        this.prepareVideoContent(target.item, currentItem, target.role);
+        continue;
       }
-    } catch {
-      // The transition path will retry and report a hard failure if the item still cannot start.
+
+      if (target.item.contentType !== 'Image') {
+        continue;
+      }
+
+      try {
+        await this.prepareImageContent(target.item, { underVideo: currentItem.contentType === 'Video' });
+        if (!this.isContentGenerationCurrent(generation)) {
+          return;
+        }
+      } catch {
+        // The transition path will retry and report a hard failure if the item still cannot start.
+      }
     }
   }
 
@@ -855,13 +857,13 @@ export class SlotPlayer {
     return this.preparedImagePromise;
   }
 
-  private prepareVideoContent(item: SeamlessContentItem, currentItem: SeamlessContentItem): void {
+  private prepareVideoContent(item: SeamlessContentItem, currentItem: SeamlessContentItem, role: AvplayPreparedRole): void {
     if (currentItem.contentType !== 'Video' || !this.videoSession || typeof this.videoSession.prepareNextVideo !== 'function') {
       return;
     }
 
     try {
-      this.videoSession.prepareNextVideo(item);
+      this.videoSession.prepareNextVideo(item, role);
     } catch (error) {
       this.logger.warn('slot', `slot ${this.slotIndex + 1} 다음 영상 준비 실패: ${String(error)}`);
     }
@@ -901,23 +903,28 @@ export class SlotPlayer {
     });
   }
 
-  private resolvePreparedContentTarget(): NextContentTarget | null {
+  private resolvePreparedContentTargets(): Array<NextContentTarget & { readonly role: AvplayPreparedRole }> {
+    const targets: Array<NextContentTarget & { readonly role: AvplayPreparedRole }> = [];
     if (this.canAdvanceContent()) {
       const nextIndex = this.resolvePreparedItemIndex();
       if (nextIndex !== null) {
         const nextItem = this.slot.items[nextIndex] ?? null;
         if (nextItem) {
-          return { item: nextItem, itemIndex: nextIndex, slot: this.slot };
+          targets.push({ item: nextItem, itemIndex: nextIndex, slot: this.slot, role: 'next-content' });
         }
       }
     }
 
     const logicalTarget = this.logicalNextContentTarget;
-    if (!logicalTarget || logicalTarget.item.id === this.currentItem()?.id) {
-      return null;
+    if (
+      logicalTarget
+      && logicalTarget.item.id !== this.currentItem()?.id
+      && targets.every((target) => target.item.id !== logicalTarget.item.id)
+    ) {
+      targets.push({ ...logicalTarget, role: 'next-transition-content' });
     }
 
-    return logicalTarget;
+    return targets;
   }
 
   private recordVideoDuration(item: SeamlessContentItem, durationMs: number | null): void {

@@ -139,8 +139,8 @@ interface UpdateOverlayState {
 
 type LoadingStepState = 'pending' | 'active' | 'complete' | 'error' | 'skipped';
 
-const FIXED_AVPLAY_SESSION_PAIR_COUNT = 2;
-const AVPLAY_PLAYERS_PER_SESSION_PAIR = 2;
+const FIXED_AVPLAY_SESSION_PAIR_COUNT = 1;
+const AVPLAY_PLAYERS_PER_SESSION_PAIR = 4;
 const MASTER_TICK_INTERVAL_MS = 200;
 const MASTER_TICK_LAG_WARN_MS = 500;
 const SCHEDULE_CHECK_INTERVAL_MS = 1000;

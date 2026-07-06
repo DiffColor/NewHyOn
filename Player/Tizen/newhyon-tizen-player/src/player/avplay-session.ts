@@ -40,6 +40,15 @@ interface DisplayContext {
   readonly slotElement: HTMLElement;
 }
 
+export type AvplayPreparedRole = 'next-content' | 'next-transition-content';
+
+interface PreparedLaneMetadata {
+  readonly role: AvplayPreparedRole;
+  readonly laneIndex: number;
+  readonly itemId: string;
+  readonly itemName: string;
+}
+
 export interface AvplayPlayOptions {
   readonly waitForFirstFrame?: boolean;
 }
@@ -63,8 +72,7 @@ export class AvplaySessionPair {
   private heldLaneIndex: number | null = null;
   private lastPlaybackLaneIndex: number | null = null;
   private reuseCompletedLaneIndex: number | null = null;
-  private preparedLaneIndex: number | null = null;
-  private preparedItemId: string | null = null;
+  private readonly preparedLanes = new Map<AvplayPreparedRole, PreparedLaneMetadata>();
   private displayContext: DisplayContext | null = null;
   private traceSeq = 0;
   private operationSeq = 0;
@@ -75,7 +83,7 @@ export class AvplaySessionPair {
 
   constructor(
     readonly index: number,
-    private readonly lanes: readonly [AvplayPairSession, AvplayPairSession],
+    private readonly lanes: readonly AvplayPairSession[],
     host: HTMLElement,
     private readonly logger: RingLogger,
     private readonly events: VideoSessionEvents,
@@ -99,9 +107,9 @@ export class AvplaySessionPair {
   ): Promise<AvplayPlaybackInfo> {
     const operationId = this.nextOperationId();
     this.displayContext = { slot, slotElement };
-    const preparedLaneIndex = this.resolvePreparedLaneIndex(item);
-    const nextLaneIndex = preparedLaneIndex !== null
-      ? preparedLaneIndex
+    const preparedLane = this.resolvePreparedLane(item);
+    const nextLaneIndex = preparedLane !== null
+      ? preparedLane.laneIndex
       : this.reuseCompletedLaneIndex !== null
       ? this.reuseCompletedLaneIndex
       : this.currentLaneIndex !== null
@@ -110,7 +118,7 @@ export class AvplaySessionPair {
     const lane = this.lanes[nextLaneIndex];
     void options;
     try {
-      const usePreparedLane = preparedLaneIndex === nextLaneIndex;
+      const usePreparedLane = preparedLane?.laneIndex === nextLaneIndex;
       const reuseCompletedLane = this.reuseCompletedLaneIndex === nextLaneIndex;
       const laneToStopBeforeOpen = reuseCompletedLane
         ? nextLaneIndex === 0 ? 1 : 0
@@ -125,7 +133,7 @@ export class AvplaySessionPair {
         }
       }
       if (usePreparedLane) {
-        this.logger.info('avplay-trace', `slot ${this.index} lane ${nextLaneIndex + 1} use prepared lane ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
+        this.logger.info('avplay-trace', `slot ${this.index} lane ${nextLaneIndex + 1} use prepared lane role=${preparedLane?.role ?? '-'} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
       } else {
         const sourceUrl = resolveAvplaySourceUrl(item.sourceUrl);
         this.logger.info('avplay', `slot ${this.index} lane ${nextLaneIndex + 1} open: ${item.name}`);
@@ -149,10 +157,13 @@ export class AvplaySessionPair {
       this.currentLaneIndex = nextLaneIndex;
       this.lastPlaybackLaneIndex = nextLaneIndex;
       this.reuseCompletedLaneIndex = null;
-      this.clearPreparedMetadata(nextLaneIndex);
+      this.clearPreparedMetadataForLane(nextLaneIndex);
       this.heldLaneIndex = null;
       if (laneToStopAfterPlay !== null && laneToStopAfterPlay !== nextLaneIndex) {
         this.stopLane(laneToStopAfterPlay);
+      }
+      if (preparedLane?.role === 'next-transition-content') {
+        this.clearPreparedRole('next-content');
       }
       this.updateObjectVisibility();
       return { durationMs: null };
@@ -164,10 +175,7 @@ export class AvplaySessionPair {
   clearPrepared(): void {
     this.nextOperationId();
     this.logger.info('avplay-trace', `session ${this.index} clearPrepared ${this.traceContext()}`);
-    if (this.preparedLaneIndex !== null && this.preparedLaneIndex !== this.currentLaneIndex) {
-      this.stopLane(this.preparedLaneIndex);
-    }
-    this.clearPreparedMetadata();
+    this.clearAllPreparedRoles();
   }
 
   hide(): void {
@@ -183,7 +191,7 @@ export class AvplaySessionPair {
     this.currentLaneIndex = null;
     this.heldLaneIndex = null;
     this.reuseCompletedLaneIndex = null;
-    this.clearPreparedMetadata();
+    this.clearAllPreparedRoles();
     this.updateObjectVisibility();
   }
 
@@ -198,7 +206,7 @@ export class AvplaySessionPair {
     this.currentLaneIndex = null;
     this.heldLaneIndex = null;
     this.reuseCompletedLaneIndex = null;
-    this.clearPreparedMetadata();
+    this.clearAllPreparedRoles();
     this.updateObjectVisibility();
     if (laneToStop !== null) {
       const stopCurrentLane = () => {
@@ -288,7 +296,7 @@ export class AvplaySessionPair {
     this.currentLaneIndex = null;
     this.heldLaneIndex = null;
     this.reuseCompletedLaneIndex = null;
-    this.clearPreparedMetadata();
+    this.clearAllPreparedMetadata();
     this.updateObjectVisibility();
   }
 
@@ -311,24 +319,25 @@ export class AvplaySessionPair {
     this.reuseCompletedLaneIndex = laneIndex;
   }
 
-  prepareNextVideo(item: SeamlessContentItem): void {
+  prepareNextVideo(item: SeamlessContentItem, role: AvplayPreparedRole = 'next-content'): void {
     if (item.contentType !== 'Video' || this.currentItem?.id === item.id) {
       return;
     }
 
-    const laneIndex = this.resolvePrepareLaneIndex();
-    if (laneIndex === null) {
-      this.logger.info('avplay-trace', `session ${this.index} prepareNextVideo skipped no idle lane ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
+    const existing = this.preparedLanes.get(role);
+    if (existing && existing.itemId === item.id && this.laneState(existing.laneIndex) === 'READY') {
+      this.logger.info('avplay-trace', `session ${this.index} prepareNextVideo cache-hit role=${role} lane ${existing.laneIndex + 1} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
       return;
     }
 
-    if (this.preparedLaneIndex === laneIndex && this.preparedItemId === item.id && this.laneState(laneIndex) === 'READY') {
-      this.logger.info('avplay-trace', `session ${this.index} prepareNextVideo cache-hit lane ${laneIndex + 1} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
+    const laneIndex = this.resolvePrepareLaneIndex(role);
+    if (laneIndex === null) {
+      this.logger.info('avplay-trace', `session ${this.index} prepareNextVideo skipped no idle lane role=${role} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
       return;
     }
 
     const sourceUrl = resolveAvplaySourceUrl(item.sourceUrl);
-    this.logger.info('avplay', `slot ${this.index} lane ${laneIndex + 1} prepare-next: ${item.name}`);
+    this.logger.info('avplay', `slot ${this.index} lane ${laneIndex + 1} prepare-next role=${role}: ${item.name}`);
     this.resetLaneForPlayback(laneIndex);
     this.configureLaneForItem(laneIndex, item, sourceUrl);
     this.applyOffscreenRectToLane(laneIndex, item.name);
@@ -336,14 +345,19 @@ export class AvplaySessionPair {
     this.prepareLane(laneIndex, item.name);
     if (this.laneState(laneIndex) !== 'READY') {
       const state = this.laneState(laneIndex);
-      this.logger.warn('avplay-trace', `session ${this.index} prepareNextVideo not ready lane ${laneIndex + 1} state=${state} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
+      this.logger.warn('avplay-trace', `session ${this.index} prepareNextVideo not ready role=${role} lane ${laneIndex + 1} state=${state} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
       this.stopLane(laneIndex);
-      this.clearPreparedMetadata(laneIndex);
+      this.clearPreparedMetadataForLane(laneIndex);
       return;
     }
-    this.preparedLaneIndex = laneIndex;
-    this.preparedItemId = item.id;
-    this.logger.info('avplay-trace', `session ${this.index} prepareNextVideo ready lane ${laneIndex + 1} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
+    this.clearPreparedMetadataForLane(laneIndex);
+    this.preparedLanes.set(role, {
+      role,
+      laneIndex,
+      itemId: item.id,
+      itemName: item.name,
+    });
+    this.logger.info('avplay-trace', `session ${this.index} prepareNextVideo ready role=${role} lane ${laneIndex + 1} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
     this.updateObjectVisibility();
   }
 
@@ -360,7 +374,7 @@ export class AvplaySessionPair {
           : Math.max(0, Math.round(performance.now() - runtime.callbackCurrentTimeAtMs));
         return {
           laneIndex,
-          role: laneIndex === this.currentLaneIndex ? 'current' : laneIndex === this.heldLaneIndex ? 'held' : laneIndex === this.preparedLaneIndex ? 'prepared' : 'idle',
+          role: this.resolveLaneRole(laneIndex),
           itemName: runtime.itemName,
           state: this.laneState(laneIndex),
           queriedCurrentTimeMs: this.readLaneNumber(laneIndex, 'getCurrentTime'),
@@ -446,7 +460,7 @@ export class AvplaySessionPair {
     this.currentItem = null;
     this.currentEndedHandler = null;
     this.reuseCompletedLaneIndex = null;
-    this.clearPreparedMetadata(laneIndex);
+    this.clearPreparedMetadataForLane(laneIndex);
     this.updateObjectVisibility();
     this.events.onEnded();
   }
@@ -705,35 +719,95 @@ export class AvplaySessionPair {
     }
   }
 
-  private resolvePreparedLaneIndex(item: SeamlessContentItem): number | null {
-    if (
-      this.preparedLaneIndex === null
-      || this.preparedLaneIndex === this.currentLaneIndex
-      || this.preparedItemId !== item.id
-      || this.laneState(this.preparedLaneIndex) !== 'READY'
-    ) {
-      return null;
+  private resolvePreparedLane(item: SeamlessContentItem): PreparedLaneMetadata | null {
+    const roles: AvplayPreparedRole[] = ['next-transition-content', 'next-content'];
+    for (const role of roles) {
+      const prepared = this.preparedLanes.get(role);
+      if (
+        prepared
+        && prepared.laneIndex !== this.currentLaneIndex
+        && prepared.itemId === item.id
+        && this.laneState(prepared.laneIndex) === 'READY'
+      ) {
+        return prepared;
+      }
     }
 
-    return this.preparedLaneIndex;
+    return null;
   }
 
-  private resolvePrepareLaneIndex(): number | null {
-    if (this.currentLaneIndex === null) {
-      return this.lastPlaybackLaneIndex === 0 ? 1 : 0;
+  private resolvePrepareLaneIndex(role: AvplayPreparedRole): number | null {
+    const existing = this.preparedLanes.get(role);
+    if (existing && existing.laneIndex !== this.currentLaneIndex) {
+      return existing.laneIndex;
     }
 
-    const candidate = this.currentLaneIndex === 0 ? 1 : 0;
-    return candidate === this.currentLaneIndex ? null : candidate;
+    for (let laneIndex = 0; laneIndex < this.lanes.length; laneIndex += 1) {
+      if (
+        laneIndex !== this.currentLaneIndex
+        && laneIndex !== this.heldLaneIndex
+        && !this.findPreparedMetadataByLane(laneIndex)
+      ) {
+        return laneIndex;
+      }
+    }
+
+    return null;
   }
 
-  private clearPreparedMetadata(laneIndex?: number): void {
-    if (laneIndex !== undefined && this.preparedLaneIndex !== laneIndex) {
+  private clearPreparedRole(role: AvplayPreparedRole): void {
+    const prepared = this.preparedLanes.get(role);
+    if (!prepared) {
       return;
     }
 
-    this.preparedLaneIndex = null;
-    this.preparedItemId = null;
+    if (prepared.laneIndex !== this.currentLaneIndex) {
+      this.stopLane(prepared.laneIndex);
+    }
+    this.preparedLanes.delete(role);
+  }
+
+  private clearAllPreparedRoles(): void {
+    const prepared = [...this.preparedLanes.values()];
+    prepared.forEach((metadata) => {
+      if (metadata.laneIndex !== this.currentLaneIndex) {
+        this.stopLane(metadata.laneIndex);
+      }
+    });
+    this.clearAllPreparedMetadata();
+  }
+
+  private clearAllPreparedMetadata(): void {
+    this.preparedLanes.clear();
+  }
+
+  private clearPreparedMetadataForLane(laneIndex: number): void {
+    [...this.preparedLanes.entries()].forEach(([role, metadata]) => {
+      if (metadata.laneIndex === laneIndex) {
+        this.preparedLanes.delete(role);
+      }
+    });
+  }
+
+  private findPreparedMetadataByLane(laneIndex: number): PreparedLaneMetadata | null {
+    for (const metadata of this.preparedLanes.values()) {
+      if (metadata.laneIndex === laneIndex) {
+        return metadata;
+      }
+    }
+
+    return null;
+  }
+
+  private resolveLaneRole(laneIndex: number): RuntimeAvplayLaneSnapshot['role'] {
+    if (laneIndex === this.currentLaneIndex) {
+      return 'current';
+    }
+    if (laneIndex === this.heldLaneIndex) {
+      return 'held';
+    }
+
+    return this.findPreparedMetadataByLane(laneIndex)?.role ?? 'idle';
   }
 
   private readLaneNumber(laneIndex: number, operation: 'getCurrentTime' | 'getDuration'): number | null {
@@ -761,7 +835,10 @@ export class AvplaySessionPair {
   }
 
   private traceContext(): string {
-    return `current=${this.currentLaneIndex !== null ? this.currentLaneIndex + 1 : '-'} held=${this.heldLaneIndex !== null ? this.heldLaneIndex + 1 : '-'} prepared=${this.preparedLaneIndex !== null ? this.preparedLaneIndex + 1 : '-'} item=${this.currentItem?.name ?? '-'}`;
+    const prepared = [...this.preparedLanes.values()]
+      .map((metadata) => `${metadata.role}=lane${metadata.laneIndex + 1}:${metadata.itemName}`)
+      .join(',');
+    return `current=${this.currentLaneIndex !== null ? this.currentLaneIndex + 1 : '-'} held=${this.heldLaneIndex !== null ? this.heldLaneIndex + 1 : '-'} prepared=${prepared || '-'} item=${this.currentItem?.name ?? '-'}`;
   }
 
   private formatTraceDetail(detail: string): string {
@@ -831,6 +908,8 @@ export function createAvplaySessionPair(
   return new AvplaySessionPair(
     index,
     [
+      createPairSession(),
+      createPairSession(),
       createPairSession(),
       createPairSession(),
     ],

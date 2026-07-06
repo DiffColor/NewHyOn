@@ -62,7 +62,7 @@ describe('AvplaySession', () => {
     vi.useRealTimers();
   });
 
-  it('AVPlayStore 플레이어 두 개로 고정 세션 페어 하나를 만든다', () => {
+  it('AVPlayStore 플레이어 네 개로 영상 슬롯용 고정 세션을 만든다', () => {
     const getPlayer = vi.fn(createPlayer);
     window.webapis = {
       avplay: createPlayer(),
@@ -77,8 +77,8 @@ describe('AvplaySession', () => {
     });
 
     expect(session).toBeInstanceOf(AvplaySession);
-    expect(getPlayer).toHaveBeenCalledTimes(2);
-    expect(document.body.querySelectorAll('object.avplay-object')).toHaveLength(2);
+    expect(getPlayer).toHaveBeenCalledTimes(4);
+    expect(document.body.querySelectorAll('object.avplay-object')).toHaveLength(4);
   });
 
   it('재생 hot path에서는 AVPlay display method를 호출하지 않는다', async () => {
@@ -347,6 +347,84 @@ describe('AvplaySession', () => {
     ]);
     expect(playerB.open).toHaveBeenCalledTimes(1);
     expect(playerB.prepare).toHaveBeenCalledTimes(1);
+  });
+
+  it('다음 컨텐츠와 다음 전환 컨텐츠를 서로 다른 lane에 준비하고 전환 컨텐츠 승격 시 기존 다음 컨텐츠를 폐기한다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    const playerC = createPlayer();
+    const playerD = createPlayer();
+    let playerAState = 'IDLE';
+    let playerBState = 'IDLE';
+    let playerCState = 'IDLE';
+    let playerDState = 'IDLE';
+    playerA.getState = vi.fn(() => playerAState);
+    playerB.getState = vi.fn(() => playerBState);
+    playerC.getState = vi.fn(() => playerCState);
+    playerD.getState = vi.fn(() => playerDState);
+    playerA.play = vi.fn(() => {
+      playerAState = 'PLAYING';
+    });
+    playerA.stop = vi.fn(() => {
+      playerAState = 'IDLE';
+    });
+    playerB.open = vi.fn(() => {
+      playerBState = 'IDLE';
+    });
+    playerB.prepare = vi.fn(() => {
+      playerBState = 'READY';
+    });
+    playerB.stop = vi.fn(() => {
+      playerBState = 'IDLE';
+    });
+    playerC.open = vi.fn(() => {
+      playerCState = 'IDLE';
+    });
+    playerC.prepare = vi.fn(() => {
+      playerCState = 'READY';
+    });
+    playerC.play = vi.fn(() => {
+      playerCState = 'PLAYING';
+    });
+    playerD.open = vi.fn(() => {
+      playerDState = 'IDLE';
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+      { player: playerC, objectElement: document.createElement('object') },
+      { player: playerD, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+    const slot = createSlotPlan();
+    const slotElement = document.createElement('section');
+
+    await session.play(createVideoItem('current.mp4'), slot, slotElement, false, vi.fn());
+    session.prepareNextVideo(createVideoItem('next-content.mp4'), 'next-content');
+    session.prepareNextVideo(createVideoItem('next-schedule.mp4'), 'next-transition-content');
+
+    expect(session.debugSnapshot().lanes.map((lane) => lane.role)).toEqual([
+      'current',
+      'next-content',
+      'next-transition-content',
+      'idle',
+    ]);
+
+    await session.play(createVideoItem('next-schedule.mp4'), slot, slotElement, false, vi.fn());
+
+    expect(playerC.open).toHaveBeenCalledTimes(1);
+    expect(playerC.prepare).toHaveBeenCalledTimes(1);
+    expect(playerC.play).toHaveBeenCalledTimes(1);
+    expect(playerA.stop).toHaveBeenCalledTimes(1);
+    expect(playerB.stop).toHaveBeenCalledTimes(1);
+    expect(session.debugSnapshot().lanes.map((lane) => lane.role)).toEqual([
+      'idle',
+      'idle',
+      'current',
+      'idle',
+    ]);
   });
 
   it('종료 이벤트 핸들러가 완료를 보류하면 현재 lane을 stop하지 않는다', async () => {
