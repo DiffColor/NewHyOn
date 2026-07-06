@@ -601,6 +601,18 @@ body {
   line-height: 1.35;
 }
 
+.settings-save-status {
+  min-height: 32px;
+  margin: -8px 0 10px;
+  color: #f3c84b;
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.settings-save-status--visible {
+  font-weight: 700;
+}
+
 .settings-row {
   display: grid;
   grid-template-columns: 190px minmax(0, 1fr);

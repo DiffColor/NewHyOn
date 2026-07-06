@@ -8,6 +8,10 @@ type PageTransitionContentEndHandler = (slotIndex: number, item: SeamlessContent
 type ContentPlayablePredicate = (item: SeamlessContentItem) => boolean;
 type VideoTransitionMode = 'timer' | 'event';
 
+interface PlaybackSettingsUpdateOptions {
+  readonly applyVideoDisplayMethod?: boolean;
+}
+
 interface NextContentTarget {
   readonly item: SeamlessContentItem;
   readonly itemIndex: number;
@@ -94,11 +98,17 @@ export class SlotPlayer {
     this.element.append(this.videoMask, this.imageA, this.imageB);
   }
 
-  updatePlaybackSettings(preserveAspectRatio: boolean, switchOnContentEnd: boolean): void {
+  updatePlaybackSettings(
+    preserveAspectRatio: boolean,
+    switchOnContentEnd: boolean,
+    options: PlaybackSettingsUpdateOptions = { applyVideoDisplayMethod: true },
+  ): void {
     this.preserveAspectRatio = preserveAspectRatio;
     this.switchOnContentEnd = switchOnContentEnd;
     this.applyImageDisplayMode();
-    this.videoSession?.applyDisplayMethod(preserveAspectRatio);
+    if (options.applyVideoDisplayMethod !== false) {
+      this.videoSession?.applyDisplayMethod(preserveAspectRatio);
+    }
   }
 
   async start(): Promise<boolean> {

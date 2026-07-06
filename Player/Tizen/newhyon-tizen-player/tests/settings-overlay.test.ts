@@ -65,6 +65,7 @@ describe('SettingsOverlay', () => {
     expect(activeSettingName()).toBe('apply');
     overlay.handleKeyDown(keyEvent('Enter'));
 
+    expect(document.querySelector('.settings-save-status')?.textContent).toBe('설정이 저장되었습니다.');
     expect(onApply).toHaveBeenCalledWith({
       ...DEFAULT_PLAYER_SETTINGS,
       playerId: 'player-01',

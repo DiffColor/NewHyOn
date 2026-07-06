@@ -1198,6 +1198,10 @@ describe('SlotPlayer', () => {
 
       expect(session.applyDisplayMethod).toHaveBeenCalledWith(true);
       expect(session.applyDisplayMethod).toHaveBeenLastCalledWith(false);
+      vi.mocked(session.applyDisplayMethod).mockClear();
+      videoSlot.updatePlaybackSettings(true, false, { applyVideoDisplayMethod: false });
+
+      expect(session.applyDisplayMethod).not.toHaveBeenCalled();
     } finally {
       if (descriptor) {
         Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);

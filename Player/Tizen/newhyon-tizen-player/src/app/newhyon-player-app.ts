@@ -205,6 +205,7 @@ export class NewHyOnPlayerApp {
   private pageStartCount = 0;
   private contentShowCount = 0;
   private lastContent = '-';
+  private settingsVolumePreviewed = false;
   private communicationStatus = 'not-started';
   private communication: CommunicationBootstrapResult | null = null;
   private dbStatus: ConnectionStatus = 'not-configured';
@@ -290,25 +291,33 @@ export class NewHyOnPlayerApp {
       this.registerInputKeys();
       this.settingsOverlay = new SettingsOverlay({
         onApply: (settings) => {
+          const shouldReapplyAudio = this.settingsVolumePreviewed
+            || this.isVolumeTestPlaying()
+            || this.config.settings.defaultVolume !== settings.defaultVolume;
           this.stopVolumeTest();
-          this.audioPolicy.forgetLastApplied();
           this.applyPlayerSettings(settings);
-          if (!this.destroyed) {
+          if (shouldReapplyAudio && !this.destroyed) {
+            this.audioPolicy.forgetLastApplied();
             this.applyCurrentPageAudioPolicy('settings-apply');
           }
+          this.settingsVolumePreviewed = false;
         },
         onClose: () => {
+          const shouldReapplyAudio = this.settingsVolumePreviewed || this.isVolumeTestPlaying();
           this.stopVolumeTest();
-          this.audioPolicy.forgetLastApplied();
-          if (!this.destroyed) {
+          if (shouldReapplyAudio && !this.destroyed) {
+            this.audioPolicy.forgetLastApplied();
             this.applyCurrentPageAudioPolicy('settings-close');
           }
+          this.settingsVolumePreviewed = false;
         },
         getCurrentVolume: () => this.readTvVolume() ?? this.config.settings.defaultVolume,
         onVolumePreview: (volume) => {
+          this.settingsVolumePreviewed = true;
           this.applyTvVolume(volume, 'settings-preview');
         },
         onPlayVolumeTest: (volume) => {
+          this.settingsVolumePreviewed = true;
           this.playVolumeTest(volume);
         },
         onAuthenticate: () => {
@@ -442,7 +451,6 @@ export class NewHyOnPlayerApp {
     }
 
     const audio = this.volumeTestAudio;
-    audio.pause();
     audio.currentTime = 0;
     audio.loop = true;
     audio.volume = 1;
@@ -452,7 +460,9 @@ export class NewHyOnPlayerApp {
   }
 
   private stopVolumeTest(): void {
-    this.volumeTestAudio.pause();
+    if (!this.volumeTestAudio.paused) {
+      this.volumeTestAudio.pause();
+    }
     this.volumeTestAudio.currentTime = 0;
   }
 
@@ -479,8 +489,9 @@ export class NewHyOnPlayerApp {
       preserveAspectRatio: settings.preserveAspectRatio,
     };
     this.slotPlayers.forEach((slotPlayer) => {
-      slotPlayer.updatePlaybackSettings(settings.preserveAspectRatio, settings.switchOnContentEnd);
-      slotPlayer.applyDisplayRect();
+      slotPlayer.updatePlaybackSettings(settings.preserveAspectRatio, settings.switchOnContentEnd, {
+        applyVideoDisplayMethod: false,
+      });
     });
     this.applyEmptyIntroDisplayMode();
     if (defaultVolumeChanged) {

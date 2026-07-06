@@ -287,6 +287,7 @@ describe('AvplaySession', () => {
     const callOrder: string[] = [];
     let playerAState = 'IDLE';
     let playerBState = 'IDLE';
+    const laneB = document.createElement('object');
     playerA.getState = vi.fn(() => playerAState);
     playerB.getState = vi.fn(() => playerBState);
     playerA.play = vi.fn(() => {
@@ -317,7 +318,7 @@ describe('AvplaySession', () => {
     });
     const session = new AvplaySession(0, [
       { player: playerA, objectElement: document.createElement('object') },
-      { player: playerB, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: laneB },
     ], document.body, new RingLogger(1), {
       onEnded: vi.fn(),
       onError: vi.fn(),
@@ -347,6 +348,44 @@ describe('AvplaySession', () => {
     ]);
     expect(playerB.open).toHaveBeenCalledTimes(1);
     expect(playerB.prepare).toHaveBeenCalledTimes(1);
+  });
+
+  it('설정 저장 중 display rect 재적용은 준비 lane을 화면으로 올리지 않는다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    let playerAState = 'IDLE';
+    let playerBState = 'IDLE';
+    const laneB = document.createElement('object');
+    playerA.getState = vi.fn(() => playerAState);
+    playerB.getState = vi.fn(() => playerBState);
+    playerA.play = vi.fn(() => {
+      playerAState = 'PLAYING';
+    });
+    playerB.prepare = vi.fn(() => {
+      playerBState = 'READY';
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: laneB },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+    const slot = createSlotPlan();
+    const slotElement = document.createElement('section');
+
+    await session.play(createVideoItem('current.mp4'), slot, slotElement, false, vi.fn());
+    session.prepareNextVideo(createVideoItem('prepared.mp4'));
+    const preparedRectCalls = vi.mocked(playerB.setDisplayRect).mock.calls.length;
+
+    session.applyDisplayRect(slot, slotElement);
+    session.applyDisplayMethod(true);
+
+    expect(playerA.setDisplayRect).toHaveBeenCalled();
+    expect(playerB.setDisplayRect).toHaveBeenCalledTimes(preparedRectCalls);
+    expect(laneB.style.width).toBe('1px');
+    expect(laneB.style.height).toBe('1px');
+    expect(session.debugSnapshot().lanes[1]?.role).toBe('next-content');
   });
 
   it('다음 컨텐츠와 다음 전환 컨텐츠를 서로 다른 lane에 준비하고 전환 컨텐츠 승격 시 기존 다음 컨텐츠를 폐기한다', async () => {

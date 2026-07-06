@@ -7,6 +7,7 @@ const DISPLAY_METHOD_CONTAIN = 'PLAYER_DISPLAY_MODE_LETTER_BOX';
 const STREAMING_PROPERTY_USE_VIDEOMIXER = 'USE_VIDEOMIXER';
 const STREAMING_PROPERTY_SET_MIXEDFRAME = 'SET_MIXEDFRAME';
 const STOPPABLE_STATES = new Set(['READY', 'PLAYING', 'PAUSED']);
+const DISPLAY_METHOD_STATES = new Set(['IDLE', 'READY', 'PLAYING', 'PAUSED']);
 const AVPLAY_LAYER_BELOW_SLOT_OFFSET = -1;
 const AVPLAY_LAYER_CURRENT_OFFSET = 2;
 
@@ -223,7 +224,7 @@ export class AvplaySessionPair {
 
   applyDisplayRect(slot: SeamlessSlotPlan, slotElement: HTMLElement): void {
     this.displayContext = { slot, slotElement };
-    this.lanes.forEach((_lane, laneIndex) => {
+    this.visibleLaneIndexes().forEach((laneIndex) => {
       this.applyDisplayRectToLane(laneIndex, slot, slotElement);
     });
     this.updateObjectVisibility();
@@ -231,9 +232,10 @@ export class AvplaySessionPair {
 
   applyDisplayMethod(preserveAspectRatio: boolean): void {
     const displayMethod = preserveAspectRatio ? DISPLAY_METHOD_CONTAIN : DISPLAY_METHOD_FILL;
-    this.lanes.forEach((lane, laneIndex) => {
+    const visibleLaneIndexes = new Set(this.visibleLaneIndexes());
+    this.lanes.forEach((_lane, laneIndex) => {
       try {
-        if (this.displayContext) {
+        if (this.displayContext && visibleLaneIndexes.has(laneIndex)) {
           this.applyDisplayRectToLane(laneIndex, this.displayContext.slot, this.displayContext.slotElement);
         }
         this.setLaneDisplayMethod(laneIndex, displayMethod);
@@ -509,6 +511,12 @@ export class AvplaySessionPair {
 
   private setLaneDisplayMethod(laneIndex: number, displayMethod: string): void {
     const lane = this.lanes[laneIndex];
+    const state = this.laneState(laneIndex);
+    if (!DISPLAY_METHOD_STATES.has(state)) {
+      this.logger.info('avplay-trace', `slot ${this.index} lane ${laneIndex + 1} setDisplayMethod skipped state=${state} ${this.traceContext()}`);
+      return;
+    }
+
     this.callLaneSafe(laneIndex, 'setDisplayMethod', () => {
       lane.player.setDisplayMethod?.(displayMethod);
     }, displayMethod);
@@ -734,6 +742,18 @@ export class AvplaySessionPair {
     }
 
     return null;
+  }
+
+  private visibleLaneIndexes(): number[] {
+    const laneIndexes: number[] = [];
+    if (this.currentLaneIndex !== null) {
+      laneIndexes.push(this.currentLaneIndex);
+    }
+    if (this.heldLaneIndex !== null && this.heldLaneIndex !== this.currentLaneIndex) {
+      laneIndexes.push(this.heldLaneIndex);
+    }
+
+    return laneIndexes;
   }
 
   private resolvePrepareLaneIndex(role: AvplayPreparedRole): number | null {

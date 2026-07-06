@@ -201,6 +201,7 @@ export class SettingsOverlay {
   private keypadRoot: HTMLElement | null = null;
   private keypadPreview: HTMLElement | null = null;
   private keypadInput: HTMLInputElement | null = null;
+  private saveStatus: HTMLElement | null = null;
   private selectedControlIndex = 0;
   private openState = false;
   private tvVolumeListenerBound = false;
@@ -322,6 +323,12 @@ export class SettingsOverlay {
     authStatus.className = 'settings-status';
     authStatus.textContent = this.options.getAuthStatusText?.() ?? '인증 상태 : 미확인';
 
+    const saveStatus = document.createElement('div');
+    saveStatus.className = 'settings-save-status';
+    saveStatus.setAttribute('role', 'status');
+    saveStatus.setAttribute('aria-live', 'polite');
+    this.saveStatus = saveStatus;
+
     const actionBar = document.createElement('div');
     actionBar.className = 'settings-actions';
     actionBar.append(createAction('apply', '적용'), createAction('reset', '초기화'), createAction('close', '닫기'));
@@ -332,6 +339,7 @@ export class SettingsOverlay {
     panel.append(
       title,
       authStatus,
+      saveStatus,
       createRow('기기 이름', playerIdInput),
       createRow('데이터서버', managerInput),
       createPlaybackOptionsRow(aspectToggle, switchOnEndToggle),
@@ -366,14 +374,6 @@ export class SettingsOverlay {
     }
 
     this.markSelectedControl(normalizedIndex);
-    if (control instanceof HTMLInputElement) {
-      if (document.activeElement instanceof HTMLElement) {
-        document.activeElement.blur();
-      }
-      return;
-    }
-
-    control.focus();
   }
 
   private markSelectedControl(index: number): void {
@@ -644,6 +644,7 @@ export class SettingsOverlay {
       const settings = this.collectSettings();
       savePlayerSettings(settings);
       saveWeeklySchedule(this.collectWeeklySchedule());
+      this.showSaveStatus('설정이 저장되었습니다.');
       this.options.onApply(settings);
       return;
     }
@@ -660,6 +661,7 @@ export class SettingsOverlay {
       clearRemoteManifest();
       saveWeeklySchedule(getDefaultWeeklySchedule());
       this.render(DEFAULT_PLAYER_SETTINGS);
+      this.showSaveStatus('설정이 초기화되었습니다.');
       this.focusControl(0);
       return;
     }
@@ -673,6 +675,15 @@ export class SettingsOverlay {
       this.close();
       this.options.onAuthenticate?.();
     }
+  }
+
+  private showSaveStatus(message: string): void {
+    if (!this.saveStatus) {
+      return;
+    }
+
+    this.saveStatus.textContent = message;
+    this.saveStatus.classList.add('settings-save-status--visible');
   }
 
   private collectSettings(): PlayerSettings {
