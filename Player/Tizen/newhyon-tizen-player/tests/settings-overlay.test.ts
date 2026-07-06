@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SettingsOverlay } from '../src/app/settings-overlay';
-import { DEFAULT_PLAYER_SETTINGS, loadPlayerSettings } from '../src/app/player-settings';
+import { DEFAULT_PLAYER_SETTINGS, loadPlayerSettings, savePlayerSettings } from '../src/app/player-settings';
 import { loadWeeklySchedule } from '../src/app/weekly-schedule';
 import { loadRemoteManifest, saveRemoteManifest } from '../src/app/update-payload';
 
@@ -84,24 +84,15 @@ describe('SettingsOverlay', () => {
     });
   });
 
-  it('기본 볼륨 슬라이더를 TV 실제 볼륨과 동기화하고 테스트 재생을 요청한다', () => {
-    let listener: unknown = null;
-    window.tizen = {
-      tvaudiocontrol: {
-        getVolume: vi.fn(() => 37),
-        setVolumeChangeListener: vi.fn((nextListener) => {
-          listener = nextListener;
-        }),
-        unsetVolumeChangeListener: vi.fn(() => {
-          listener = null;
-        }),
-      },
-    };
+  it('기본 볼륨 슬라이더를 저장된 설정값으로 표시하고 테스트 재생을 요청한다', () => {
+    savePlayerSettings({
+      ...DEFAULT_PLAYER_SETTINGS,
+      defaultVolume: 37,
+    });
     const onVolumePreview = vi.fn();
     const onPlayVolumeTest = vi.fn();
     const overlay = new SettingsOverlay({
       onApply: vi.fn(),
-      getCurrentVolume: () => window.tizen?.tvaudiocontrol?.getVolume?.() ?? null,
       onVolumePreview,
       onPlayVolumeTest,
     });
@@ -110,10 +101,8 @@ describe('SettingsOverlay', () => {
     const slider = document.querySelector<HTMLInputElement>('[data-setting-name="defaultVolume"]');
     expect(slider?.value).toBe('37');
 
-    if (typeof listener !== 'function') {
-      throw new Error('TV 볼륨 변경 리스너가 등록되지 않았습니다.');
-    }
-    listener(62);
+    slider!.value = '62';
+    slider!.dispatchEvent(new Event('input', { bubbles: true }));
     expect(slider?.value).toBe('62');
     expect(document.querySelector('[data-volume-value="true"]')?.textContent).toBe('62');
 
@@ -127,9 +116,6 @@ describe('SettingsOverlay', () => {
 
     expect(onVolumePreview).toHaveBeenLastCalledWith(62);
     expect(onPlayVolumeTest).toHaveBeenCalledWith(62);
-
-    overlay.close();
-    expect(listener).toBeNull();
   });
 
   it('Back 계열 키로 설정창을 닫는다', () => {

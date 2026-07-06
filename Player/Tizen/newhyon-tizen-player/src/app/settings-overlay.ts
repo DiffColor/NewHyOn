@@ -30,7 +30,6 @@ interface SettingsOverlayOptions {
   readonly onApply: (settings: PlayerSettings) => void;
   readonly onClose?: (reason: SettingsCloseReason) => void;
   readonly onAuthenticate?: () => void;
-  readonly getCurrentVolume?: () => number | null;
   readonly onVolumePreview?: (volume: number) => void;
   readonly onPlayVolumeTest?: (volume: number) => void;
   readonly getAuthStatusText?: () => string;
@@ -205,7 +204,6 @@ export class SettingsOverlay {
   private saveStatus: HTMLElement | null = null;
   private selectedControlIndex = 0;
   private openState = false;
-  private tvVolumeListenerBound = false;
 
   constructor(private readonly options: SettingsOverlayOptions) {
     this.root.className = 'settings-overlay settings-overlay--hidden';
@@ -223,12 +221,10 @@ export class SettingsOverlay {
     this.root.classList.remove('settings-overlay--hidden');
     this.root.setAttribute('aria-hidden', 'false');
     this.openState = true;
-    this.bindTvVolumeSync();
     this.focusControl(0);
   }
 
   close(reason: SettingsCloseReason = 'programmatic'): void {
-    this.unbindTvVolumeSync();
     this.closeKeypad();
     this.root.classList.add('settings-overlay--hidden');
     this.root.setAttribute('aria-hidden', 'true');
@@ -325,8 +321,7 @@ export class SettingsOverlay {
     const managerInput = createInput('managerAddress', settings.managerAddress, '10.0.0.10 또는 10.0.0.10:8181');
     const aspectToggle = createToggle('preserveAspectRatio', settings.preserveAspectRatio);
     const switchOnEndToggle = createToggle('switchOnContentEnd', settings.switchOnContentEnd);
-    const currentVolume = this.options.getCurrentVolume?.();
-    const volumeRow = createVolumeSlider(currentVolume ?? settings.defaultVolume);
+    const volumeRow = createVolumeSlider(settings.defaultVolume);
     const authStatus = document.createElement('div');
     authStatus.className = 'settings-status';
     authStatus.textContent = this.options.getAuthStatusText?.() ?? '인증 상태 : 미확인';
@@ -427,29 +422,6 @@ export class SettingsOverlay {
     if (value) {
       value.textContent = String(normalizedVolume);
     }
-  }
-
-  private bindTvVolumeSync(): void {
-    const audioControl = window.tizen?.tvaudiocontrol;
-    if (this.tvVolumeListenerBound || typeof audioControl?.setVolumeChangeListener !== 'function') {
-      return;
-    }
-
-    audioControl.setVolumeChangeListener((volume) => {
-      if (this.openState) {
-        this.updateVolumeSlider(volume);
-      }
-    });
-    this.tvVolumeListenerBound = true;
-  }
-
-  private unbindTvVolumeSync(): void {
-    if (!this.tvVolumeListenerBound) {
-      return;
-    }
-
-    window.tizen?.tvaudiocontrol?.unsetVolumeChangeListener?.();
-    this.tvVolumeListenerBound = false;
   }
 
   private currentVolumeValue(): number {

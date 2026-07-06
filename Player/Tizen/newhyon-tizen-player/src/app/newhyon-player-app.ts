@@ -8,7 +8,7 @@ import {
   type RemoteControlAction,
 } from '../input/remote-control';
 import { type AvplaySessionPair, createAvplaySessionPair } from '../player/avplay-session';
-import { TizenAudioPolicy } from '../player/audio-policy';
+import { shouldMutePageAudio, TizenAudioPolicy } from '../player/audio-policy';
 import { SlotPlayer, type SlotPlayerTimelineSnapshot } from '../player/slot-player';
 import { RuntimeHealthReporter } from './runtime-health-reporter';
 import { collectRuntimeDiagnostics, formatRuntimeDiagnostics } from './runtime-diagnostics';
@@ -308,7 +308,6 @@ export class NewHyOnPlayerApp {
             this.resumeSlotsAfterSettingsKey(reason === 'return-key' ? 'settings-return-resume' : 'settings-close-resume');
           }
         },
-        getCurrentVolume: () => this.readTvVolume() ?? this.config.settings.defaultVolume,
         onVolumePreview: (volume) => {
           this.settingsVolumePreviewed = true;
           this.applyTvVolume(volume, 'settings-preview');
@@ -408,20 +407,6 @@ export class NewHyOnPlayerApp {
     this.avplaySessionPairs.forEach((session) => session?.stop());
   }
 
-  private readTvVolume(): number | null {
-    const audioControl = window.tizen?.tvaudiocontrol;
-    if (typeof audioControl?.getVolume !== 'function') {
-      return null;
-    }
-
-    try {
-      return normalizeVolume(audioControl.getVolume());
-    } catch (error) {
-      this.logger.warn('audio', `TV 볼륨 조회 실패: ${formatError(error)}`);
-      return null;
-    }
-  }
-
   private applyTvVolume(volume: number, source: string): void {
     const normalizedVolume = normalizeVolume(volume);
     const audioControl = window.tizen?.tvaudiocontrol;
@@ -518,8 +503,7 @@ export class NewHyOnPlayerApp {
         });
       }
       if (defaultVolumeChanged) {
-        this.audioPolicy.forgetLastApplied();
-        this.applyCurrentPageAudioPolicy('settings-apply');
+        this.applyDefaultVolumeChangeToCurrentPage();
       }
       this.logger.info(
         'settings',
@@ -1310,6 +1294,16 @@ export class NewHyOnPlayerApp {
     }
 
     this.applyPageAudioPolicy(page, source);
+  }
+
+  private applyDefaultVolumeChangeToCurrentPage(): void {
+    const page = this.pagePlans[this.pageIndex];
+    if (!page || page.hasExplicitVolume || shouldMutePageAudio(page)) {
+      return;
+    }
+
+    this.audioPolicy.forgetLastApplied();
+    this.applyPageAudioPolicy(page, 'settings-apply');
   }
 
   private applyPageAudioPolicy(page: SeamlessPagePlan, _source: string): void {

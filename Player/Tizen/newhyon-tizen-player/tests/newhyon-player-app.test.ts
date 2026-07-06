@@ -1419,6 +1419,52 @@ describe('NewHyOnPlayerApp', () => {
     app.destroy();
   });
 
+  it('음소거 페이지에서 기본 볼륨 저장 시 현재 TV 볼륨을 0으로 다시 덮어쓰지 않는다', async () => {
+    const play = vi.fn();
+    const player = createPlayer(play);
+    const setVolume = vi.fn();
+    window.webapis = createWebApis(player);
+    window.tizen = {
+      tvaudiocontrol: {
+        getVolume: vi.fn(() => 20),
+        setVolume,
+        setMute: vi.fn(),
+      },
+    };
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        defaultVolume: 20,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+    expect(setVolume).toHaveBeenCalledWith(0);
+    setVolume.mockClear();
+
+    (app as unknown as { applyPlayerSettings(settings: typeof DEFAULT_PLAYER_SETTINGS): void }).applyPlayerSettings({
+      ...DEFAULT_PLAYER_SETTINGS,
+      playerId: '',
+      managerAddress: '',
+      manifestUrl: '',
+      preserveAspectRatio: false,
+      switchOnContentEnd: false,
+      defaultVolume: 42,
+      hudInitiallyVisible: false,
+    });
+
+    expect(setVolume).not.toHaveBeenCalled();
+    app.destroy();
+  });
+
   it('updateschedule 수신 후 활성 예약 playlist로 전환한다', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 22, 9, 1, 0));
