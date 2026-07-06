@@ -836,7 +836,7 @@ export class NewHyOnPlayerApp {
     try {
       if (this.broadcastOnAir) {
         if (resolution.mode === 'content') {
-          this.prepareContentSetTransition(resolution.pagePlans[0] ?? null, 'next-update-content', { videoOnly: true });
+          this.prepareContentSetTransition(resolution.pagePlans[0] ?? null, 'next-update-content');
         }
         await this.playPage(0, {
           preservePreviousUntilReady: true,
@@ -1761,13 +1761,11 @@ export class NewHyOnPlayerApp {
     pagePlans: readonly SeamlessPagePlan[],
     pageIndex: number,
   ): readonly SeamlessSlotPlan[] {
-    if (pagePlans.length === 0) {
+    if (pagePlans.length <= 1) {
       return [];
     }
 
-    const nextPageIndex = pagePlans.length <= 1
-      ? pageIndex
-      : (pageIndex + 1) % pagePlans.length;
+    const nextPageIndex = (pageIndex + 1) % pagePlans.length;
     return pagePlans[nextPageIndex]?.slots ?? [];
   }
 
@@ -2088,6 +2086,7 @@ export class NewHyOnPlayerApp {
       }
 
       const resolution = this.createEffectiveUpdatePagePlans(this.currentContentManifest);
+      this.prepareContentSetTransition(resolution.pagePlans[0] ?? null, 'next-schedule-content');
       await this.playPage(0, {
         preservePreviousUntilReady: true,
         commitPageTimelineBeforeContentSwitch: true,
@@ -2134,6 +2133,7 @@ export class NewHyOnPlayerApp {
       return;
     }
 
+    this.prepareContentSetTransition(pagePlans[0] ?? null, 'next-schedule-content');
     await this.playPage(0, {
       preservePreviousUntilReady: true,
       commitPageTimelineBeforeContentSwitch: true,

@@ -4,6 +4,8 @@ import { resolveAvplaySourceUrl } from './source-resolver';
 
 const DISPLAY_METHOD_FILL = 'PLAYER_DISPLAY_MODE_FULL_SCREEN';
 const DISPLAY_METHOD_CONTAIN = 'PLAYER_DISPLAY_MODE_LETTER_BOX';
+const STREAMING_PROPERTY_USE_VIDEOMIXER = 'USE_VIDEOMIXER';
+const STREAMING_PROPERTY_SET_MIXEDFRAME = 'SET_MIXEDFRAME';
 const STOPPABLE_STATES = new Set(['READY', 'PLAYING', 'PAUSED']);
 const DISPLAY_METHOD_STATES = new Set(['IDLE', 'READY', 'PLAYING', 'PAUSED']);
 const AVPLAY_LAYER_BELOW_SLOT_OFFSET = -1;
@@ -497,6 +499,7 @@ export class AvplaySessionPair {
       lane.player.prepare();
       this.laneRuntimeStates[laneIndex].lastPrepareCompletedAt = new Date().toISOString();
       this.traceEnd(traceId, laneIndex, 'prepare', itemName);
+      this.setMixedFrame(laneIndex, itemName);
       this.logger.debug('avplay', `slot ${this.index} lane ${laneIndex + 1} prepared: ${itemName}`);
     } catch (error) {
       this.traceFail(traceId, laneIndex, 'prepare', error, itemName);
@@ -510,9 +513,24 @@ export class AvplaySessionPair {
     this.callLane(laneIndex, 'open', () => {
       lane.player.open(sourceUrl);
     }, `${item.name} ${sourceUrl}`);
+    this.useVideoMixer(laneIndex, item.name);
     this.callLaneSafe(laneIndex, 'setListener', () => {
       lane.player.setListener(this.createLaneListener(laneIndex));
     }, item.name);
+  }
+
+  private useVideoMixer(laneIndex: number, itemName: string): void {
+    const lane = this.lanes[laneIndex];
+    this.callLaneSafe(laneIndex, STREAMING_PROPERTY_USE_VIDEOMIXER, () => {
+      lane.player.setStreamingProperty?.(STREAMING_PROPERTY_USE_VIDEOMIXER);
+    }, itemName);
+  }
+
+  private setMixedFrame(laneIndex: number, itemName: string): void {
+    const lane = this.lanes[laneIndex];
+    this.callLaneSafe(laneIndex, STREAMING_PROPERTY_SET_MIXEDFRAME, () => {
+      lane.player.setStreamingProperty?.(STREAMING_PROPERTY_SET_MIXEDFRAME);
+    }, itemName);
   }
 
   private setLaneDisplayMethod(laneIndex: number, displayMethod: string): void {

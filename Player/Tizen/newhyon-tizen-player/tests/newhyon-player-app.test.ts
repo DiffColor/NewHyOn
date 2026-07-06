@@ -228,6 +228,28 @@ function createSinglePageTwoVideoManifest(): PlayerManifest {
   return manifest;
 }
 
+function createSinglePageThreeVideoManifest(): PlayerManifest {
+  const manifest = createSinglePageTwoVideoManifest();
+  manifest.pages[0] = {
+    ...manifest.pages[0]!,
+    PIC_PlaytimeSecond: 30,
+    PIC_Elements: manifest.pages[0]!.PIC_Elements?.map((element) => ({
+      ...element,
+      EIF_ContentsInfoClassList: [
+        ...(element.EIF_ContentsInfoClassList ?? []),
+        {
+          CIF_FileName: 'third.mp4',
+          CIF_FileFullPath: 'https://example.com/third.mp4',
+          CIF_ContentType: 'Video',
+          CIF_PlayMinute: '00',
+          CIF_PlaySec: '10',
+        },
+      ],
+    })),
+  };
+  return manifest;
+}
+
 function createTwoPageNextImageManifest(): PlayerManifest {
   const manifest = createTwoPageManifest();
   manifest.pages[1] = {
@@ -889,6 +911,54 @@ describe('NewHyOnPlayerApp', () => {
     app.destroy();
   });
 
+  it('단일 페이지 영상 준비는 같은 페이지 첫 콘텐츠로 덮어쓰지 않는다', async () => {
+    vi.useFakeTimers();
+    const play = vi.fn();
+    const listeners: AVPlayListener[] = [];
+    const players: AVPlayApi[] = [];
+    const getPlayer = vi.fn(() => {
+      const player = createStatefulStorePlayer(play, (listener) => listeners.push(listener));
+      players.push(player);
+      return player;
+    });
+    window.webapis = createWebApis(createPlayer(play), vi.fn(), { getPlayer });
+
+    const app = new NewHyOnPlayerApp({
+      manifest: createSinglePageThreeVideoManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+    expect(players[1]?.open).toHaveBeenLastCalledWith('https://example.com/second.mp4');
+    expect(players[1]?.prepare).toHaveBeenCalledTimes(1);
+    const openCallCounts = players.map((player) => vi.mocked(player.open).mock.calls.length);
+
+    await vi.advanceTimersByTimeAsync(10000);
+    listeners[0]?.onstreamcompleted?.();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.runAllTicks();
+    await Promise.resolve();
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(400);
+
+    expect(play).toHaveBeenCalledTimes(2);
+    const newOpenUrls = players.flatMap((player, playerIndex) => (
+      vi.mocked(player.open).mock.calls.slice(openCallCounts[playerIndex] ?? 0).map(([url]) => url)
+    ));
+    expect(newOpenUrls).toContain('https://example.com/third.mp4');
+    expect(newOpenUrls).not.toContain('https://example.com/video.mp4');
+    app.destroy();
+  });
+
   it('영상 슬롯은 다음 AVPlay를 사전 준비하고 전환 시점에 준비 lane을 사용한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn();
@@ -919,10 +989,12 @@ describe('NewHyOnPlayerApp', () => {
     const width = window.innerWidth;
     const height = window.innerHeight;
     expect(players[0]?.setDisplayRect).toHaveBeenLastCalledWith(0, 0, width, height);
-    expect(players[0]?.setStreamingProperty).not.toHaveBeenCalled();
+    expect(players[0]?.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');
+    expect(players[0]?.setStreamingProperty).toHaveBeenCalledWith('SET_MIXEDFRAME');
     expect(players[1]?.setDisplayRect).toHaveBeenCalledTimes(1);
     expect(players[1]?.prepare).toHaveBeenCalledTimes(1);
-    expect(players[1]?.setStreamingProperty).not.toHaveBeenCalled();
+    expect(players[1]?.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');
+    expect(players[1]?.setStreamingProperty).toHaveBeenCalledWith('SET_MIXEDFRAME');
 
     await vi.advanceTimersByTimeAsync(10000);
     listeners[0]?.onstreamcompleted?.();
@@ -933,7 +1005,8 @@ describe('NewHyOnPlayerApp', () => {
     expect(players[1]?.prepare).toHaveBeenCalledTimes(1);
     expect(players[1]?.setDisplayRect).toHaveBeenCalledTimes(2);
     expect(players[1]?.setDisplayRect).toHaveBeenLastCalledWith(0, 0, width, height);
-    expect(players[1]?.setStreamingProperty).not.toHaveBeenCalled();
+    expect(players[1]?.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');
+    expect(players[1]?.setStreamingProperty).toHaveBeenCalledWith('SET_MIXEDFRAME');
 
     await vi.advanceTimersByTimeAsync(10000);
     listeners[1]?.onstreamcompleted?.();
@@ -1482,11 +1555,13 @@ describe('NewHyOnPlayerApp', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 22, 9, 1, 0));
     const play = vi.fn();
-    const listeners: AVPlayListener[] = [];
-    const getPlayer = vi.fn(() => ({
-      ...createPlayer(play, (listener) => listeners.push(listener)),
-      getState: vi.fn(() => 'PLAYING'),
-    }));
+    const initialPlayers = [
+      createStatefulStorePlayer(play),
+      createStatefulStorePlayer(play),
+      createStatefulStorePlayer(play),
+      createStatefulStorePlayer(play),
+    ];
+    const getPlayer = vi.fn(() => initialPlayers.shift() as AVPlayApi);
     window.webapis = createWebApis(createPlayer(play), vi.fn(), { getPlayer });
     window.tizen = {
       filesystem: {
@@ -1579,6 +1654,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelector('#status-playlist')?.textContent).toBe('scheduled-list');
     expect(document.querySelector('#status-page')?.textContent).toContain('scheduled-page');
     expect(document.querySelector('#status-slots')?.textContent).toContain('scheduled.mp4');
+    expect(document.querySelector('#log-output')?.textContent).toContain('use prepared lane role=next-schedule-content');
     app.destroy();
   });
 
@@ -1586,11 +1662,13 @@ describe('NewHyOnPlayerApp', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 22, 9, 1, 0));
     const play = vi.fn();
-    const listeners: AVPlayListener[] = [];
-    const getPlayer = vi.fn(() => ({
-      ...createPlayer(play, (listener) => listeners.push(listener)),
-      getState: vi.fn(() => 'PLAYING'),
-    }));
+    const initialPlayers = [
+      createStatefulStorePlayer(play),
+      createStatefulStorePlayer(play),
+      createStatefulStorePlayer(play),
+      createStatefulStorePlayer(play),
+    ];
+    const getPlayer = vi.fn(() => initialPlayers.shift() as AVPlayApi);
     window.webapis = createWebApis(createPlayer(play), vi.fn(), { getPlayer });
     window.tizen = {
       filesystem: {
@@ -1688,6 +1766,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
     expect(document.querySelector('#status-page')?.textContent).toContain('page');
     expect(document.querySelector('#status-slots')?.textContent).toContain('video.mp4');
+    expect((document.querySelector('#log-output')?.textContent?.match(/use prepared lane role=next-schedule-content/g) ?? [])).toHaveLength(2);
     app.destroy();
   });
 
@@ -2227,7 +2306,12 @@ describe('NewHyOnPlayerApp', () => {
   it('콘텐츠 전환은 추가 AVPlay 페어 없이 기존 콘텐츠를 유지하고 업데이트를 적용한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn();
-    const initialPlayers = [createPlayer(play), createPlayer(play), createPlayer(play), createPlayer(play)];
+    const initialPlayers = [
+      createStatefulStorePlayer(play),
+      createStatefulStorePlayer(play),
+      createStatefulStorePlayer(play),
+      createStatefulStorePlayer(play),
+    ];
     const getPlayer = vi.fn(() => initialPlayers.shift() as AVPlayApi);
     window.webapis = createWebApis(createPlayer(play), vi.fn(), { getPlayer });
 
@@ -2302,6 +2386,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelector('#status-update')?.textContent).toContain('완료');
     expect(document.querySelectorAll('.slot')).toHaveLength(1);
     expect(play).toHaveBeenCalledTimes(2);
+    expect(document.querySelector('#log-output')?.textContent).toContain('use prepared lane role=next-update-content');
     expect(getPlayer).toHaveBeenCalledTimes(4);
     expect(loadRemoteManifest()?.playlistName).toBe('updated-list');
     app.destroy();
@@ -2333,7 +2418,6 @@ describe('NewHyOnPlayerApp', () => {
     }) as typeof document.createElement);
     const loadedImages = new WeakSet<HTMLImageElement>();
     let pendingImage: HTMLImageElement | null = null;
-    const decodeResolvers: Array<() => void> = [];
     Object.defineProperty(HTMLImageElement.prototype, 'src', {
       configurable: true,
       get() {
@@ -2352,9 +2436,7 @@ describe('NewHyOnPlayerApp', () => {
     });
     Object.defineProperty(HTMLImageElement.prototype, 'decode', {
       configurable: true,
-      value: vi.fn(() => new Promise<void>((resolve) => {
-        decodeResolvers.push(resolve);
-      })),
+      value: vi.fn(() => Promise.resolve()),
     });
 
     try {
@@ -2415,7 +2497,6 @@ describe('NewHyOnPlayerApp', () => {
       }).applyUpdateListCommand(updatePayload, false, 'cmd-image');
       await Promise.resolve();
       await Promise.resolve();
-      await vi.runAllTicks();
       await Promise.resolve();
 
       pendingImage ??= Array.from(document.querySelectorAll<HTMLImageElement>('img'))
@@ -2430,7 +2511,6 @@ describe('NewHyOnPlayerApp', () => {
       loadedImages.add(pendingImage!);
       pendingImage!.onload?.(new Event('load'));
       await Promise.resolve();
-      decodeResolvers.forEach((resolve) => resolve());
       await vi.advanceTimersByTimeAsync(32);
       await Promise.resolve();
       await vi.advanceTimersByTimeAsync(32);

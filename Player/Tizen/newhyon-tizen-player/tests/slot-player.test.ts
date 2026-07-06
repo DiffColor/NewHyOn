@@ -445,7 +445,7 @@ describe('SlotPlayer', () => {
     expect(play.mock.calls[1]?.[5]).toMatchObject({ waitForFirstFrame: false });
   });
 
-  it('현재 영상 재생 중에는 다음 영상을 AVPlay로 사전 prepare한다', async () => {
+  it('현재 영상 재생 중에는 일반 다음 영상을 AVPlay로 사전 prepare한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn(async (..._args: unknown[]) => undefined);
     const prepareNextVideo = vi.fn();
@@ -467,6 +467,58 @@ describe('SlotPlayer', () => {
 
     expect(play).toHaveBeenCalledTimes(1);
     expect(prepareNextVideo).toHaveBeenCalledWith(expect.objectContaining({ id: 'second.mp4' }), 'next-content');
+  });
+
+  it('단일 페이지 루프에서 첫 콘텐츠 재생 중에도 다음 영상을 prepare한다', async () => {
+    vi.useFakeTimers();
+    const play = vi.fn(async (..._args: unknown[]) => undefined);
+    const prepareNextVideo = vi.fn();
+    const clearPrepared = vi.fn();
+    const session = {
+      play,
+      prepareNextVideo,
+      pause: vi.fn(),
+      resume: vi.fn(),
+      stop: vi.fn(),
+      state: vi.fn(() => 'PLAYING'),
+      applyDisplayRect: vi.fn(),
+      clearPrepared,
+    } as unknown as AvplaySession;
+    const slot = new SlotPlayer(0, document.createElement('section'), createTwoVideoSlot(), false, false, () => session, new RingLogger(5));
+    slot.setPageTimeline(0, 20000, true);
+
+    await slot.start();
+    await vi.runAllTicks();
+    await vi.advanceTimersByTimeAsync(32);
+
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(prepareNextVideo).toHaveBeenCalledWith(expect.objectContaining({ id: 'second.mp4' }), 'next-content');
+    expect(clearPrepared).not.toHaveBeenCalled();
+  });
+
+  it('스케줄 전환용 다음 영상은 지정 role로 사전 prepare한다', async () => {
+    const play = vi.fn(async (..._args: unknown[]) => undefined);
+    const prepareNextVideo = vi.fn();
+    const session = {
+      play,
+      prepareNextVideo,
+      pause: vi.fn(),
+      resume: vi.fn(),
+      stop: vi.fn(),
+      state: vi.fn(() => 'PLAYING'),
+      applyDisplayRect: vi.fn(),
+      clearPrepared: vi.fn(),
+    } as unknown as AvplaySession;
+    const slot = new SlotPlayer(0, document.createElement('section'), createTwoVideoSlot(), false, false, () => session, new RingLogger(5));
+
+    await slot.start();
+    slot.prepareTransitionContentTarget({
+      item: createVideoItem('schedule.mp4'),
+      itemIndex: 0,
+      slot: createTwoVideoSlot(),
+    }, 'next-schedule-content');
+
+    expect(prepareNextVideo).toHaveBeenCalledWith(expect.objectContaining({ id: 'schedule.mp4' }), 'next-schedule-content');
   });
 
   it('현재 콘텐츠 종료 후 전환 설정이 켜지면 영상 종료 이벤트로 다음 콘텐츠를 재생한다', async () => {

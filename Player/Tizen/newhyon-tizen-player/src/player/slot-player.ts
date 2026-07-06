@@ -1318,13 +1318,13 @@ export class SlotPlayer {
       return null;
     }
 
-    if (this.loopCurrentPageAtPageEnd && this.itemIndex === 0) {
-      return null;
-    }
-
     const nextIndex = this.findNextPlayableIndex(this.itemIndex);
     if (nextIndex === null) {
       return null;
+    }
+
+    if (this.loopCurrentPageAtPageEnd) {
+      return nextIndex;
     }
 
     const pageRemainingMs = this.pageDurationMs - this.pageElapsedMs;
@@ -1334,7 +1334,7 @@ export class SlotPlayer {
       && contentRemainingMs !== null
       && pageRemainingMs <= contentRemainingMs + PREPARATION_PRIORITY_TOLERANCE_MS
     ) {
-      return this.loopCurrentPageAtPageEnd ? 0 : null;
+      return null;
     }
 
     return nextIndex;
