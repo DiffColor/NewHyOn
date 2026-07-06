@@ -39,7 +39,7 @@ interface DisplayContext {
   readonly slotElement: HTMLElement;
 }
 
-export type AvplayPreparedRole = 'next-content' | 'next-transition-content';
+export type AvplayPreparedRole = 'next-content' | 'next-schedule-content' | 'next-update-content';
 
 interface PreparedLaneMetadata {
   readonly role: AvplayPreparedRole;
@@ -50,6 +50,7 @@ interface PreparedLaneMetadata {
 
 export interface AvplayPlayOptions {
   readonly waitForFirstFrame?: boolean;
+  readonly preparedRoles?: readonly AvplayPreparedRole[];
 }
 
 export interface AvplayPlaybackInfo {
@@ -74,10 +75,7 @@ export class AvplaySessionPair {
   private displayContext: DisplayContext | null = null;
   private traceSeq = 0;
   private operationSeq = 0;
-  private readonly laneRuntimeStates: AvplayLaneRuntimeState[] = [
-    this.createLaneRuntimeState(),
-    this.createLaneRuntimeState(),
-  ];
+  private readonly laneRuntimeStates: AvplayLaneRuntimeState[] = [];
 
   constructor(
     readonly index: number,
@@ -86,7 +84,8 @@ export class AvplaySessionPair {
     private readonly logger: RingLogger,
     private readonly events: VideoSessionEvents,
   ) {
-    this.lanes.forEach((lane) => {
+    this.lanes.forEach((lane, laneIndex) => {
+      this.laneRuntimeStates[laneIndex] = this.createLaneRuntimeState();
       lane.objectElement.type = 'application/avplayer';
       lane.objectElement.className = 'avplay-object';
       lane.objectElement.style.visibility = 'hidden';
@@ -105,7 +104,7 @@ export class AvplaySessionPair {
   ): Promise<AvplayPlaybackInfo> {
     const operationId = this.nextOperationId();
     this.displayContext = { slot, slotElement };
-    const preparedLane = this.resolvePreparedLane(item);
+    const preparedLane = this.resolvePreparedLane(item, options.preparedRoles ?? ['next-content']);
     const nextLaneIndex = preparedLane !== null
       ? preparedLane.laneIndex
       : this.currentLaneIndex !== null
@@ -152,7 +151,7 @@ export class AvplaySessionPair {
       if (laneToStopAfterPlay !== null && laneToStopAfterPlay !== nextLaneIndex) {
         this.stopLane(laneToStopAfterPlay);
       }
-      if (preparedLane?.role === 'next-transition-content') {
+      if (preparedLane?.role === 'next-schedule-content' || preparedLane?.role === 'next-update-content') {
         this.clearPreparedRole('next-content');
       }
       this.updateObjectVisibility();
@@ -734,8 +733,10 @@ export class AvplaySessionPair {
     }
   }
 
-  private resolvePreparedLane(item: SeamlessContentItem): PreparedLaneMetadata | null {
-    const roles: AvplayPreparedRole[] = ['next-transition-content', 'next-content'];
+  private resolvePreparedLane(
+    item: SeamlessContentItem,
+    roles: readonly AvplayPreparedRole[],
+  ): PreparedLaneMetadata | null {
     for (const role of roles) {
       const prepared = this.preparedLanes.get(role);
       if (

@@ -7,7 +7,7 @@ import {
   resolveRemoteControlAction,
   type RemoteControlAction,
 } from '../input/remote-control';
-import { type AvplaySessionPair, createAvplaySessionPair } from '../player/avplay-session';
+import { type AvplayPreparedRole, type AvplaySessionPair, createAvplaySessionPair } from '../player/avplay-session';
 import { shouldMutePageAudio, TizenAudioPolicy } from '../player/audio-policy';
 import { SlotPlayer, type SlotPlayerTimelineSnapshot } from '../player/slot-player';
 import { RuntimeHealthReporter } from './runtime-health-reporter';
@@ -100,6 +100,7 @@ interface PagePlayOptions {
   readonly pagePlans?: readonly SeamlessPagePlan[];
   readonly playbackMode?: PlaybackMode;
   readonly commitPageTimelineBeforeContentSwitch?: boolean;
+  readonly preparedRoles?: readonly AvplayPreparedRole[];
 }
 
 interface EmptyIntroVideoOptions {
@@ -834,10 +835,14 @@ export class NewHyOnPlayerApp {
     this.contentReplacementInProgress = true;
     try {
       if (this.broadcastOnAir) {
+        if (resolution.mode === 'content') {
+          this.prepareContentSetTransition(resolution.pagePlans[0] ?? null, 'next-update-content', { videoOnly: true });
+        }
         await this.playPage(0, {
           preservePreviousUntilReady: true,
           pagePlans: resolution.pagePlans,
           playbackMode: resolution.mode,
+          preparedRoles: ['next-update-content', 'next-content'],
         });
         return;
       }
@@ -1518,6 +1523,7 @@ export class NewHyOnPlayerApp {
         targetPageIndex,
         page,
         options.commitPageTimelineBeforeContentSwitch === true,
+        options.preparedRoles,
       );
       return;
     }
@@ -1595,6 +1601,7 @@ export class NewHyOnPlayerApp {
     targetPageIndex: number,
     page: SeamlessPagePlan,
     commitPageTimelineBeforeContentSwitch: boolean,
+    preparedRoles: readonly AvplayPreparedRole[] | undefined,
   ): Promise<void> {
     this.logger.info('page', `prepare ${page.pageName} (${page.durationSeconds}s, content-set)`);
     this.clearTimers();
@@ -1618,6 +1625,7 @@ export class NewHyOnPlayerApp {
         page.slots[logicalSlotIndex] ?? this.createEmptySlotPlan(logicalSlotIndex, page),
         page.canvasWidth,
         page.canvasHeight,
+        { preparedRoles },
       );
     }));
     if (switchResults.some((started) => !started)) {
@@ -2085,6 +2093,7 @@ export class NewHyOnPlayerApp {
         commitPageTimelineBeforeContentSwitch: true,
         pagePlans: resolution.pagePlans,
         playbackMode: resolution.mode,
+        preparedRoles: ['next-schedule-content', 'next-content'],
       });
       this.activeRemoteSchedulePlaylistName = null;
       this.setMessage(`예약 스케줄 종료: ${this.currentContentManifest.playlistName}`);
@@ -2130,6 +2139,7 @@ export class NewHyOnPlayerApp {
       commitPageTimelineBeforeContentSwitch: true,
       pagePlans,
       playbackMode: 'content',
+      preparedRoles: ['next-schedule-content', 'next-content'],
     });
     this.activeRemoteSchedulePlaylistName = decision.playlistName;
     this.setMessage(`예약 스케줄 적용: ${decision.playlistName}`);
@@ -2155,12 +2165,25 @@ export class NewHyOnPlayerApp {
       return;
     }
 
+    this.prepareContentSetTransition(firstPage, 'next-schedule-content');
+  }
+
+  private prepareContentSetTransition(
+    firstPage: SeamlessPagePlan | null,
+    role: Exclude<AvplayPreparedRole, 'next-content'>,
+    options: { readonly videoOnly?: boolean } = {},
+  ): void {
+    if (!firstPage) {
+      return;
+    }
+
     this.slotPlayers.forEach((slotPlayer, playerIndex) => {
       const logicalSlotIndex = this.slotPlayerLogicalSlotIndexes[playerIndex] ?? playerIndex;
-      slotPlayer.setLogicalNextContentTarget(
-        this.resolveLogicalNextContentTarget(firstPage.slots[logicalSlotIndex] ?? null),
-        { prepareNow: true },
-      );
+      const target = this.resolveLogicalNextContentTarget(firstPage.slots[logicalSlotIndex] ?? null);
+      if (options.videoOnly === true && target?.item.contentType !== 'Video') {
+        return;
+      }
+      slotPlayer.prepareTransitionContentTarget(target, role);
     });
   }
 

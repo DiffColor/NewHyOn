@@ -174,7 +174,7 @@ declare global {
 
   interface RuntimeAvplayLaneSnapshot {
     readonly laneIndex: number;
-    readonly role: 'current' | 'held' | 'next-content' | 'next-transition-content' | 'idle';
+    readonly role: 'current' | 'held' | 'next-content' | 'next-schedule-content' | 'next-update-content' | 'idle';
     readonly itemName: string | null;
     readonly state: string;
     readonly queriedCurrentTimeMs: number | null;

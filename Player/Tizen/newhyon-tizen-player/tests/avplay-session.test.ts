@@ -489,16 +489,18 @@ describe('AvplaySession', () => {
 
     await session.play(createVideoItem('current.mp4'), slot, slotElement, false, vi.fn());
     session.prepareNextVideo(createVideoItem('next-content.mp4'), 'next-content');
-    session.prepareNextVideo(createVideoItem('next-schedule.mp4'), 'next-transition-content');
+    session.prepareNextVideo(createVideoItem('next-schedule.mp4'), 'next-schedule-content');
 
     expect(session.debugSnapshot().lanes.map((lane) => lane.role)).toEqual([
       'current',
       'next-content',
-      'next-transition-content',
+      'next-schedule-content',
       'idle',
     ]);
 
-    await session.play(createVideoItem('next-schedule.mp4'), slot, slotElement, false, vi.fn());
+    await session.play(createVideoItem('next-schedule.mp4'), slot, slotElement, false, vi.fn(), {
+      preparedRoles: ['next-schedule-content', 'next-content'],
+    });
 
     expect(playerC.open).toHaveBeenCalledTimes(1);
     expect(playerC.prepare).toHaveBeenCalledTimes(1);
@@ -509,6 +511,86 @@ describe('AvplaySession', () => {
       'idle',
       'idle',
       'current',
+      'idle',
+    ]);
+  });
+
+  it('일반 콘텐츠 전환은 next-schedule-content 준비 lane을 소비하지 않는다', async () => {
+    let playerAState = 'NONE';
+    let playerBState = 'NONE';
+    let playerCState = 'NONE';
+    let playerDState = 'NONE';
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    const playerC = createPlayer();
+    const playerD = createPlayer();
+    playerA.getState = vi.fn(() => playerAState);
+    playerB.getState = vi.fn(() => playerBState);
+    playerC.getState = vi.fn(() => playerCState);
+    playerD.getState = vi.fn(() => playerDState);
+    playerA.open = vi.fn(() => {
+      playerAState = 'IDLE';
+    });
+    playerA.prepare = vi.fn(() => {
+      playerAState = 'READY';
+    });
+    playerA.play = vi.fn(() => {
+      playerAState = 'PLAYING';
+    });
+    playerA.stop = vi.fn(() => {
+      playerAState = 'IDLE';
+    });
+    playerB.open = vi.fn(() => {
+      playerBState = 'IDLE';
+    });
+    playerB.prepare = vi.fn(() => {
+      playerBState = 'READY';
+    });
+    playerB.play = vi.fn(() => {
+      playerBState = 'PLAYING';
+    });
+    playerC.open = vi.fn(() => {
+      playerCState = 'IDLE';
+    });
+    playerC.prepare = vi.fn(() => {
+      playerCState = 'READY';
+    });
+    playerC.play = vi.fn(() => {
+      playerCState = 'PLAYING';
+    });
+    playerD.open = vi.fn(() => {
+      playerDState = 'IDLE';
+    });
+    playerD.prepare = vi.fn(() => {
+      playerDState = 'READY';
+    });
+    playerD.play = vi.fn(() => {
+      playerDState = 'PLAYING';
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+      { player: playerC, objectElement: document.createElement('object') },
+      { player: playerD, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+    const slot = createSlotPlan();
+    const slotElement = document.createElement('section');
+
+    await session.play(createVideoItem('current.mp4'), slot, slotElement, false, vi.fn());
+    session.prepareNextVideo(createVideoItem('other-next.mp4'), 'next-content');
+    session.prepareNextVideo(createVideoItem('next.mp4'), 'next-schedule-content');
+
+    await session.play(createVideoItem('next.mp4'), slot, slotElement, false, vi.fn());
+
+    expect(playerC.play).not.toHaveBeenCalled();
+    expect(playerB.play).toHaveBeenCalledTimes(1);
+    expect(session.debugSnapshot().lanes.map((lane) => lane.role)).toEqual([
+      'idle',
+      'current',
+      'next-schedule-content',
       'idle',
     ]);
   });

@@ -18,10 +18,6 @@ interface NextContentTarget {
   readonly slot: SeamlessSlotPlan;
 }
 
-interface LogicalNextContentTargetOptions {
-  readonly prepareNow?: boolean;
-}
-
 const VIDEO_DURATION_MATCH_TOLERANCE_MS = 1000;
 const PAGE_END_VIDEO_COMPLETION_GRACE_MS = 1000;
 const IMAGE_MAIN_THREAD_GAP_WARN_MS = 250;
@@ -138,7 +134,12 @@ export class SlotPlayer {
     return this.showCurrentItem();
   }
 
-  async switchToSlotPlan(slot: SeamlessSlotPlan, canvasWidth: number, canvasHeight: number): Promise<boolean> {
+  async switchToSlotPlan(
+    slot: SeamlessSlotPlan,
+    canvasWidth: number,
+    canvasHeight: number,
+    options: { readonly preparedRoles?: readonly AvplayPreparedRole[] } = {},
+  ): Promise<boolean> {
     const previousSlot = this.slot;
     const previousItemIndex = this.itemIndex;
     const previousActive = this.active;
@@ -175,7 +176,10 @@ export class SlotPlayer {
 
     this.active = true;
     this.element.classList.remove('slot--empty');
-    const started = await this.showCurrentItemAtElapsed(0, { preserveCurrentOnFailure: true });
+    const started = await this.showCurrentItemAtElapsed(0, {
+      preserveCurrentOnFailure: true,
+      preparedRoles: options.preparedRoles,
+    });
     if (!started) {
       this.slot = previousSlot;
       this.itemIndex = previousItemIndex;
@@ -216,11 +220,37 @@ export class SlotPlayer {
     }
   }
 
-  setLogicalNextContentTarget(target: NextContentTarget | null, options: LogicalNextContentTargetOptions = {}): void {
+  setLogicalNextContentTarget(target: NextContentTarget | null): void {
     this.logicalNextContentTarget = target;
-    if (target && options.prepareNow === true && this.active) {
-      void this.prepareNextContent();
+  }
+
+  prepareTransitionContentTarget(target: NextContentTarget | null, role: Exclude<AvplayPreparedRole, 'next-content'>): void {
+    if (!target || !this.active) {
+      return;
     }
+
+    const currentItem = this.currentItem();
+    if (!currentItem || target.item.id === currentItem.id) {
+      return;
+    }
+
+    const generation = this.contentGeneration;
+    if (target.item.contentType === 'Video') {
+      this.prepareVideoContent(target.item, currentItem, role);
+      return;
+    }
+
+    if (target.item.contentType !== 'Image') {
+      return;
+    }
+
+    void this.prepareImageContent(target.item, { underVideo: currentItem.contentType === 'Video' }).then(() => {
+      if (!this.isContentGenerationCurrent(generation)) {
+        this.clearPreparedImage();
+      }
+    }).catch(() => {
+      // 전환 시점의 실제 show 경로에서 다시 준비하고 실패를 확정한다.
+    });
   }
 
   stop(): void {
@@ -467,7 +497,10 @@ export class SlotPlayer {
 
   private async showCurrentItemAtElapsed(
     itemElapsedMs: number,
-    options: { readonly preserveCurrentOnFailure?: boolean } = {},
+    options: {
+      readonly preserveCurrentOnFailure?: boolean;
+      readonly preparedRoles?: readonly AvplayPreparedRole[];
+    } = {},
   ): Promise<boolean> {
     const generation = this.nextContentGeneration();
     const item = this.currentItem();
@@ -524,6 +557,7 @@ export class SlotPlayer {
         const nextVideoSession = this.videoSession ?? this.getVideoSession();
         const playbackInfo = await nextVideoSession.play(item, this.slot, this.element, this.preserveAspectRatio, () => this.handleVideoEnded(item.id), {
           waitForFirstFrame: false,
+          preparedRoles: options.preparedRoles ?? ['next-content'],
         });
         if (!this.isContentGenerationCurrent(generation)) {
           return false;
@@ -952,7 +986,7 @@ export class SlotPlayer {
       && logicalTarget.item.id !== this.currentItem()?.id
       && targets.every((target) => target.item.id !== logicalTarget.item.id)
     ) {
-      targets.push({ ...logicalTarget, role: 'next-transition-content' });
+      targets.push({ ...logicalTarget, role: 'next-content' });
     }
 
     return targets;
