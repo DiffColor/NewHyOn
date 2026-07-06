@@ -60,6 +60,7 @@ function createPlayer(play: () => void, onListener?: (listener: AVPlayListener) 
     setDisplayMethod: vi.fn(),
     setVideoStillMode: vi.fn(),
     setTimeoutForBuffering: vi.fn(),
+    setStreamingProperty: vi.fn(),
     setLooping: vi.fn(),
     getState: vi.fn(() => 'IDLE'),
   };
@@ -99,18 +100,7 @@ function createWebApis(
   };
 }
 
-async function advancePairSchedulerPairHandoff(listeners: readonly AVPlayListener[] = []): Promise<void> {
-  await vi.advanceTimersByTimeAsync(10000);
-  listeners.forEach((listener) => listener.oncurrentplaytime?.(0));
-  await Promise.resolve();
-  await Promise.resolve();
-  await vi.advanceTimersByTimeAsync(10000);
-  listeners.forEach((listener) => listener.oncurrentplaytime?.(0));
-  await Promise.resolve();
-  await Promise.resolve();
-}
-
-async function advancePairSchedulerUntil(
+async function advanceSlotPlaybackUntil(
   predicate: () => boolean,
   listeners: readonly AVPlayListener[] = [],
   maxSteps = 8,
@@ -120,7 +110,7 @@ async function advancePairSchedulerUntil(
       return;
     }
     await vi.advanceTimersByTimeAsync(10000);
-    listeners.forEach((listener) => listener.oncurrentplaytime?.(0));
+    listeners.forEach((listener) => listener.onstreamcompleted?.());
     await Promise.resolve();
     await Promise.resolve();
   }
@@ -621,7 +611,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(introVideo).not.toBeNull();
     expect(introVideo?.loop).toBe(true);
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
-    expect(open).toHaveBeenCalledTimes(2);
+    expect(open).toHaveBeenCalledTimes(1);
     app.destroy();
   });
 
@@ -670,7 +660,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelector('#status-auth')?.textContent).toContain('authenticated');
     expect(document.querySelector('.empty-intro-video')).toBeNull();
     expect(document.querySelector('.slot')).not.toBeNull();
-    expect(open).toHaveBeenCalledTimes(4);
+    expect(open).toHaveBeenCalledTimes(2);
     expect(play).toHaveBeenCalledTimes(2);
     app.destroy();
   });
@@ -765,9 +755,9 @@ describe('NewHyOnPlayerApp', () => {
     await vi.advanceTimersByTimeAsync(10000);
     await Promise.resolve();
 
-    expect(play).toHaveBeenCalledTimes(2);
+    expect(play).toHaveBeenCalledTimes(1);
     expect(stop).not.toHaveBeenCalled();
-    expect(close).toHaveBeenCalledTimes(1);
+    expect(close).not.toHaveBeenCalled();
     expect(document.querySelector('#status-elapsed')?.textContent).toBe('0.0s / 10.0s');
 
     await vi.advanceTimersByTimeAsync(1200);
@@ -831,7 +821,7 @@ describe('NewHyOnPlayerApp', () => {
     app.destroy();
   });
 
-  it('단일 페이지 마지막 영상 다음 첫 영상은 같은 pair 내부에서 준비된 슬롯으로 전환한다', async () => {
+  it('단일 페이지 마지막 영상 다음 첫 영상은 같은 슬롯의 준비 lane으로 전환한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn();
     const listeners: AVPlayListener[] = [];
@@ -856,35 +846,33 @@ describe('NewHyOnPlayerApp', () => {
     });
 
     await app.start();
-    expect(document.querySelector('#status-slots')?.textContent).toContain('pair-a active=0');
-    expect(document.querySelector('#status-slots')?.textContent).toContain('0:playing:page / video / video.mp4');
-    expect(document.querySelector('#status-slots')?.textContent).toContain('1:ready:page / video / second.mp4');
+    expect(document.querySelector('#status-slots')?.textContent).toContain('video: video.mp4 (PLAYING)');
 
     await vi.advanceTimersByTimeAsync(10000);
-    listeners.forEach((listener) => listener.oncurrentplaytime?.(0));
+    listeners[0]?.onstreamcompleted?.();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.runAllTicks();
     await Promise.resolve();
     await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(400);
 
-    expect(document.querySelector('#status-slots')?.textContent).toContain('pair-a active=1');
-    expect(document.querySelector('#status-slots')?.textContent).toContain('1:playing:page / video / second.mp4');
-    expect(document.querySelector('#status-slots')?.textContent).toContain('0:ready:page / video / video.mp4');
+    expect(document.querySelector('#status-slots')?.textContent).toContain('video: second.mp4 (PLAYING)');
 
     await vi.advanceTimersByTimeAsync(10000);
-    listeners.forEach((listener) => listener.oncurrentplaytime?.(0));
+    listeners[1]?.onstreamcompleted?.();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.runAllTicks();
     await Promise.resolve();
     await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(400);
 
     const slots = document.querySelector('#status-slots')?.textContent ?? '';
-    expect(slots).toContain('pair-a active=0');
-    expect(slots).toContain('0:playing:page / video / video.mp4');
-    expect(slots).toContain('1:ready:page / video / second.mp4');
-    expect(slots).not.toContain('handoff=true');
-    expect(slots).not.toContain('pair-b active=0 prepare=1 swaps=0 handoff=false 0:playing:page / video / video.mp4');
+    expect(slots).toContain('video: video.mp4 (PLAYING)');
     expect(play).toHaveBeenCalledTimes(3);
     app.destroy();
   });
 
-  it('pair scheduler 전환 중 AVPlay display rect는 크기 변경 없이 x 좌표만 화면 밖으로 이동한다', async () => {
+  it('MixedFrame 슬롯은 다음 AVPlay를 같은 display rect에서 준비한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn();
     const listeners: AVPlayListener[] = [];
@@ -914,10 +902,19 @@ describe('NewHyOnPlayerApp', () => {
     });
 
     await app.start();
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    expect(players[1]?.setDisplayRect).toHaveBeenLastCalledWith(0, 0, width, height);
+    expect(players[1]?.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');
+    expect(players[1]?.setStreamingProperty).toHaveBeenCalledWith('SET_MIXEDFRAME');
+    const preparedPlayerSetDisplayRect = players[1]?.setDisplayRect as unknown as { mock: { calls: number[][] } };
+    const preparedPlayerRectCallCount = preparedPlayerSetDisplayRect.mock.calls.length;
+
     await vi.advanceTimersByTimeAsync(10000);
     listeners.forEach((listener) => listener.oncurrentplaytime?.(0));
     await Promise.resolve();
     await Promise.resolve();
+    expect(players[1]?.setDisplayRect).toHaveBeenCalledTimes(preparedPlayerRectCallCount);
 
     await vi.advanceTimersByTimeAsync(10000);
     listeners.forEach((listener) => listener.oncurrentplaytime?.(0));
@@ -927,17 +924,14 @@ describe('NewHyOnPlayerApp', () => {
     const rectCalls = players.flatMap((player) => (
       (player.setDisplayRect as unknown as { mock: { calls: number[][] } }).mock.calls
     ));
-    const width = window.innerWidth;
-    const height = window.innerHeight;
     expect(rectCalls.length).toBeGreaterThan(0);
     expect(rectCalls.every(([x, y, callWidth, callHeight]) => (
-      (x === 0 || x === width) && y === 0 && callWidth === width && callHeight === height
+      x === 0 && y === 0 && callWidth === width && callHeight === height
     ))).toBe(true);
-    expect(rectCalls.some(([x]) => x === width)).toBe(true);
     app.destroy();
   });
 
-  it('페이지 루프도 logical 다음 콘텐츠를 같은 pair 내부 준비 슬롯에 제시한다', async () => {
+  it('페이지 루프도 logical 다음 페이지 콘텐츠를 같은 슬롯의 준비 lane에 제시한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn();
     const listeners: AVPlayListener[] = [];
@@ -962,16 +956,15 @@ describe('NewHyOnPlayerApp', () => {
     });
 
     await app.start();
-    expect(document.querySelector('#status-slots')?.textContent).toContain('0:playing:first-page / video / video.mp4');
-    expect(document.querySelector('#status-slots')?.textContent).toContain('1:ready:second-page / second-video / second.mp4');
+    expect(document.querySelector('#status-slots')?.textContent).toContain('video: video.mp4 (PLAYING)');
 
     await vi.advanceTimersByTimeAsync(10000);
     listeners.forEach((listener) => listener.oncurrentplaytime?.(0));
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(document.querySelector('#status-slots')?.textContent).toContain('1:playing:second-page / second-video / second.mp4');
-    expect(document.querySelector('#status-slots')?.textContent).toContain('0:ready:first-page / video / video.mp4');
+    expect(document.querySelector('#status-page')?.textContent).toContain('second-page');
+    expect(document.querySelector('#status-slots')?.textContent).toContain('second-video: second.mp4 (PLAYING)');
 
     await vi.advanceTimersByTimeAsync(10000);
     listeners.forEach((listener) => listener.oncurrentplaytime?.(0));
@@ -979,9 +972,8 @@ describe('NewHyOnPlayerApp', () => {
     await Promise.resolve();
 
     const slots = document.querySelector('#status-slots')?.textContent ?? '';
-    expect(slots).toContain('0:playing:first-page / video / video.mp4');
-    expect(slots).toContain('1:ready:second-page / second-video / second.mp4');
-    expect(slots).not.toContain('handoff=true');
+    expect(document.querySelector('#status-page')?.textContent).toContain('first-page');
+    expect(slots).toContain('video: video.mp4 (PLAYING)');
     app.destroy();
   });
 
@@ -1032,19 +1024,19 @@ describe('NewHyOnPlayerApp', () => {
       await app.start();
       expect(document.querySelector('#status-page')?.textContent).toContain('first-page');
       expect(loadedSources.some((source) => source.includes('second.png'))).toBe(true);
-      expect(Array.from(document.querySelectorAll<HTMLImageElement>('.pair-scheduler-image'))
+      expect(Array.from(document.querySelectorAll<HTMLImageElement>('.slot-image'))
         .some((image) => image.getAttribute('src')?.includes('second.png'))).toBe(true);
-      expect(Array.from(document.querySelectorAll<HTMLImageElement>('.pair-scheduler-image'))
-        .some((image) => image.getAttribute('src')?.includes('second.png') && image.style.visibility === 'visible')).toBe(false);
+      expect(Array.from(document.querySelectorAll<HTMLImageElement>('.slot-image'))
+        .some((image) => image.getAttribute('src')?.includes('second.png') && image.classList.contains('slot-image--visible'))).toBe(false);
 
       await vi.advanceTimersByTimeAsync(9999);
       await vi.runAllTicks();
 
       expect(document.querySelector('#status-page')?.textContent).toContain('first-page');
-      expect(Array.from(document.querySelectorAll<HTMLImageElement>('.pair-scheduler-image'))
+      expect(Array.from(document.querySelectorAll<HTMLImageElement>('.slot-image'))
         .some((image) => image.getAttribute('src')?.includes('second.png'))).toBe(true);
-      expect(Array.from(document.querySelectorAll<HTMLImageElement>('.pair-scheduler-image'))
-        .some((image) => image.getAttribute('src')?.includes('second.png') && image.style.visibility === 'visible')).toBe(false);
+      expect(Array.from(document.querySelectorAll<HTMLImageElement>('.slot-image'))
+        .some((image) => image.getAttribute('src')?.includes('second.png') && image.classList.contains('slot-image--visible'))).toBe(false);
 
       await vi.advanceTimersByTimeAsync(1);
       await vi.advanceTimersByTimeAsync(96);
@@ -1220,6 +1212,9 @@ describe('NewHyOnPlayerApp', () => {
 
     await vi.advanceTimersByTimeAsync(10000);
     await vi.advanceTimersByTimeAsync(32);
+    listeners[0]?.onstreamcompleted?.();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.runAllTicks();
     await Promise.resolve();
     await Promise.resolve();
 
@@ -1448,21 +1443,13 @@ describe('NewHyOnPlayerApp', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
-    expect(document.querySelector('#status-slots')?.textContent).toContain('pair-b active=0');
-
-    await advancePairSchedulerUntil(
-      () => document.querySelector('#status-playlist')?.textContent === 'scheduled-list',
-      listeners,
-    );
-
     expect(document.querySelector('#status-playlist')?.textContent).toBe('scheduled-list');
     expect(document.querySelector('#status-page')?.textContent).toContain('scheduled-page');
     expect(document.querySelector('#status-slots')?.textContent).toContain('scheduled.mp4');
     app.destroy();
   });
 
-  it('예약 스케줄 종료 후 기본 playlist로 pair handoff 전환한다', async () => {
+  it('예약 스케줄 종료 후 기본 playlist 컨텐츠셋으로 전환한다', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 22, 9, 1, 0));
     const play = vi.fn();
@@ -1553,10 +1540,6 @@ describe('NewHyOnPlayerApp', () => {
         ],
       },
     });
-    await advancePairSchedulerUntil(
-      () => document.querySelector('#status-playlist')?.textContent === 'scheduled-list',
-      listeners,
-    );
     expect(document.querySelector('#status-playlist')?.textContent).toBe('scheduled-list');
     expect(document.querySelector('#status-slots')?.textContent).toContain('scheduled.mp4');
 
@@ -1568,14 +1551,6 @@ describe('NewHyOnPlayerApp', () => {
         options?: { readonly force?: boolean },
       ): Promise<void>;
     }).applyRemoteScheduleSnapshot(loadRemoteSchedule()!, Date.now(), { force: true });
-
-    expect(document.querySelector('#status-playlist')?.textContent).toBe('scheduled-list');
-    expect(document.querySelector('#status-slots')?.textContent).toContain('scheduled.mp4');
-
-    await advancePairSchedulerUntil(
-      () => document.querySelector('#status-playlist')?.textContent === 'playlist',
-      listeners,
-    );
 
     expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
     expect(document.querySelector('#status-page')?.textContent).toContain('page');
@@ -1790,10 +1765,10 @@ describe('NewHyOnPlayerApp', () => {
     await vi.advanceTimersByTimeAsync(64);
     await firstSchedulePromise;
     await Promise.resolve();
-    await advancePairSchedulerUntil(
+    await advanceSlotPlaybackUntil(
       () => (
         document.querySelector('#status-playlist')?.textContent === 'scheduled-list'
-        && document.querySelector('#status-slots')?.textContent?.includes('playing:scheduled-page / scheduled-video / first-scheduled.mp4') === true
+        && document.querySelector('#status-slots')?.textContent?.includes('scheduled-video: first-scheduled.mp4 (PLAYING)') === true
       ),
       listeners,
     );
@@ -1805,10 +1780,10 @@ describe('NewHyOnPlayerApp', () => {
     await vi.advanceTimersByTimeAsync(64);
     await secondSchedulePromise;
     await Promise.resolve();
-    await advancePairSchedulerUntil(
+    await advanceSlotPlaybackUntil(
       () => (
         document.querySelector('#status-playlist')?.textContent === 'scheduled-list'
-        && document.querySelector('#status-slots')?.textContent?.includes('playing:scheduled-page / scheduled-video / second-scheduled.mp4') === true
+        && document.querySelector('#status-slots')?.textContent?.includes('scheduled-video: second-scheduled.mp4 (PLAYING)') === true
       ),
       listeners,
     );
@@ -2470,7 +2445,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelector('#status-playlist')?.textContent).toBe('updated-list');
     expect(document.querySelector('#status-page')?.textContent).toContain('updated-page');
     expect(document.querySelector('.empty-intro-video')).toBeNull();
-    expect(open).toHaveBeenCalledTimes(2);
+    expect(open).toHaveBeenCalledTimes(1);
     expect(avplayPlay).toHaveBeenCalledTimes(1);
     app.destroy();
   });
@@ -2524,7 +2499,7 @@ describe('NewHyOnPlayerApp', () => {
     const introVideo = document.querySelector<HTMLVideoElement>('.empty-intro-video');
     expect(introVideo).not.toBeNull();
     expect(introVideo?.getAttribute('src')).toBe('media/intro.mp4');
-    expect(open).toHaveBeenCalledTimes(2);
+    expect(open).toHaveBeenCalledTimes(1);
     expect(open).toHaveBeenCalledWith('https://example.com/video.mp4');
     expect(avplayPlay).toHaveBeenCalledTimes(1);
     app.destroy();

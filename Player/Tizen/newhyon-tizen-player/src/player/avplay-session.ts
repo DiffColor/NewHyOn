@@ -4,8 +4,8 @@ import { resolveAvplaySourceUrl } from './source-resolver';
 
 const DISPLAY_METHOD_FILL = 'PLAYER_DISPLAY_MODE_FULL_SCREEN';
 const DISPLAY_METHOD_CONTAIN = 'PLAYER_DISPLAY_MODE_LETTER_BOX';
-const AVPLAY_BASE_WIDTH = 1920;
-const AVPLAY_BASE_HEIGHT = 1080;
+const STREAMING_PROPERTY_USE_VIDEOMIXER = 'USE_VIDEOMIXER';
+const STREAMING_PROPERTY_SET_MIXEDFRAME = 'SET_MIXEDFRAME';
 const FIRST_FRAME_READY_TIMEOUT_MS = 500;
 const STOPPABLE_STATES = new Set(['READY', 'PLAYING', 'PAUSED']);
 const VIDEO_DURATION_MATCH_TOLERANCE_MS = 250;
@@ -126,19 +126,23 @@ export class AvplaySessionPair {
         this.configureLaneForItem(nextLaneIndex, item, sourceUrl, slot, slotElement, preserveAspectRatio, firstFrameReady);
         await this.prepareLaneAsync(nextLaneIndex, item.name);
         this.assertOperationCurrent(operationId, nextLaneIndex, 'play.prepareAsync', item.name);
+        this.setLaneMixedFrame(nextLaneIndex, item.name);
+        this.applyDisplayRectToLane(nextLaneIndex, slot, slotElement);
         durationMs = this.readDurationMs(nextLaneIndex, item.name);
       } else {
         this.assertOperationCurrent(operationId, nextLaneIndex, 'play.preparedLane', item.name);
-        this.callLaneSafe(nextLaneIndex, 'setListener', () => {
-          lane.player.setListener(this.createLaneListener(nextLaneIndex, firstFrameReady));
-        }, item.name);
-        this.applyDisplayRectToLane(nextLaneIndex, slot, slotElement);
-        this.setLaneDisplayMethod(nextLaneIndex, preserveAspectRatio ? DISPLAY_METHOD_CONTAIN : DISPLAY_METHOD_FILL);
+        if (firstFrameReady) {
+          this.callLaneSafe(nextLaneIndex, 'setListener', () => {
+            lane.player.setListener(this.createLaneListener(nextLaneIndex, firstFrameReady));
+          }, item.name);
+        }
       }
-      this.setLaneLooping(nextLaneIndex, this.shouldLoopForDuration(item, durationMs));
-      this.setLaneMuted(nextLaneIndex, slot.isMuted);
+      if (preparedLaneIndex === null) {
+        this.setLaneLooping(nextLaneIndex, this.shouldLoopForDuration(item, durationMs));
+        this.setLaneMuted(nextLaneIndex, slot.isMuted);
+        this.setLaneVideoStillMode(nextLaneIndex, 'false');
+      }
       this.preparedLane = null;
-      this.setLaneVideoStillMode(nextLaneIndex, 'false');
       this.assertOperationCurrent(operationId, nextLaneIndex, 'play.beforePlay', item.name);
       this.callLane(nextLaneIndex, 'play', () => {
         lane.player.play();
@@ -196,8 +200,12 @@ export class AvplaySessionPair {
       this.configureLaneForItem(laneIndex, item, sourceUrl, slot, slotElement, preserveAspectRatio, null);
       await this.prepareLaneAsync(laneIndex, item.name);
       this.assertOperationCurrent(operationId, laneIndex, 'prepare.prepareAsync', item.name);
+      this.setLaneMixedFrame(laneIndex, item.name);
+      this.applyDisplayRectToLane(laneIndex, slot, slotElement);
       const durationMs = this.readDurationMs(laneIndex, item.name);
       this.setLaneLooping(laneIndex, this.shouldLoopForDuration(item, durationMs));
+      this.setLaneMuted(laneIndex, slot.isMuted);
+      this.setLaneVideoStillMode(laneIndex, 'false');
       this.preparedLane = { laneIndex, itemKey, durationMs };
       this.updateObjectVisibility();
       this.logger.info('avplay', `slot ${this.index} lane ${laneIndex + 1} prepared next: ${item.name}`);
@@ -593,7 +601,7 @@ export class AvplaySessionPair {
     this.callLaneSafe(laneIndex, 'setListener', () => {
       lane.player.setListener(this.createLaneListener(laneIndex, firstFrameReady));
     }, item.name);
-    this.applyDisplayRectToLane(laneIndex, slot, slotElement);
+    this.setLaneUseVideoMixer(laneIndex, item.name);
     this.setLaneDisplayMethod(laneIndex, preserveAspectRatio ? DISPLAY_METHOD_CONTAIN : DISPLAY_METHOD_FILL);
     this.callLaneSafe(laneIndex, 'setTimeoutForBuffering', () => {
       lane.player.setTimeoutForBuffering?.(30);
@@ -626,6 +634,20 @@ export class AvplaySessionPair {
     this.callLaneSafe(laneIndex, 'setDisplayMethod', () => {
       lane.player.setDisplayMethod?.(displayMethod);
     }, displayMethod);
+  }
+
+  private setLaneUseVideoMixer(laneIndex: number, itemName: string): void {
+    const lane = this.lanes[laneIndex];
+    this.callLaneSafe(laneIndex, 'setStreamingProperty.USE_VIDEOMIXER', () => {
+      lane.player.setStreamingProperty?.(STREAMING_PROPERTY_USE_VIDEOMIXER);
+    }, itemName);
+  }
+
+  private setLaneMixedFrame(laneIndex: number, itemName: string): void {
+    const lane = this.lanes[laneIndex];
+    this.callLaneSafe(laneIndex, 'setStreamingProperty.SET_MIXEDFRAME', () => {
+      lane.player.setStreamingProperty?.(STREAMING_PROPERTY_SET_MIXEDFRAME);
+    }, itemName);
   }
 
   private setLaneLooping(laneIndex: number, shouldLoop: boolean): void {
@@ -670,6 +692,8 @@ export class AvplaySessionPair {
 
     const laneIndex = this.heldLaneIndex;
     this.freezeAndStopLane(laneIndex);
+    this.heldLaneIndex = null;
+    this.updateObjectVisibility();
   }
 
   private afterNextFrame(action: () => void): Promise<void> {
@@ -717,13 +741,15 @@ export class AvplaySessionPair {
       return;
     }
 
-    const rect = slotElement.getBoundingClientRect();
-    const viewportWidth = Math.max(document.documentElement.clientWidth, 1);
-    const viewportHeight = Math.max(document.documentElement.clientHeight, 1);
-    const left = Math.round((rect.left / viewportWidth) * AVPLAY_BASE_WIDTH);
-    const top = Math.round((rect.top / viewportHeight) * AVPLAY_BASE_HEIGHT);
-    const width = Math.max(1, Math.round((rect.width / viewportWidth) * AVPLAY_BASE_WIDTH));
-    const height = Math.max(1, Math.round((rect.height / viewportHeight) * AVPLAY_BASE_HEIGHT));
+    const viewportWidth = Math.max(window.visualViewport?.width ?? 0, document.documentElement.clientWidth, window.innerWidth, 1);
+    const viewportHeight = Math.max(window.visualViewport?.height ?? 0, document.documentElement.clientHeight, window.innerHeight, 1);
+    const rect = this.resolveSlotViewportRect(slot, slotElement, viewportWidth, viewportHeight);
+    const targetWidth = Math.max(window.screen?.width ?? 0, Math.round(viewportWidth * (window.devicePixelRatio || 1)), viewportWidth);
+    const targetHeight = Math.max(window.screen?.height ?? 0, Math.round(viewportHeight * (window.devicePixelRatio || 1)), viewportHeight);
+    const left = Math.round((rect.left / viewportWidth) * targetWidth);
+    const top = Math.round((rect.top / viewportHeight) * targetHeight);
+    const width = Math.max(1, Math.round((rect.width / viewportWidth) * targetWidth));
+    const height = Math.max(1, Math.round((rect.height / viewportHeight) * targetHeight));
 
     lane.objectElement.style.left = `${rect.left}px`;
     lane.objectElement.style.top = `${rect.top}px`;
@@ -733,6 +759,39 @@ export class AvplaySessionPair {
       lane.player.setDisplayRect(left, top, width, height);
     }, `${left},${top},${width}x${height}`);
     this.logger.debug('avplay', `slot ${this.index} lane ${laneIndex + 1} rect ${slot.left},${slot.top},${slot.width}x${slot.height}`);
+  }
+
+  private resolveSlotViewportRect(
+    slot: SeamlessSlotPlan,
+    slotElement: HTMLElement,
+    viewportWidth: number,
+    viewportHeight: number,
+  ): { readonly left: number; readonly top: number; readonly width: number; readonly height: number } {
+    const rect = slotElement.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      return rect;
+    }
+
+    const stage = slotElement.parentElement as HTMLElement | null;
+    const stageRect = stage?.getBoundingClientRect();
+    const stageWidth = stageRect && stageRect.width > 0 ? stageRect.width : viewportWidth;
+    const stageHeight = stageRect && stageRect.height > 0 ? stageRect.height : viewportHeight;
+    const stageLeft = stageRect && stageRect.width > 0 ? stageRect.left : 0;
+    const stageTop = stageRect && stageRect.height > 0 ? stageRect.top : 0;
+    const canvasWidth = this.readStageCanvasSize(stage, '--canvas-width', Math.max(slot.left + slot.width, 1));
+    const canvasHeight = this.readStageCanvasSize(stage, '--canvas-height', Math.max(slot.top + slot.height, 1));
+
+    return {
+      left: stageLeft + (slot.left / canvasWidth) * stageWidth,
+      top: stageTop + (slot.top / canvasHeight) * stageHeight,
+      width: (slot.width / canvasWidth) * stageWidth,
+      height: (slot.height / canvasHeight) * stageHeight,
+    };
+  }
+
+  private readStageCanvasSize(stage: HTMLElement | null, propertyName: '--canvas-width' | '--canvas-height', fallback: number): number {
+    const value = Number.parseFloat(stage?.style.getPropertyValue(propertyName) ?? '');
+    return Number.isFinite(value) && value > 0 ? value : fallback;
   }
 
   private hideLaneSurface(laneIndex: number, reason: string): void {

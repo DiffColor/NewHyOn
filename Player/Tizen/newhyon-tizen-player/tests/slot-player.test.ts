@@ -150,7 +150,7 @@ describe('SlotPlayer', () => {
     await slot.start();
 
     expect(element.classList.contains('slot--video-active')).toBe(true);
-    expect(play.mock.calls[0]?.[5]).toMatchObject({ waitForFirstFrame: true });
+    expect(play.mock.calls[0]?.[5]).toMatchObject({ waitForFirstFrame: false });
 
     slot.stop();
     expect(element.classList.contains('slot--video-active')).toBe(false);
@@ -419,7 +419,7 @@ describe('SlotPlayer', () => {
     expect(play).toHaveBeenCalledTimes(2);
   });
 
-  it('영상에서 영상으로 이어질 때는 현재 영상 재생 중 다음 영상을 prepare하지 않는다', async () => {
+  it('영상에서 영상으로 이어질 때는 현재 영상 재생 중 다음 영상을 prepare한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn(async (..._args: unknown[]) => undefined);
     const prepare = vi.fn(async (..._args: unknown[]) => undefined);
@@ -439,13 +439,15 @@ describe('SlotPlayer', () => {
     await vi.runAllTicks();
 
     expect(play).toHaveBeenCalledTimes(1);
-    expect(prepare).not.toHaveBeenCalled();
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(prepare.mock.calls[0]?.[0]).toMatchObject({ id: 'second.mp4' });
 
     await slot.syncToPageElapsed(10000);
     expect(play).toHaveBeenCalledTimes(2);
-    expect(prepare).not.toHaveBeenCalled();
-    expect(play.mock.calls[0]?.[5]).toMatchObject({ waitForFirstFrame: true });
-    expect(play.mock.calls[1]?.[5]).toMatchObject({ waitForFirstFrame: true });
+    expect(prepare).toHaveBeenCalledTimes(2);
+    expect(prepare.mock.calls[1]?.[0]).toMatchObject({ id: 'first.mp4' });
+    expect(play.mock.calls[0]?.[5]).toMatchObject({ waitForFirstFrame: false });
+    expect(play.mock.calls[1]?.[5]).toMatchObject({ waitForFirstFrame: false });
   });
 
   it('현재 콘텐츠 종료 후 전환 설정이 켜지면 영상 종료 이벤트로 다음 콘텐츠를 재생한다', async () => {

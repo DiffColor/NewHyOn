@@ -289,20 +289,6 @@ body {
   pointer-events: none;
 }
 
-.pair-scheduler-avplay {
-  display: block;
-}
-
-.pair-scheduler-image {
-  position: absolute;
-  display: block;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  background: #000;
-  pointer-events: none;
-}
-
 .empty-intro-video {
   position: absolute;
   inset: 0;

@@ -210,7 +210,7 @@ describe('AvplaySession', () => {
     expect(playerB.setVideoStillMode).toHaveBeenCalledWith('false');
   });
 
-  it('전환 중 현재 lane을 이전 still lane보다 위에 둔다', async () => {
+  it('전환 후 현재 lane만 위에 두고 이전 lane은 숨긴다', async () => {
     const host = document.createElement('div');
     const slotElement = document.createElement('section');
     const playerA = createPlayer();
@@ -232,11 +232,15 @@ describe('AvplaySession', () => {
     await session.play(createVideoItem('first.mp4'), slotPlan, slotElement, false, vi.fn());
     await session.play(createVideoItem('second.mp4'), slotPlan, slotElement, false, vi.fn());
     expect(laneB.style.zIndex).toBe('22');
-    expect(laneA.style.zIndex).toBe('21');
+    expect(laneB.style.visibility).toBe('visible');
+    expect(laneA.style.zIndex).toBe('19');
+    expect(laneA.style.visibility).toBe('hidden');
 
     await session.play(createVideoItem('third.mp4'), slotPlan, slotElement, false, vi.fn());
     expect(laneA.style.zIndex).toBe('22');
-    expect(laneB.style.zIndex).toBe('21');
+    expect(laneA.style.visibility).toBe('visible');
+    expect(laneB.style.zIndex).toBe('19');
+    expect(laneB.style.visibility).toBe('hidden');
   });
 
   it('영상 전환 시 다음 lane 준비 전에는 현재 lane을 멈추지 않고 play 후 이전 lane을 정지한다', async () => {

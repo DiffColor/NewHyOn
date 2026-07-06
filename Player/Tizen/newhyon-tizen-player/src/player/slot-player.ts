@@ -498,7 +498,7 @@ export class SlotPlayer {
         }
         const nextVideoSession = this.videoSession ?? this.getVideoSession();
         const playbackInfo = await nextVideoSession.play(item, this.slot, this.element, this.preserveAspectRatio, () => this.handleVideoEnded(item.id), {
-          waitForFirstFrame: true,
+          waitForFirstFrame: false,
         });
         if (!this.isContentGenerationCurrent(generation)) {
           return false;
@@ -828,10 +828,6 @@ export class SlotPlayer {
     }
 
     if (this.preparedItemIndex === target.itemIndex || this.preparePromise) {
-      return;
-    }
-
-    if (currentItem.contentType === 'Video' && target.item.contentType === 'Video') {
       return;
     }
 

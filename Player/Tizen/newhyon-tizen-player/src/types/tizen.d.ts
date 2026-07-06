@@ -302,7 +302,7 @@ declare global {
     setListener(listener: AVPlayListener): void;
     setDisplayRect(left: number, top: number, width: number, height: number): void;
     setDisplayMethod?(method: string): void;
-    setStreamingProperty?(name: string, value: string): void;
+    setStreamingProperty?(name: string, value?: string): void;
     setTimeoutForBuffering?(seconds: number): void;
     setLooping?(isLooping: boolean): void;
     setVideoStillMode?(mode: string): void;
