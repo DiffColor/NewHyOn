@@ -53,9 +53,6 @@ export class SlotPlayer {
   private switchingItem = false;
   private videoSession: AvplaySessionPair | null = null;
   private failureMessage: string | null = null;
-  private preparedItemIndex: number | null = null;
-  private preparedItemId: string | null = null;
-  private preparePromise: Promise<void> | null = null;
   private preparedImageId: string | null = null;
   private preparedImagePromise: Promise<void> | null = null;
   private preparedImageElement: HTMLImageElement | null = null;
@@ -145,8 +142,6 @@ export class SlotPlayer {
       if (this.preparedImageId !== incomingStartItem.id) {
         this.clearPreparedImage();
       }
-    } else if (this.preparedItemId !== incomingStartItem.id) {
-      this.clearPreparedContent();
     }
     this.slot = slot;
     this.applyLayout(canvasWidth, canvasHeight);
@@ -454,7 +449,6 @@ export class SlotPlayer {
       let releaseBeforePrepareNext: Promise<void> | null = null;
       if (item.contentType === 'Image') {
         const hasActiveVideoSurface = this.videoSession !== null;
-        const keepPreparedVideo = this.hasPreparedUpcomingVideo();
         let videoSurfaceHidden = false;
         let visiblePaintPromise: Promise<void> = Promise.resolve();
         const hideActiveVideoSurface = () => {
@@ -462,7 +456,7 @@ export class SlotPlayer {
             return;
           }
 
-          this.hideCurrentVideoSurface(keepPreparedVideo);
+          this.hideCurrentVideoSurface(false);
           videoSurfaceHidden = true;
         };
         await this.showImage(item, {
@@ -486,16 +480,11 @@ export class SlotPlayer {
         }
         if (hasActiveVideoSurface) {
           releaseBeforePrepareNext = visiblePaintPromise.then(() => this.releaseCurrentVideoSession({
-            keepPrepared: keepPreparedVideo,
+            keepPrepared: false,
           }));
         }
       } else {
         this.element.classList.add('slot--video-active');
-        if (this.preparedItemId === item.id && this.preparePromise) {
-          const waitStartedAt = performance.now();
-          await this.preparePromise;
-          this.logger.info('avplay', `slot ${this.slotIndex + 1} prepared video wait: ${item.name} +${this.elapsed(waitStartedAt)}ms`);
-        }
         const nextVideoSession = this.videoSession ?? this.getVideoSession();
         const playbackInfo = await nextVideoSession.play(item, this.slot, this.element, this.preserveAspectRatio, () => this.handleVideoEnded(item.id), {
           waitForFirstFrame: false,
@@ -508,9 +497,6 @@ export class SlotPlayer {
         this.currentVideoLoopState = null;
         this.updateCurrentVideoLoopState(item, true);
         this.hideImages();
-        if (this.preparedItemId === item.id) {
-          this.clearPreparedContent();
-        }
         this.prepareNextImageForCurrentVideo(generation);
       }
       this.onContentShown(this.slotIndex, item);
@@ -827,16 +813,12 @@ export class SlotPlayer {
       return;
     }
 
-    if (this.preparedItemIndex === target.itemIndex || this.preparePromise) {
+    if (target.item.contentType !== 'Image') {
       return;
     }
 
-    const preparePromise = target.item.contentType === 'Image'
-      ? this.prepareImageContent(target.item, { underVideo: currentItem.contentType === 'Video' })
-      : this.prepareVideoContentForSlotPlan(target.item, target.itemIndex, target.slot);
-
     try {
-      await preparePromise;
+      await this.prepareImageContent(target.item, { underVideo: currentItem.contentType === 'Video' });
       if (!this.isContentGenerationCurrent(generation)) {
         return;
       }
@@ -894,37 +876,6 @@ export class SlotPlayer {
     void this.prepareImageContent(nextItem, { underVideo: true }).catch(() => {
       // 전환 경로에서 다시 준비하고 실패를 확정 로그로 남긴다.
     });
-  }
-
-  private prepareVideoContentForSlotPlan(item: SeamlessContentItem, itemIndex: number, slot: SeamlessSlotPlan): Promise<void> {
-    if (this.preparedItemId === item.id && this.preparePromise) {
-      return this.preparePromise;
-    }
-
-    this.clearPreparedContent();
-    this.preparedItemIndex = itemIndex;
-    this.preparedItemId = item.id;
-    this.preparePromise = this.prepareVideoContent(item, slot).catch((error) => {
-      this.clearPreparedContent();
-      this.logger.warn('slot', `slot ${this.slotIndex + 1} 다음 영상 준비 실패: ${String(error)}`);
-      throw error;
-    });
-    return this.preparePromise;
-  }
-
-  private async prepareVideoContent(item: SeamlessContentItem, slot: SeamlessSlotPlan): Promise<void> {
-    const existingSession = this.videoSession;
-    const session = existingSession ?? this.getVideoSession();
-    this.videoSession = session;
-    try {
-      const playbackInfo = await session.prepare(item, slot, this.element, this.preserveAspectRatio);
-      this.recordVideoDuration(item, playbackInfo?.durationMs ?? null);
-    } catch (error) {
-      if (!existingSession && this.videoSession === session) {
-        this.releaseCurrentVideoSession();
-      }
-      throw error;
-    }
   }
 
   private resolvePreparedContentTarget(): NextContentTarget | null {
@@ -1038,9 +989,6 @@ export class SlotPlayer {
   }
 
   private clearPreparedContent(): void {
-    this.preparedItemIndex = null;
-    this.preparedItemId = null;
-    this.preparePromise = null;
     this.videoSession?.clearPrepared?.();
     if (this.currentItem()?.contentType !== 'Video') {
       this.releaseCurrentVideoSession();
@@ -1141,16 +1089,6 @@ export class SlotPlayer {
         window.cancelAnimationFrame(animationFrameId);
       }
     };
-  }
-
-  private hasPreparedUpcomingVideo(): boolean {
-    if (this.preparedItemId === null) {
-      return false;
-    }
-
-    const nextIndex = this.canAdvanceContent() ? this.findNextPlayableIndex(this.itemIndex) : null;
-    const nextItem = nextIndex !== null ? this.slot.items[nextIndex] ?? null : null;
-    return nextItem?.contentType === 'Video' && nextItem.id === this.preparedItemId;
   }
 
   private hideCurrentVideoSurface(keepPrepared: boolean): void {

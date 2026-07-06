@@ -798,7 +798,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(play).toHaveBeenCalledTimes(1);
     expect(getPlayer).toHaveBeenCalledTimes(4);
     expect(players[0]?.prepareAsync).toHaveBeenCalledTimes(1);
-    expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
+    expect(players[1]?.prepareAsync).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(6499);
     await Promise.resolve();
@@ -806,7 +806,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelectorAll('.slot')).toHaveLength(1);
     expect(play).toHaveBeenCalledTimes(1);
     expect(getPlayer).toHaveBeenCalledTimes(4);
-    expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
+    expect(players[1]?.prepareAsync).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(3501);
     await vi.advanceTimersByTimeAsync(64);
@@ -872,7 +872,7 @@ describe('NewHyOnPlayerApp', () => {
     app.destroy();
   });
 
-  it('MixedFrame 슬롯은 다음 AVPlay를 같은 display rect에서 준비한다', async () => {
+  it('MixedFrame 슬롯은 다음 AVPlay를 사전 준비하지 않고 전환 시 display rect를 적용한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn();
     const listeners: AVPlayListener[] = [];
@@ -904,20 +904,26 @@ describe('NewHyOnPlayerApp', () => {
     await app.start();
     const width = window.innerWidth;
     const height = window.innerHeight;
+    expect(players[0]?.setDisplayRect).toHaveBeenLastCalledWith(0, 0, width, height);
+    expect(players[0]?.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');
+    expect(players[0]?.setStreamingProperty).toHaveBeenCalledWith('SET_MIXEDFRAME');
+    expect(players[1]?.setDisplayRect).not.toHaveBeenCalled();
+    expect(players[1]?.setStreamingProperty).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(10000);
+    listeners[0]?.onstreamcompleted?.();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.runAllTicks();
+    await Promise.resolve();
+    await Promise.resolve();
     expect(players[1]?.setDisplayRect).toHaveBeenLastCalledWith(0, 0, width, height);
     expect(players[1]?.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');
     expect(players[1]?.setStreamingProperty).toHaveBeenCalledWith('SET_MIXEDFRAME');
-    const preparedPlayerSetDisplayRect = players[1]?.setDisplayRect as unknown as { mock: { calls: number[][] } };
-    const preparedPlayerRectCallCount = preparedPlayerSetDisplayRect.mock.calls.length;
 
     await vi.advanceTimersByTimeAsync(10000);
-    listeners.forEach((listener) => listener.oncurrentplaytime?.(0));
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(players[1]?.setDisplayRect).toHaveBeenCalledTimes(preparedPlayerRectCallCount);
-
-    await vi.advanceTimersByTimeAsync(10000);
-    listeners.forEach((listener) => listener.oncurrentplaytime?.(0));
+    listeners[1]?.onstreamcompleted?.();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.runAllTicks();
     await Promise.resolve();
     await Promise.resolve();
 

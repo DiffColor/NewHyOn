@@ -419,13 +419,11 @@ describe('SlotPlayer', () => {
     expect(play).toHaveBeenCalledTimes(2);
   });
 
-  it('영상에서 영상으로 이어질 때는 현재 영상 재생 중 다음 영상을 prepare한다', async () => {
+  it('영상에서 영상으로 이어질 때는 사전 prepare 없이 전환 시점에 다음 영상을 재생한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn(async (..._args: unknown[]) => undefined);
-    const prepare = vi.fn(async (..._args: unknown[]) => undefined);
     const session = {
       play,
-      prepare,
       pause: vi.fn(),
       resume: vi.fn(),
       stop: vi.fn(),
@@ -439,13 +437,10 @@ describe('SlotPlayer', () => {
     await vi.runAllTicks();
 
     expect(play).toHaveBeenCalledTimes(1);
-    expect(prepare).toHaveBeenCalledTimes(1);
-    expect(prepare.mock.calls[0]?.[0]).toMatchObject({ id: 'second.mp4' });
 
     await slot.syncToPageElapsed(10000);
     expect(play).toHaveBeenCalledTimes(2);
-    expect(prepare).toHaveBeenCalledTimes(2);
-    expect(prepare.mock.calls[1]?.[0]).toMatchObject({ id: 'first.mp4' });
+    expect(play.mock.calls[1]?.[0]).toMatchObject({ id: 'second.mp4' });
     expect(play.mock.calls[0]?.[5]).toMatchObject({ waitForFirstFrame: false });
     expect(play.mock.calls[1]?.[5]).toMatchObject({ waitForFirstFrame: false });
   });
@@ -738,10 +733,8 @@ describe('SlotPlayer', () => {
 
     try {
       const play = vi.fn(async (..._args: unknown[]) => undefined);
-      const prepare = vi.fn(async (..._args: unknown[]) => undefined);
       const session = {
         play,
-        prepare,
         clearPrepared: vi.fn(),
         pause: vi.fn(),
         resume: vi.fn(),
@@ -765,8 +758,6 @@ describe('SlotPlayer', () => {
       await startPromise;
 
       expect(slot.snapshot()).toContain('first.png');
-      expect(prepare).toHaveBeenCalledTimes(1);
-      expect((prepare.mock.calls[0]?.[0] as SeamlessContentItem).name).toBe('second.mp4');
 
       await slot.syncToPageElapsed(10000);
       await vi.runAllTicks();
@@ -1541,13 +1532,8 @@ describe('SlotPlayer', () => {
 
     try {
       const callOrder: string[] = [];
-      const prepare = vi.fn(async (..._args: unknown[]) => {
-        callOrder.push('prepare');
-        return undefined;
-      });
       const session = {
         play: vi.fn(async () => undefined),
-        prepare,
         clearPrepared: vi.fn(),
         hide: vi.fn(() => {
           callOrder.push('hide');
@@ -1574,20 +1560,16 @@ describe('SlotPlayer', () => {
       );
 
       await slot.start();
-      expect(session.prepare).not.toHaveBeenCalled();
 
       await slot.syncToPageElapsed(10000);
       await vi.runAllTicks();
 
       expect(slot.snapshot()).toContain('second.png (IMAGE)');
-      expect(session.prepare).not.toHaveBeenCalled();
       expect(callOrder).toEqual(['hide']);
       await vi.runOnlyPendingTimersAsync();
       await vi.runOnlyPendingTimersAsync();
       await vi.runAllTicks();
-      expect(prepare).toHaveBeenCalledTimes(1);
-      expect((prepare.mock.calls[0]?.[0] as SeamlessContentItem).name).toBe('third.mp4');
-      expect(callOrder).toEqual(['hide', 'stop', 'prepare']);
+      expect(callOrder).toEqual(['hide', 'stop']);
     } finally {
       if (descriptor) {
         Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
