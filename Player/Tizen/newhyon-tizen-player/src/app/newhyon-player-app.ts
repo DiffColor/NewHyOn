@@ -2041,16 +2041,16 @@ export class NewHyOnPlayerApp {
 
     const fallbackPlaylistName = this.currentContentManifest.playlistName;
     const decision = evaluateRemoteSchedule(snapshot, new Date(nowMs), fallbackPlaylistName);
-    const lookaheadDecision = evaluateRemoteSchedule(snapshot, new Date(nowMs + SCHEDULE_PREPARE_LOOKAHEAD_MS), fallbackPlaylistName);
     if (
-      lookaheadDecision.nextSwitchAtMs > 0
-      && lookaheadDecision.nextSwitchAtMs <= nowMs + SCHEDULE_PREPARE_LOOKAHEAD_MS
-      && lookaheadDecision.nextPlaylistName
+      decision.nextSwitchAtMs > 0
+      && decision.nextSwitchAtMs <= nowMs + SCHEDULE_PREPARE_LOOKAHEAD_MS
+      && decision.nextPlaylistName
     ) {
       this.logger.debug(
         'schedule',
-        `예약 스케줄 lookahead: ${new Date(lookaheadDecision.nextSwitchAtMs).toISOString()} -> ${lookaheadDecision.nextPlaylistName}`,
+        `예약 스케줄 lookahead: ${new Date(decision.nextSwitchAtMs).toISOString()} -> ${decision.nextPlaylistName}`,
       );
+      this.prepareRemoteScheduleLookahead(snapshot, decision);
     }
 
     const activeKey = decision.isFromSchedule ? decision.playlistName : null;
@@ -2134,6 +2134,54 @@ export class NewHyOnPlayerApp {
     this.activeRemoteSchedulePlaylistName = decision.playlistName;
     this.setMessage(`예약 스케줄 적용: ${decision.playlistName}`);
     this.logger.info('schedule', `예약 스케줄 적용: playlist=${decision.playlistName}, schedule=${decision.scheduleId || '-'}`);
+  }
+
+  private prepareRemoteScheduleLookahead(
+    snapshot: RemoteScheduleSnapshot,
+    decision: RemoteScheduleDecision,
+  ): void {
+    if (!this.playing || this.slotPlayers.length === 0 || !decision.nextPlaylistName) {
+      return;
+    }
+
+    const manifest = this.resolveRemoteScheduleLookaheadManifest(snapshot, decision.nextPlaylistName);
+    if (!manifest) {
+      return;
+    }
+
+    const pagePlans = this.createContentPagePlans(manifest);
+    const firstPage = pagePlans[0];
+    if (!firstPage) {
+      return;
+    }
+
+    this.slotPlayers.forEach((slotPlayer, playerIndex) => {
+      const logicalSlotIndex = this.slotPlayerLogicalSlotIndexes[playerIndex] ?? playerIndex;
+      slotPlayer.setLogicalNextContentTarget(
+        this.resolveLogicalNextContentTarget(firstPage.slots[logicalSlotIndex] ?? null),
+        { prepareNow: true },
+      );
+    });
+  }
+
+  private resolveRemoteScheduleLookaheadManifest(
+    snapshot: RemoteScheduleSnapshot,
+    playlistName: string,
+  ): RuntimeConfig['manifest'] | null {
+    const normalizedPlaylistName = playlistName.trim().toLowerCase();
+    if (!normalizedPlaylistName) {
+      return null;
+    }
+
+    if (normalizedPlaylistName === this.currentContentManifest.playlistName.trim().toLowerCase()) {
+      return this.currentContentManifest;
+    }
+
+    return buildManifestFromRemoteSchedulePlaylist(
+      snapshot,
+      playlistName,
+      this.config.manifest.preserveAspectRatio,
+    );
   }
 
   private stopSlots(): void {

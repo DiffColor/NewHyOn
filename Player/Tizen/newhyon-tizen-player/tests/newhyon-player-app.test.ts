@@ -817,8 +817,8 @@ describe('NewHyOnPlayerApp', () => {
     expect(play).toHaveBeenCalledTimes(1);
     expect(getPlayer).toHaveBeenCalledTimes(4);
     expect(players[0]?.prepare).toHaveBeenCalledTimes(1);
-    expect(players[1]?.prepare).not.toHaveBeenCalled();
-    expect(players[1]?.setDisplayRect).not.toHaveBeenCalled();
+    expect(players[1]?.prepare).toHaveBeenCalledTimes(1);
+    expect(players[1]?.setDisplayRect).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(6499);
     await Promise.resolve();
@@ -826,7 +826,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelectorAll('.slot')).toHaveLength(1);
     expect(play).toHaveBeenCalledTimes(1);
     expect(getPlayer).toHaveBeenCalledTimes(4);
-    expect(players[1]?.prepare).not.toHaveBeenCalled();
+    expect(players[1]?.prepare).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(3501);
     await vi.advanceTimersByTimeAsync(64);
@@ -889,7 +889,7 @@ describe('NewHyOnPlayerApp', () => {
     app.destroy();
   });
 
-  it('영상 슬롯은 다음 AVPlay를 사전 준비하지 않고 전환 시점에 준비한다', async () => {
+  it('영상 슬롯은 다음 AVPlay를 사전 준비하고 전환 시점에 준비 lane을 사용한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn();
     const listeners: AVPlayListener[] = [];
@@ -920,8 +920,8 @@ describe('NewHyOnPlayerApp', () => {
     const height = window.innerHeight;
     expect(players[0]?.setDisplayRect).toHaveBeenLastCalledWith(0, 0, width, height);
     expect(players[0]?.setStreamingProperty).not.toHaveBeenCalled();
-    expect(players[1]?.setDisplayRect).not.toHaveBeenCalled();
-    expect(players[1]?.prepare).not.toHaveBeenCalled();
+    expect(players[1]?.setDisplayRect).toHaveBeenCalledTimes(1);
+    expect(players[1]?.prepare).toHaveBeenCalledTimes(1);
     expect(players[1]?.setStreamingProperty).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(10000);
@@ -931,7 +931,7 @@ describe('NewHyOnPlayerApp', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(players[1]?.prepare).toHaveBeenCalledTimes(1);
-    expect(players[1]?.setDisplayRect).toHaveBeenCalledTimes(1);
+    expect(players[1]?.setDisplayRect).toHaveBeenCalledTimes(2);
     expect(players[1]?.setDisplayRect).toHaveBeenLastCalledWith(0, 0, width, height);
     expect(players[1]?.setStreamingProperty).not.toHaveBeenCalled();
 
@@ -1078,7 +1078,7 @@ describe('NewHyOnPlayerApp', () => {
     }
   });
 
-  it('예약 스케줄 lookahead는 현재 재생 슬롯에 예약 이미지 콘텐츠를 준비하지 않는다', async () => {
+  it('예약 스케줄 lookahead는 현재 재생 슬롯에 예약 첫 이미지 콘텐츠를 준비한다', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 22, 9, 0, 56));
     const loadedSources: string[] = [];
@@ -1185,9 +1185,9 @@ describe('NewHyOnPlayerApp', () => {
       await vi.runAllTicks();
 
       expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
-      expect(loadedSources.some((source) => source.includes('future-scheduled.png'))).toBe(false);
+      expect(loadedSources.some((source) => source.includes('future-scheduled.png'))).toBe(true);
       expect(Array.from(document.querySelectorAll<HTMLImageElement>('.slot-image'))
-        .some((image) => image.getAttribute('src')?.includes('future-scheduled.png'))).toBe(false);
+        .some((image) => image.getAttribute('src')?.includes('future-scheduled.png') && image.classList.contains('slot-image--prepared'))).toBe(true);
       app.destroy();
     } finally {
       if (srcDescriptor) {

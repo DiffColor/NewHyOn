@@ -18,6 +18,10 @@ interface NextContentTarget {
   readonly slot: SeamlessSlotPlan;
 }
 
+interface LogicalNextContentTargetOptions {
+  readonly prepareNow?: boolean;
+}
+
 const VIDEO_DURATION_MATCH_TOLERANCE_MS = 1000;
 const PAGE_END_VIDEO_COMPLETION_GRACE_MS = 1000;
 const IMAGE_MAIN_THREAD_GAP_WARN_MS = 250;
@@ -212,8 +216,11 @@ export class SlotPlayer {
     }
   }
 
-  setLogicalNextContentTarget(target: NextContentTarget | null): void {
+  setLogicalNextContentTarget(target: NextContentTarget | null, options: LogicalNextContentTargetOptions = {}): void {
     this.logicalNextContentTarget = target;
+    if (target && options.prepareNow === true && this.active) {
+      void this.prepareNextContent();
+    }
   }
 
   stop(): void {
@@ -883,7 +890,14 @@ export class SlotPlayer {
   }
 
   private prepareVideoContent(item: SeamlessContentItem, currentItem: SeamlessContentItem, role: AvplayPreparedRole): void {
-    this.logger.info('slot', `slot ${this.slotIndex + 1} 다음 영상 사전 준비 생략: current=${currentItem.contentType}:${currentItem.name} next=${item.name} role=${role}`);
+    try {
+      const session = this.videoSession ?? this.getVideoSession();
+      session.prepareNextVideo(item, role);
+      this.videoSession = session;
+      this.logger.info('slot', `slot ${this.slotIndex + 1} 다음 영상 사전 준비: current=${currentItem.contentType}:${currentItem.name} next=${item.name} role=${role}`);
+    } catch (error) {
+      this.logger.warn('slot', `slot ${this.slotIndex + 1} 다음 영상 사전 준비 실패: current=${currentItem.contentType}:${currentItem.name} next=${item.name} role=${role} error=${String(error)}`);
+    }
   }
 
   private imageElementForPreparation(item: SeamlessContentItem): HTMLImageElement {
