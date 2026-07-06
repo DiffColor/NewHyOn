@@ -15,6 +15,7 @@ function createPlayer(): AVPlayApi {
     setListener: vi.fn(),
     setDisplayRect: vi.fn(),
     setDisplayMethod: vi.fn(),
+    setStreamingProperty: vi.fn(),
     setVideoStillMode: vi.fn(),
     setLooping: vi.fn(),
     disableAudioStream: vi.fn(),
@@ -278,6 +279,73 @@ describe('AvplaySession', () => {
 
     expect(callOrder).toEqual(['a.stop', 'b.prepare', 'b.play']);
     expect(playerB.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('사전 준비된 영상 lane은 전환 시 open/prepare를 건너뛰고 mixedframe 후 play한다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    const callOrder: string[] = [];
+    let playerAState = 'IDLE';
+    let playerBState = 'IDLE';
+    playerA.getState = vi.fn(() => playerAState);
+    playerB.getState = vi.fn(() => playerBState);
+    playerA.play = vi.fn(() => {
+      callOrder.push('a.play');
+      playerAState = 'PLAYING';
+    });
+    playerA.stop = vi.fn(() => {
+      callOrder.push('a.stop');
+      playerAState = 'IDLE';
+    });
+    playerB.open = vi.fn(() => {
+      callOrder.push('b.open');
+      playerBState = 'IDLE';
+    });
+    playerB.prepare = vi.fn(() => {
+      callOrder.push('b.prepare');
+      playerBState = 'READY';
+    });
+    playerB.setStreamingProperty = vi.fn((name, value) => {
+      callOrder.push(value ? `b.${name}:${value}` : `b.${name}`);
+    });
+    playerB.setDisplayRect = vi.fn(() => {
+      callOrder.push('b.rect');
+    });
+    playerB.play = vi.fn(() => {
+      callOrder.push('b.play');
+      playerBState = 'PLAYING';
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+    const slot = createSlotPlan();
+    const slotElement = document.createElement('section');
+
+    await session.play(createVideoItem('first.mp4'), slot, slotElement, false, vi.fn());
+    callOrder.length = 0;
+
+    session.prepareNextVideo(createVideoItem('second.mp4'));
+    expect(callOrder).toEqual([
+      'b.open',
+      'b.USE_VIDEOMIXER',
+      'b.prepare',
+    ]);
+    callOrder.length = 0;
+
+    await session.play(createVideoItem('second.mp4'), slot, slotElement, false, vi.fn());
+
+    expect(callOrder).toEqual([
+      'b.SET_MIXEDFRAME',
+      'b.rect',
+      'b.play',
+      'a.stop',
+    ]);
+    expect(playerB.open).toHaveBeenCalledTimes(1);
+    expect(playerB.prepare).toHaveBeenCalledTimes(1);
   });
 
   it('종료 이벤트 핸들러가 완료를 보류하면 현재 lane을 stop하지 않는다', async () => {

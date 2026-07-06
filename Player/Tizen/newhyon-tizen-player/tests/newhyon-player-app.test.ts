@@ -66,6 +66,28 @@ function createPlayer(play: () => void, onListener?: (listener: AVPlayListener) 
   };
 }
 
+function createStatefulStorePlayer(play: () => void, onListener?: (listener: AVPlayListener) => void): AVPlayApi {
+  let state = 'NONE';
+  const player = createPlayer(() => {
+    state = 'PLAYING';
+    play();
+  }, onListener);
+  player.open = vi.fn(() => {
+    state = 'IDLE';
+  });
+  player.prepare = vi.fn(() => {
+    state = 'READY';
+  });
+  player.stop = vi.fn(() => {
+    state = 'IDLE';
+  });
+  player.close = vi.fn(() => {
+    state = 'NONE';
+  });
+  player.getState = vi.fn(() => state);
+  return player;
+}
+
 function createWebApis(
   avplay: AVPlayApi,
   setPanelMute = vi.fn(),
@@ -770,10 +792,7 @@ describe('NewHyOnPlayerApp', () => {
     const play = vi.fn();
     const players: AVPlayApi[] = [];
     const getPlayer = vi.fn(() => {
-      const player = {
-        ...createPlayer(play),
-        getState: vi.fn(() => 'PLAYING'),
-      };
+      const player = createStatefulStorePlayer(play);
       players.push(player);
       return player;
     });
@@ -798,7 +817,8 @@ describe('NewHyOnPlayerApp', () => {
     expect(play).toHaveBeenCalledTimes(1);
     expect(getPlayer).toHaveBeenCalledTimes(4);
     expect(players[0]?.prepare).toHaveBeenCalledTimes(1);
-    expect(players[1]?.prepare).not.toHaveBeenCalled();
+    expect(players[1]?.prepare).toHaveBeenCalledTimes(1);
+    expect(players[1]?.setDisplayRect).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(6499);
     await Promise.resolve();
@@ -806,7 +826,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelectorAll('.slot')).toHaveLength(1);
     expect(play).toHaveBeenCalledTimes(1);
     expect(getPlayer).toHaveBeenCalledTimes(4);
-    expect(players[1]?.prepare).not.toHaveBeenCalled();
+    expect(players[1]?.prepare).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(3501);
     await vi.advanceTimersByTimeAsync(64);
@@ -825,10 +845,7 @@ describe('NewHyOnPlayerApp', () => {
     vi.useFakeTimers();
     const play = vi.fn();
     const listeners: AVPlayListener[] = [];
-    const getPlayer = vi.fn(() => ({
-      ...createPlayer(play, (listener) => listeners.push(listener)),
-      getState: vi.fn(() => 'PLAYING'),
-    }));
+    const getPlayer = vi.fn(() => createStatefulStorePlayer(play, (listener) => listeners.push(listener)));
     window.webapis = createWebApis(createPlayer(play), vi.fn(), { getPlayer });
 
     const app = new NewHyOnPlayerApp({
@@ -872,16 +889,13 @@ describe('NewHyOnPlayerApp', () => {
     app.destroy();
   });
 
-  it('MixedFrame 슬롯은 다음 AVPlay를 사전 준비하지 않고 전환 시 display rect를 적용한다', async () => {
+  it('MixedFrame 슬롯은 다음 AVPlay를 READY까지 사전 준비하고 전환 시 display rect를 적용한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn();
     const listeners: AVPlayListener[] = [];
     const players: AVPlayApi[] = [];
     const getPlayer = vi.fn(() => {
-      const player = {
-        ...createPlayer(play, (listener) => listeners.push(listener)),
-        getState: vi.fn(() => 'PLAYING'),
-      };
+      const player = createStatefulStorePlayer(play, (listener) => listeners.push(listener));
       players.push(player);
       return player;
     });
@@ -908,7 +922,9 @@ describe('NewHyOnPlayerApp', () => {
     expect(players[0]?.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');
     expect(players[0]?.setStreamingProperty).toHaveBeenCalledWith('SET_MIXEDFRAME');
     expect(players[1]?.setDisplayRect).not.toHaveBeenCalled();
-    expect(players[1]?.setStreamingProperty).not.toHaveBeenCalled();
+    expect(players[1]?.prepare).toHaveBeenCalledTimes(1);
+    expect(players[1]?.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');
+    expect(players[1]?.setStreamingProperty).not.toHaveBeenCalledWith('SET_MIXEDFRAME');
 
     await vi.advanceTimersByTimeAsync(10000);
     listeners[0]?.onstreamcompleted?.();
@@ -916,11 +932,9 @@ describe('NewHyOnPlayerApp', () => {
     await vi.runAllTicks();
     await Promise.resolve();
     await Promise.resolve();
-    expect(players[0]?.setDisplayRect).toHaveBeenCalledTimes(2);
-    expect(players[0]?.setDisplayRect).toHaveBeenLastCalledWith(0, 0, width, height);
-    expect(players[0]?.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');
-    expect(players[0]?.setStreamingProperty).toHaveBeenCalledWith('SET_MIXEDFRAME');
-    expect(players[1]?.setDisplayRect).not.toHaveBeenCalled();
+    expect(players[1]?.setDisplayRect).toHaveBeenCalledTimes(1);
+    expect(players[1]?.setDisplayRect).toHaveBeenLastCalledWith(0, 0, width, height);
+    expect(players[1]?.setStreamingProperty).toHaveBeenCalledWith('SET_MIXEDFRAME');
 
     await vi.advanceTimersByTimeAsync(10000);
     listeners[1]?.onstreamcompleted?.();

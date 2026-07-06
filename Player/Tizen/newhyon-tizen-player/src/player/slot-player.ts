@@ -819,6 +819,11 @@ export class SlotPlayer {
       return;
     }
 
+    if (target.item.contentType === 'Video') {
+      this.prepareVideoContent(target.item, currentItem);
+      return;
+    }
+
     if (target.item.contentType !== 'Image') {
       return;
     }
@@ -848,6 +853,18 @@ export class SlotPlayer {
       throw error;
     });
     return this.preparedImagePromise;
+  }
+
+  private prepareVideoContent(item: SeamlessContentItem, currentItem: SeamlessContentItem): void {
+    if (currentItem.contentType !== 'Video' || !this.videoSession || typeof this.videoSession.prepareNextVideo !== 'function') {
+      return;
+    }
+
+    try {
+      this.videoSession.prepareNextVideo(item);
+    } catch (error) {
+      this.logger.warn('slot', `slot ${this.slotIndex + 1} 다음 영상 준비 실패: ${String(error)}`);
+    }
   }
 
   private imageElementForPreparation(item: SeamlessContentItem): HTMLImageElement {
