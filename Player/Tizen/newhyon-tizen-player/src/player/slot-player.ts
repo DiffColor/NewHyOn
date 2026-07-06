@@ -424,15 +424,28 @@ export class SlotPlayer {
       item = this.currentItem();
     }
 
-    if (item?.contentType === 'Video') {
-      this.updateCurrentVideoLoopState(item);
-    }
-    if (!this.active || this.slot.items.length <= 1 || this.switchingItem || (item && this.shouldWaitForVideoEnd(item))) {
+    if (!this.active || this.slot.items.length <= 1 || this.switchingItem) {
       return;
     }
 
     const target = this.resolveTimelineItem(pageElapsedMs);
-    if (!target || target.itemIndex === this.itemIndex) {
+    if (item?.contentType === 'Video') {
+      this.updateCurrentVideoLoopState(item);
+      const timelineMovesToAnotherItem = target !== null && target.itemIndex !== this.itemIndex;
+      if (this.shouldWaitForVideoEnd(item) && !(loopCurrentPageAtPageEnd && timelineMovesToAnotherItem)) {
+        return;
+      }
+    }
+
+    if (!target) {
+      const item = this.currentItem();
+      if (item) {
+        this.startPassiveItemClock(item, this.currentItemTimelineElapsedMilliseconds(item));
+      }
+      return;
+    }
+
+    if (target.itemIndex === this.itemIndex) {
       const item = this.currentItem();
       if (item) {
         this.startPassiveItemClock(item, target?.itemElapsedMs ?? this.currentItemTimelineElapsedMilliseconds(item));

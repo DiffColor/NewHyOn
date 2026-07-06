@@ -820,6 +820,71 @@ describe('SlotPlayer', () => {
     expect(play).toHaveBeenCalledTimes(1);
   });
 
+  it('단일 페이지 루프에서는 영상 종료 대기보다 페이지 타임라인을 우선해 첫 컨텐츠로 돌아간다', async () => {
+    vi.useFakeTimers();
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      configurable: true,
+      get() {
+        return this.getAttribute('src') ?? '';
+      },
+      set(value: string) {
+        this.setAttribute('src', value);
+        queueMicrotask(() => this.onload?.(new Event('load')));
+      },
+    });
+
+    try {
+      const play = vi.fn(async () => undefined);
+      const session = {
+        play,
+        pause: vi.fn(),
+        resume: vi.fn(),
+        stop: vi.fn(),
+        state: vi.fn(() => 'PLAYING'),
+        applyDisplayRect: vi.fn(),
+        clearPrepared: vi.fn(),
+      } as unknown as AvplaySession;
+      const slot = new SlotPlayer(
+        0,
+        document.createElement('section'),
+        {
+          ...createImageThenVideoSlot(),
+          items: [
+            { ...createImageItem('first.png'), durationSeconds: 5, actualDurationSeconds: 5 },
+            { ...createVideoItem('second.mp4'), durationSeconds: 5, actualDurationSeconds: 5 },
+          ],
+        },
+        false,
+        true,
+        () => session,
+        new RingLogger(5),
+      );
+
+      const startPromise = slot.start();
+      await vi.runAllTicks();
+      await vi.advanceTimersByTimeAsync(32);
+      await startPromise;
+
+      await slot.syncToPageElapsed(5000, 10000, true);
+      expect(slot.snapshot()).toContain('second.mp4');
+      expect(play).toHaveBeenCalledTimes(1);
+
+      await slot.syncToPageElapsed(0, 10000, true);
+      await vi.runAllTicks();
+
+      expect(slot.snapshot()).toContain('first.png');
+      await vi.runAllTicks();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(session.stop).toHaveBeenCalledTimes(1);
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
+      }
+    }
+  });
+
   it('런타임 설정 변경 후 컨텐츠 종료시 전환을 즉시 적용한다', async () => {
     vi.useFakeTimers();
     const ended = {
