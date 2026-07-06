@@ -242,6 +242,7 @@ export class SlotPlayer {
     if (item && this.itemStartedAt >= 0) {
       this.itemPausedElapsedMs = this.currentItemTimelineElapsedMilliseconds(item);
     }
+    this.logger.info('slot', `slot ${this.slotIndex + 1} pause: ${item?.name ?? '-'} elapsed=${Math.round(this.itemPausedElapsedMs)}ms`);
     this.itemStartedAt = -1;
     this.videoSession?.pause();
   }
@@ -253,6 +254,7 @@ export class SlotPlayer {
 
     this.videoSession?.resume();
     const item = this.currentItem();
+    this.logger.info('slot', `slot ${this.slotIndex + 1} resume: ${item?.name ?? '-'} elapsed=${Math.round(this.itemPausedElapsedMs)}ms`);
     if (item) {
       this.startPassiveItemClock(item, this.itemPausedElapsedMs);
     }
@@ -868,15 +870,7 @@ export class SlotPlayer {
   }
 
   private prepareVideoContent(item: SeamlessContentItem, currentItem: SeamlessContentItem, role: AvplayPreparedRole): void {
-    if (currentItem.contentType !== 'Video' || !this.videoSession || typeof this.videoSession.prepareNextVideo !== 'function') {
-      return;
-    }
-
-    try {
-      this.videoSession.prepareNextVideo(item, role);
-    } catch (error) {
-      this.logger.warn('slot', `slot ${this.slotIndex + 1} 다음 영상 준비 실패: ${String(error)}`);
-    }
+    this.logger.info('slot', `slot ${this.slotIndex + 1} 다음 영상 사전 준비 생략: current=${currentItem.contentType}:${currentItem.name} next=${item.name} role=${role}`);
   }
 
   private imageElementForPreparation(item: SeamlessContentItem): HTMLImageElement {

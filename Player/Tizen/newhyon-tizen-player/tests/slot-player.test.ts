@@ -445,6 +445,30 @@ describe('SlotPlayer', () => {
     expect(play.mock.calls[1]?.[5]).toMatchObject({ waitForFirstFrame: false });
   });
 
+  it('현재 영상 재생 중에는 다음 영상을 AVPlay로 사전 prepare하지 않는다', async () => {
+    vi.useFakeTimers();
+    const play = vi.fn(async (..._args: unknown[]) => undefined);
+    const prepareNextVideo = vi.fn();
+    const session = {
+      play,
+      prepareNextVideo,
+      pause: vi.fn(),
+      resume: vi.fn(),
+      stop: vi.fn(),
+      state: vi.fn(() => 'PLAYING'),
+      applyDisplayRect: vi.fn(),
+      clearPrepared: vi.fn(),
+    } as unknown as AvplaySession;
+    const slot = new SlotPlayer(0, document.createElement('section'), createTwoVideoSlot(), false, false, () => session, new RingLogger(5));
+
+    await slot.start();
+    await vi.runAllTicks();
+    await vi.advanceTimersByTimeAsync(32);
+
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(prepareNextVideo).not.toHaveBeenCalled();
+  });
+
   it('현재 콘텐츠 종료 후 전환 설정이 켜지면 영상 종료 이벤트로 다음 콘텐츠를 재생한다', async () => {
     vi.useFakeTimers();
     const ended = {

@@ -281,7 +281,7 @@ describe('AvplaySession', () => {
     expect(playerB.play).toHaveBeenCalledTimes(1);
   });
 
-  it('사전 준비된 영상 lane은 화면 밖 mixedframe 준비 후 전환 시 rect와 play만 실행한다', async () => {
+  it('사전 준비된 영상 lane은 화면 밖 준비 후 전환 시 rect와 play만 실행한다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
     const callOrder: string[] = [];
@@ -306,9 +306,6 @@ describe('AvplaySession', () => {
       callOrder.push('b.prepare');
       playerBState = 'READY';
     });
-    playerB.setStreamingProperty = vi.fn((name, value) => {
-      callOrder.push(value ? `b.${name}:${value}` : `b.${name}`);
-    });
     playerB.setDisplayRect = vi.fn(() => {
       callOrder.push('b.rect');
     });
@@ -332,9 +329,7 @@ describe('AvplaySession', () => {
     session.prepareNextVideo(createVideoItem('second.mp4'));
     expect(callOrder).toEqual([
       'b.open',
-      'b.USE_VIDEOMIXER',
       'b.rect',
-      'b.SET_MIXEDFRAME',
       'b.prepare',
     ]);
     callOrder.length = 0;
@@ -348,6 +343,58 @@ describe('AvplaySession', () => {
     ]);
     expect(playerB.open).toHaveBeenCalledTimes(1);
     expect(playerB.prepare).toHaveBeenCalledTimes(1);
+  });
+
+  it('사전 준비 prepare 실패 lane은 close로 초기화한 뒤 다음 재생에 재사용한다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    let playerAState = 'IDLE';
+    let playerBState = 'IDLE';
+    playerA.getState = vi.fn(() => playerAState);
+    playerB.getState = vi.fn(() => playerBState);
+    playerA.play = vi.fn(() => {
+      playerAState = 'PLAYING';
+    });
+    playerA.stop = vi.fn(() => {
+      playerAState = 'IDLE';
+    });
+    playerB.open = vi.fn(() => {
+      playerBState = 'IDLE';
+    });
+    playerB.prepare = vi.fn()
+      .mockImplementationOnce(() => {
+        throw new Error('prepare failed');
+      })
+      .mockImplementationOnce(() => {
+        playerBState = 'READY';
+      });
+    playerB.close = vi.fn(() => {
+      playerBState = 'NONE';
+    });
+    playerB.play = vi.fn(() => {
+      playerBState = 'PLAYING';
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+    const slot = createSlotPlan();
+    const slotElement = document.createElement('section');
+
+    await session.play(createVideoItem('current.mp4'), slot, slotElement, false, vi.fn());
+
+    expect(() => session.prepareNextVideo(createVideoItem('next.mp4'))).toThrow('AVPlay prepare 오류');
+    expect(playerB.close).toHaveBeenCalledTimes(1);
+    expect(session.debugSnapshot().lanes[1]?.role).toBe('idle');
+
+    await session.play(createVideoItem('next.mp4'), slot, slotElement, false, vi.fn());
+
+    expect(playerB.open).toHaveBeenCalledTimes(2);
+    expect(playerB.prepare).toHaveBeenCalledTimes(2);
+    expect(playerB.play).toHaveBeenCalledTimes(1);
   });
 
   it('설정 저장 중 display rect 재적용은 준비 lane을 화면으로 올리지 않는다', async () => {
@@ -593,6 +640,61 @@ describe('AvplaySession', () => {
     expect(callOrder.slice(0, 3)).toEqual(['a.stop', 'a.open', 'a.play']);
     expect(playerA.close).not.toHaveBeenCalled();
     expect(playerA.play).toHaveBeenCalledTimes(2);
+  });
+
+  it('완료된 현재 lane은 즉시 재사용하지 않고 다른 lane으로 다음 영상을 연다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    const callOrder: string[] = [];
+    let playerAState = 'IDLE';
+    let playerBState = 'IDLE';
+    playerA.getState = vi.fn(() => playerAState);
+    playerB.getState = vi.fn(() => playerBState);
+    playerA.open = vi.fn(() => {
+      callOrder.push('a.open');
+      playerAState = 'IDLE';
+    });
+    playerA.prepare = vi.fn(() => {
+      callOrder.push('a.prepare');
+      playerAState = 'READY';
+    });
+    playerA.play = vi.fn(() => {
+      callOrder.push('a.play');
+      playerAState = 'PLAYING';
+    });
+    playerA.stop = vi.fn(() => {
+      callOrder.push('a.stop');
+      playerAState = 'IDLE';
+    });
+    playerB.open = vi.fn(() => {
+      callOrder.push('b.open');
+      playerBState = 'IDLE';
+    });
+    playerB.prepare = vi.fn(() => {
+      callOrder.push('b.prepare');
+      playerBState = 'READY';
+    });
+    playerB.play = vi.fn(() => {
+      callOrder.push('b.play');
+      playerBState = 'PLAYING';
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    await session.play(createVideoItem('first.mp4'), createSlotPlan(), document.createElement('section'), false, vi.fn());
+    session.stopCurrentForCompletedStream();
+    callOrder.length = 0;
+
+    await session.play(createVideoItem('second.mp4'), createSlotPlan(), document.createElement('section'), false, vi.fn());
+
+    expect(callOrder.slice(0, 4)).toEqual(['a.stop', 'b.open', 'b.prepare', 'b.play']);
+    expect(playerA.open).toHaveBeenCalledTimes(1);
+    expect(playerB.open).toHaveBeenCalledTimes(1);
   });
 
   it('첫 프레임 대기 옵션이 들어와도 샘플 흐름처럼 play 직후 완료한다', async () => {

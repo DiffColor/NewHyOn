@@ -4,8 +4,6 @@ import { resolveAvplaySourceUrl } from './source-resolver';
 
 const DISPLAY_METHOD_FILL = 'PLAYER_DISPLAY_MODE_FULL_SCREEN';
 const DISPLAY_METHOD_CONTAIN = 'PLAYER_DISPLAY_MODE_LETTER_BOX';
-const STREAMING_PROPERTY_USE_VIDEOMIXER = 'USE_VIDEOMIXER';
-const STREAMING_PROPERTY_SET_MIXEDFRAME = 'SET_MIXEDFRAME';
 const STOPPABLE_STATES = new Set(['READY', 'PLAYING', 'PAUSED']);
 const DISPLAY_METHOD_STATES = new Set(['IDLE', 'READY', 'PLAYING', 'PAUSED']);
 const AVPLAY_LAYER_BELOW_SLOT_OFFSET = -1;
@@ -72,7 +70,6 @@ export class AvplaySessionPair {
   private currentLaneIndex: number | null = null;
   private heldLaneIndex: number | null = null;
   private lastPlaybackLaneIndex: number | null = null;
-  private reuseCompletedLaneIndex: number | null = null;
   private readonly preparedLanes = new Map<AvplayPreparedRole, PreparedLaneMetadata>();
   private displayContext: DisplayContext | null = null;
   private traceSeq = 0;
@@ -111,8 +108,6 @@ export class AvplaySessionPair {
     const preparedLane = this.resolvePreparedLane(item);
     const nextLaneIndex = preparedLane !== null
       ? preparedLane.laneIndex
-      : this.reuseCompletedLaneIndex !== null
-      ? this.reuseCompletedLaneIndex
       : this.currentLaneIndex !== null
       ? this.currentLaneIndex === 0 ? 1 : 0
       : this.lastPlaybackLaneIndex === 0 ? 1 : 0;
@@ -120,10 +115,7 @@ export class AvplaySessionPair {
     void options;
     try {
       const usePreparedLane = preparedLane?.laneIndex === nextLaneIndex;
-      const reuseCompletedLane = this.reuseCompletedLaneIndex === nextLaneIndex;
-      const laneToStopBeforeOpen = reuseCompletedLane
-        ? nextLaneIndex === 0 ? 1 : 0
-        : usePreparedLane
+      const laneToStopBeforeOpen = usePreparedLane
         ? null
         : this.currentLaneIndex;
       const laneToStopAfterPlay = usePreparedLane ? this.currentLaneIndex : null;
@@ -143,9 +135,6 @@ export class AvplaySessionPair {
         this.prepareLane(nextLaneIndex, item.name);
         this.assertOperationCurrent(operationId, nextLaneIndex, 'play.prepare', item.name);
       }
-      if (!usePreparedLane) {
-        this.setLaneMixedFrame(nextLaneIndex, item.name);
-      }
       this.applyDisplayRectToLane(nextLaneIndex, slot, slotElement);
       this.assertOperationCurrent(operationId, nextLaneIndex, 'play.beforePlay', item.name);
       this.callLane(nextLaneIndex, 'play', () => {
@@ -157,7 +146,6 @@ export class AvplaySessionPair {
       this.currentEndedHandler = onStreamEnded;
       this.currentLaneIndex = nextLaneIndex;
       this.lastPlaybackLaneIndex = nextLaneIndex;
-      this.reuseCompletedLaneIndex = null;
       this.clearPreparedMetadataForLane(nextLaneIndex);
       this.heldLaneIndex = null;
       if (laneToStopAfterPlay !== null && laneToStopAfterPlay !== nextLaneIndex) {
@@ -169,6 +157,7 @@ export class AvplaySessionPair {
       this.updateObjectVisibility();
       return { durationMs: null };
     } catch (error) {
+      this.resetFailedLane(nextLaneIndex, `play ${item.name}`, error);
       throw error;
     }
   }
@@ -191,7 +180,6 @@ export class AvplaySessionPair {
     this.currentEndedHandler = null;
     this.currentLaneIndex = null;
     this.heldLaneIndex = null;
-    this.reuseCompletedLaneIndex = null;
     this.clearAllPreparedRoles();
     this.updateObjectVisibility();
   }
@@ -206,7 +194,6 @@ export class AvplaySessionPair {
     this.currentEndedHandler = null;
     this.currentLaneIndex = null;
     this.heldLaneIndex = null;
-    this.reuseCompletedLaneIndex = null;
     this.clearAllPreparedRoles();
     this.updateObjectVisibility();
     if (laneToStop !== null) {
@@ -267,6 +254,7 @@ export class AvplaySessionPair {
 
     const lane = this.currentLane();
     if (lane && this.laneState(this.currentLaneIndex) === 'PLAYING') {
+      this.logger.info('avplay-trace', `slot ${this.index} lane ${this.currentLaneIndex + 1} pause requested ${this.traceContext()}`);
       this.callLane(this.currentLaneIndex, 'pause', () => {
         lane.player.pause();
       });
@@ -280,6 +268,7 @@ export class AvplaySessionPair {
 
     const lane = this.currentLane();
     if (lane && this.laneState(this.currentLaneIndex) === 'PAUSED') {
+      this.logger.info('avplay-trace', `slot ${this.index} lane ${this.currentLaneIndex + 1} resume requested ${this.traceContext()}`);
       this.callLane(this.currentLaneIndex, 'resume.play', () => {
         lane.player.play();
       });
@@ -297,7 +286,6 @@ export class AvplaySessionPair {
     this.currentEndedHandler = null;
     this.currentLaneIndex = null;
     this.heldLaneIndex = null;
-    this.reuseCompletedLaneIndex = null;
     this.clearAllPreparedMetadata();
     this.updateObjectVisibility();
   }
@@ -317,8 +305,7 @@ export class AvplaySessionPair {
     }
 
     const laneIndex = this.currentLaneIndex;
-    this.logger.info('avplay-trace', `slot ${this.index} lane ${laneIndex + 1} completed stream reuse before next play ${this.traceContext()}`);
-    this.reuseCompletedLaneIndex = laneIndex;
+    this.logger.info('avplay-trace', `slot ${this.index} lane ${laneIndex + 1} completed stream will switch on next lane ${this.traceContext()}`);
   }
 
   prepareNextVideo(item: SeamlessContentItem, role: AvplayPreparedRole = 'next-content'): void {
@@ -340,17 +327,20 @@ export class AvplaySessionPair {
 
     const sourceUrl = resolveAvplaySourceUrl(item.sourceUrl);
     this.logger.info('avplay', `slot ${this.index} lane ${laneIndex + 1} prepare-next role=${role}: ${item.name}`);
-    this.resetLaneForPlayback(laneIndex);
-    this.configureLaneForItem(laneIndex, item, sourceUrl);
-    this.applyOffscreenRectToLane(laneIndex, item.name);
-    this.setLaneMixedFrame(laneIndex, item.name);
-    this.prepareLane(laneIndex, item.name);
-    if (this.laneState(laneIndex) !== 'READY') {
-      const state = this.laneState(laneIndex);
-      this.logger.warn('avplay-trace', `session ${this.index} prepareNextVideo not ready role=${role} lane ${laneIndex + 1} state=${state} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
-      this.stopLane(laneIndex);
-      this.clearPreparedMetadataForLane(laneIndex);
-      return;
+    try {
+      this.resetLaneForPlayback(laneIndex);
+      this.configureLaneForItem(laneIndex, item, sourceUrl);
+      this.applyOffscreenRectToLane(laneIndex, item.name);
+      this.prepareLane(laneIndex, item.name);
+      if (this.laneState(laneIndex) !== 'READY') {
+        const state = this.laneState(laneIndex);
+        this.logger.warn('avplay-trace', `session ${this.index} prepareNextVideo not ready role=${role} lane ${laneIndex + 1} state=${state} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
+        this.resetFailedLane(laneIndex, `prepare-next not-ready role=${role} ${item.name}`);
+        return;
+      }
+    } catch (error) {
+      this.resetFailedLane(laneIndex, `prepare-next role=${role} ${item.name}`, error);
+      throw error;
     }
     this.clearPreparedMetadataForLane(laneIndex);
     this.preparedLanes.set(role, {
@@ -461,7 +451,6 @@ export class AvplaySessionPair {
     this.currentLaneIndex = null;
     this.currentItem = null;
     this.currentEndedHandler = null;
-    this.reuseCompletedLaneIndex = null;
     this.clearPreparedMetadataForLane(laneIndex);
     this.updateObjectVisibility();
     this.events.onEnded();
@@ -481,6 +470,24 @@ export class AvplaySessionPair {
     if (this.heldLaneIndex === laneIndex) {
       this.heldLaneIndex = null;
     }
+  }
+
+  private resetFailedLane(laneIndex: number, reason: string, error?: unknown): void {
+    const message = error === undefined ? reason : `${reason}: ${formatAvplayError(error as AVPlayErrorLike, String(error))}`;
+    this.logger.warn('avplay-trace', `slot ${this.index} lane ${laneIndex + 1} reset failed lane ${this.traceContext()}${this.formatTraceDetail(message)}`);
+    this.laneRuntimeStates[laneIndex].lastError = message;
+    this.clearPreparedMetadataForLane(laneIndex);
+    if (this.currentLaneIndex === laneIndex) {
+      this.currentLaneIndex = null;
+    }
+    if (this.heldLaneIndex === laneIndex) {
+      this.heldLaneIndex = null;
+    }
+    this.stopLane(laneIndex);
+    this.closeLaneForReset(laneIndex, reason);
+    this.laneRuntimeStates[laneIndex] = this.createLaneRuntimeState();
+    this.hideLaneSurface(laneIndex, `reset-failed ${reason}`);
+    this.updateObjectVisibility();
   }
 
   private prepareLane(laneIndex: number, itemName: string): void {
@@ -506,7 +513,6 @@ export class AvplaySessionPair {
     this.callLaneSafe(laneIndex, 'setListener', () => {
       lane.player.setListener(this.createLaneListener(laneIndex));
     }, item.name);
-    this.setLaneUseVideoMixer(laneIndex, item.name);
   }
 
   private setLaneDisplayMethod(laneIndex: number, displayMethod: string): void {
@@ -520,20 +526,6 @@ export class AvplaySessionPair {
     this.callLaneSafe(laneIndex, 'setDisplayMethod', () => {
       lane.player.setDisplayMethod?.(displayMethod);
     }, displayMethod);
-  }
-
-  private setLaneUseVideoMixer(laneIndex: number, itemName: string): void {
-    const lane = this.lanes[laneIndex];
-    this.callLaneSafe(laneIndex, 'setStreamingProperty.USE_VIDEOMIXER', () => {
-      lane.player.setStreamingProperty?.(STREAMING_PROPERTY_USE_VIDEOMIXER);
-    }, itemName);
-  }
-
-  private setLaneMixedFrame(laneIndex: number, itemName: string): void {
-    const lane = this.lanes[laneIndex];
-    this.callLaneSafe(laneIndex, 'setStreamingProperty.SET_MIXEDFRAME', () => {
-      lane.player.setStreamingProperty?.(STREAMING_PROPERTY_SET_MIXEDFRAME);
-    }, itemName);
   }
 
   private applyOffscreenRectToLane(laneIndex: number, itemName: string): void {
@@ -589,6 +581,20 @@ export class AvplaySessionPair {
     this.callLaneSafe(laneIndex, 'close', () => {
       lane.player.close?.();
     });
+  }
+
+  private closeLaneForReset(laneIndex: number, reason: string): void {
+    const lane = this.lanes[laneIndex];
+    const state = this.laneState(laneIndex);
+    const runtime = this.laneRuntimeStates[laneIndex] ?? this.createLaneRuntimeState();
+    if (state === 'IDLE' && runtime.itemName === null && runtime.lastError === null) {
+      this.logger.info('avplay-trace', `slot ${this.index} lane ${laneIndex + 1} close.reset skipped clean IDLE ${this.traceContext()}${this.formatTraceDetail(reason)}`);
+      return;
+    }
+
+    this.callLaneSafe(laneIndex, 'close.reset', () => {
+      lane.player.close?.();
+    }, reason);
   }
 
   private applyDisplayRectToLane(laneIndex: number, slot: SeamlessSlotPlan, slotElement: HTMLElement): void {
