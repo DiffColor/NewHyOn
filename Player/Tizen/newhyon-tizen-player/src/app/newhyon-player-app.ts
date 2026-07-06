@@ -304,8 +304,8 @@ export class NewHyOnPlayerApp {
             this.applyCurrentPageAudioPolicy('settings-close');
           }
           this.settingsVolumePreviewed = false;
-          if (reason === 'return-key') {
-            this.resumeSlotsAfterSettingsKey('settings-return-resume');
+          if (reason === 'return-key' || reason === 'button') {
+            this.resumeSlotsAfterSettingsKey(reason === 'return-key' ? 'settings-return-resume' : 'settings-close-resume');
           }
         },
         getCurrentVolume: () => this.readTvVolume() ?? this.config.settings.defaultVolume,
@@ -469,7 +469,7 @@ export class NewHyOnPlayerApp {
   }
 
   private resumeSlotsAfterSettingsKey(
-    healthStage: 'settings-apply-resume' | 'settings-return-resume',
+    healthStage: 'settings-apply-resume' | 'settings-close-resume' | 'settings-return-resume',
     options: { readonly allowOverlayOpen?: boolean } = {},
   ): void {
     if (this.destroyed || !this.playing || !this.broadcastOnAir || this.slotPlayers.length === 0) {
