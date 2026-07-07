@@ -244,17 +244,61 @@ describe('AvplaySession', () => {
     };
 
     await session.play(createVideoItem('muted-current.mp4'), mutedSlot, document.createElement('section'), false, vi.fn());
-    expect(playerA.disableAudioStream).toHaveBeenCalled();
+    expect(playerA.disableAudioStream).toHaveBeenCalledTimes(2);
     expect(playerA.enableAudioStream).not.toHaveBeenCalled();
     expect(session.debugSnapshot().lanes[0]?.audioMuted).toBe(true);
 
     session.prepareNextVideo(createVideoItem('next.mp4'), mutedSlot);
-    expect(playerB.disableAudioStream).toHaveBeenCalled();
-    expect(session.debugSnapshot().lanes[1]?.audioMuted).toBe(true);
+    expect(playerB.disableAudioStream).not.toHaveBeenCalled();
+    expect(session.debugSnapshot().lanes[1]?.audioMuted).toBeNull();
 
     await session.play(createVideoItem('next.mp4'), unmutedSlot, document.createElement('section'), false, vi.fn());
     expect(playerB.enableAudioStream).toHaveBeenCalledTimes(2);
     expect(session.debugSnapshot().lanes[1]?.audioMuted).toBe(false);
+  });
+
+  it('다음 muted 영상 준비는 현재 unmuted 영상의 오디오 출력을 건드리지 않는다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    let playerAState = 'IDLE';
+    let playerBState = 'IDLE';
+    playerA.getState = vi.fn(() => playerAState);
+    playerB.getState = vi.fn(() => playerBState);
+    playerA.prepare = vi.fn(() => {
+      playerAState = 'READY';
+    });
+    playerA.play = vi.fn(() => {
+      playerAState = 'PLAYING';
+    });
+    playerB.prepare = vi.fn(() => {
+      playerBState = 'READY';
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+    const unmutedSlot = {
+      ...createSlotPlan(),
+      isMuted: false,
+    };
+
+    await session.play(createVideoItem('current.mp4'), unmutedSlot, document.createElement('section'), false, vi.fn());
+    vi.mocked(playerA.enableAudioStream!).mockClear();
+    vi.mocked(playerA.disableAudioStream!).mockClear();
+    vi.mocked(playerB.enableAudioStream!).mockClear();
+    vi.mocked(playerB.disableAudioStream!).mockClear();
+
+    session.prepareNextVideo(createVideoItem('muted-next.mp4'), createSlotPlan());
+
+    expect(playerA.enableAudioStream).not.toHaveBeenCalled();
+    expect(playerA.disableAudioStream).not.toHaveBeenCalled();
+    expect(playerB.enableAudioStream).not.toHaveBeenCalled();
+    expect(playerB.disableAudioStream).not.toHaveBeenCalled();
+    expect(session.debugSnapshot().lanes[0]?.audioMuted).toBe(false);
+    expect(session.debugSnapshot().lanes[1]?.audioMuted).toBeNull();
   });
 
   it('전환 후 현재 lane만 위에 두고 이전 lane은 숨긴다', async () => {

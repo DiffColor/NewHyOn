@@ -133,7 +133,7 @@ export class AvplaySessionPair {
         const sourceUrl = resolveAvplaySourceUrl(item.sourceUrl);
         this.logger.info('avplay', `slot ${this.index} lane ${nextLaneIndex + 1} open: ${item.name}`);
         this.resetLaneForPlayback(nextLaneIndex);
-        this.configureLaneForItem(nextLaneIndex, item, sourceUrl, slot.isMuted);
+        this.configureLaneForItem(nextLaneIndex, item, sourceUrl);
         this.prepareLane(nextLaneIndex, item.name);
         this.assertOperationCurrent(operationId, nextLaneIndex, 'play.prepare', item.name);
       }
@@ -334,7 +334,7 @@ export class AvplaySessionPair {
     this.logger.info('avplay', `slot ${this.index} lane ${laneIndex + 1} prepare-next role=${role}: ${item.name}`);
     try {
       this.resetLaneForPlayback(laneIndex);
-      this.configureLaneForItem(laneIndex, item, sourceUrl, slot.isMuted);
+      this.configureLaneForItem(laneIndex, item, sourceUrl);
       this.applyOffscreenRectToLane(laneIndex, item.name);
       this.prepareLane(laneIndex, item.name);
       if (this.laneState(laneIndex) !== 'READY') {
@@ -511,13 +511,12 @@ export class AvplaySessionPair {
     }
   }
 
-  private configureLaneForItem(laneIndex: number, item: SeamlessContentItem, sourceUrl: string, audioMuted: boolean): void {
+  private configureLaneForItem(laneIndex: number, item: SeamlessContentItem, sourceUrl: string): void {
     const lane = this.lanes[laneIndex];
     this.laneRuntimeStates[laneIndex] = this.createLaneRuntimeState(item.name);
     this.callLane(laneIndex, 'open', () => {
       lane.player.open(sourceUrl);
     }, `${item.name} ${sourceUrl}`);
-    this.applyLaneAudioState(laneIndex, audioMuted, 'configure.audio', item.name);
     this.useVideoMixer(laneIndex, item.name);
     this.callLaneSafe(laneIndex, 'setListener', () => {
       lane.player.setListener(this.createLaneListener(laneIndex));
@@ -607,13 +606,10 @@ export class AvplaySessionPair {
       return;
     }
 
-    this.callLaneSafe(laneIndex, 'disableAudioStream.stop', () => {
-      lane.player.disableAudioStream?.();
-    });
-    this.laneRuntimeStates[laneIndex].audioMuted = true;
     this.callLaneSafe(laneIndex, 'stop', () => {
       lane.player.stop();
     });
+    this.laneRuntimeStates[laneIndex].audioMuted = null;
   }
 
   private closeLane(laneIndex: number): void {
