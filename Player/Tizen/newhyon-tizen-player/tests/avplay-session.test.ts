@@ -477,7 +477,7 @@ describe('AvplaySession', () => {
     expect(playerB.prepare).toHaveBeenCalledTimes(1);
   });
 
-  it('사전 준비 prepare 실패 lane은 close로 초기화한 뒤 다음 재생에 재사용한다', async () => {
+  it('사전 준비 mixedframe prepare 실패는 current 재생 보호를 위해 direct 준비를 같이 하지 않는다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
     let playerAState = 'IDLE';
@@ -520,6 +520,10 @@ describe('AvplaySession', () => {
 
     expect(() => session.prepareNextVideo(createVideoItem('next.mp4'), slot)).toThrow('AVPlay prepare 오류');
     expect(playerB.close).toHaveBeenCalledTimes(1);
+    expect(playerB.open).toHaveBeenCalledTimes(1);
+    expect(playerB.prepare).toHaveBeenCalledTimes(1);
+    expect(playerB.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');
+    expect(playerB.setStreamingProperty).not.toHaveBeenCalledWith('SET_MIXEDFRAME');
     expect(session.debugSnapshot().lanes[1]?.role).toBe('idle');
 
     await session.play(createVideoItem('next.mp4'), slot, slotElement, false, vi.fn());
@@ -527,6 +531,165 @@ describe('AvplaySession', () => {
     expect(playerB.open).toHaveBeenCalledTimes(2);
     expect(playerB.prepare).toHaveBeenCalledTimes(2);
     expect(playerB.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('전환 재생 시 mixedframe prepare가 실패하면 current 정리 후 direct 모드로 재시도한다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    let playerAState = 'IDLE';
+    let playerBState = 'IDLE';
+    playerA.getState = vi.fn(() => playerAState);
+    playerB.getState = vi.fn(() => playerBState);
+    playerA.prepare = vi.fn(() => {
+      playerAState = 'READY';
+    });
+    playerA.play = vi.fn(() => {
+      playerAState = 'PLAYING';
+    });
+    playerA.stop = vi.fn(() => {
+      playerAState = 'IDLE';
+    });
+    playerB.open = vi.fn(() => {
+      playerBState = 'IDLE';
+    });
+    playerB.prepare = vi.fn()
+      .mockImplementationOnce(() => {
+        throw new Error('mixedframe prepare failed');
+      })
+      .mockImplementationOnce(() => {
+        playerBState = 'READY';
+      });
+    playerB.close = vi.fn(() => {
+      playerBState = 'NONE';
+    });
+    playerB.play = vi.fn(() => {
+      playerBState = 'PLAYING';
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+    const slot = createSlotPlan();
+    const slotElement = document.createElement('section');
+
+    await session.play(createVideoItem('current.mp4'), slot, slotElement, false, vi.fn());
+    await session.play(createVideoItem('next.mp4'), slot, slotElement, false, vi.fn());
+
+    expect(playerA.stop).toHaveBeenCalled();
+    expect(playerB.open).toHaveBeenCalledTimes(2);
+    expect(playerB.prepare).toHaveBeenCalledTimes(2);
+    expect(playerB.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');
+    expect(playerB.setStreamingProperty).not.toHaveBeenCalledWith('SET_MIXEDFRAME');
+    expect(playerB.play).toHaveBeenCalledTimes(1);
+    expect(session.debugSnapshot().lanes[1]).toMatchObject({
+      role: 'current',
+      itemName: 'next.mp4',
+      playbackMode: 'direct',
+      state: 'PLAYING',
+    });
+  });
+
+  it('direct 모드 current 재생 중에는 다음 영상 사전 준비로 mixer를 건드리지 않는다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    let playerAState = 'IDLE';
+    let playerBState = 'IDLE';
+    playerA.getState = vi.fn(() => playerAState);
+    playerB.getState = vi.fn(() => playerBState);
+    playerA.prepare = vi.fn(() => {
+      playerAState = 'READY';
+    });
+    playerA.play = vi.fn(() => {
+      playerAState = 'PLAYING';
+    });
+    playerA.stop = vi.fn(() => {
+      playerAState = 'IDLE';
+    });
+    playerB.open = vi.fn(() => {
+      playerBState = 'IDLE';
+    });
+    playerB.prepare = vi.fn()
+      .mockImplementationOnce(() => {
+        throw new Error('mixedframe prepare failed');
+      })
+      .mockImplementationOnce(() => {
+        playerBState = 'READY';
+      });
+    playerB.close = vi.fn(() => {
+      playerBState = 'NONE';
+    });
+    playerB.play = vi.fn(() => {
+      playerBState = 'PLAYING';
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+    const slot = createSlotPlan();
+    const slotElement = document.createElement('section');
+
+    await session.play(createVideoItem('current.mp4'), slot, slotElement, false, vi.fn());
+    await session.play(createVideoItem('direct-current.mp4'), slot, slotElement, false, vi.fn());
+    vi.clearAllMocks();
+
+    session.prepareNextVideo(createVideoItem('next-after-direct.mp4'), slot);
+
+    expect(playerA.open).not.toHaveBeenCalled();
+    expect(playerA.prepare).not.toHaveBeenCalled();
+    expect(playerA.setStreamingProperty).not.toHaveBeenCalledWith('USE_VIDEOMIXER');
+    expect(session.debugSnapshot().lanes[0]?.role).toBe('idle');
+    expect(session.debugSnapshot().lanes[1]).toMatchObject({
+      role: 'current',
+      itemName: 'direct-current.mp4',
+      playbackMode: 'direct',
+      state: 'PLAYING',
+    });
+  });
+
+  it('전환 재생 시 mixedframe과 direct prepare가 모두 실패하면 lane을 초기화하고 오류를 전달한다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    let playerAState = 'IDLE';
+    let playerBState = 'IDLE';
+    playerA.getState = vi.fn(() => playerAState);
+    playerB.getState = vi.fn(() => playerBState);
+    playerA.play = vi.fn(() => {
+      playerAState = 'PLAYING';
+    });
+    playerA.stop = vi.fn(() => {
+      playerAState = 'IDLE';
+    });
+    playerB.open = vi.fn(() => {
+      playerBState = 'IDLE';
+    });
+    playerB.prepare = vi.fn(() => {
+      throw new Error('prepare failed');
+    });
+    playerB.close = vi.fn(() => {
+      playerBState = 'NONE';
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+    const slot = createSlotPlan();
+
+    await session.play(createVideoItem('current.mp4'), slot, document.createElement('section'), false, vi.fn());
+
+    await expect(session.play(createVideoItem('next.mp4'), slot, document.createElement('section'), false, vi.fn())).rejects.toThrow('AVPlay prepare 오류');
+    expect(playerB.open).toHaveBeenCalledTimes(2);
+    expect(playerB.prepare).toHaveBeenCalledTimes(2);
+    expect(playerB.close).toHaveBeenCalledTimes(2);
+    expect(session.debugSnapshot().lanes[1]?.role).toBe('idle');
   });
 
   it('설정 저장 중 display rect 재적용은 준비 lane을 화면으로 올리지 않는다', async () => {

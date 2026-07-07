@@ -176,6 +176,7 @@ declare global {
     readonly laneIndex: number;
     readonly role: 'current' | 'held' | 'next-content' | 'next-schedule-content' | 'next-update-content' | 'idle';
     readonly itemName: string | null;
+    readonly playbackMode: 'mixedframe' | 'direct' | null;
     readonly state: string;
     readonly queriedCurrentTimeMs: number | null;
     readonly queriedDurationMs: number | null;

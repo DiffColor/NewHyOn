@@ -17,6 +17,7 @@ export interface VideoSessionEvents {
 }
 
 type StreamEndedHandler = () => boolean | Promise<boolean> | void | Promise<void>;
+type AvplayLanePlaybackMode = 'mixedframe' | 'direct';
 
 interface AvplayPairSession {
   readonly player: AVPlayApi;
@@ -25,6 +26,7 @@ interface AvplayPairSession {
 
 interface AvplayLaneRuntimeState {
   itemName: string | null;
+  playbackMode: AvplayLanePlaybackMode | null;
   audioMuted: boolean | null;
   callbackCurrentTimeMs: number | null;
   callbackCurrentTimeAtMs: number | null;
@@ -49,6 +51,7 @@ interface PreparedLaneMetadata {
   readonly laneIndex: number;
   readonly itemId: string;
   readonly itemName: string;
+  readonly playbackMode: AvplayLanePlaybackMode;
 }
 
 export interface AvplayPlayOptions {
@@ -128,13 +131,16 @@ export class AvplaySessionPair {
         }
       }
       if (usePreparedLane) {
-        this.logger.info('avplay-trace', `slot ${this.index} lane ${nextLaneIndex + 1} use prepared lane role=${preparedLane?.role ?? '-'} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
+        this.logger.info('avplay-trace', `slot ${this.index} lane ${nextLaneIndex + 1} use prepared lane role=${preparedLane?.role ?? '-'} mode=${preparedLane?.playbackMode ?? '-'} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
       } else {
         const sourceUrl = resolveAvplaySourceUrl(item.sourceUrl);
         this.logger.info('avplay', `slot ${this.index} lane ${nextLaneIndex + 1} open: ${item.name}`);
         this.resetLaneForPlayback(nextLaneIndex);
-        this.configureLaneForItem(nextLaneIndex, item, sourceUrl);
-        this.prepareLane(nextLaneIndex, item.name);
+        this.prepareLaneWithDirectRetry(nextLaneIndex, item, sourceUrl, {
+          offscreenBeforeMixedPrepare: false,
+          offscreenAfterDirectPrepare: false,
+          retryDirect: true,
+        });
         this.assertOperationCurrent(operationId, nextLaneIndex, 'play.prepare', item.name);
       }
       this.setLaneDisplayMethod(nextLaneIndex, preserveAspectRatio ? DISPLAY_METHOD_CONTAIN : DISPLAY_METHOD_FILL);
@@ -318,6 +324,14 @@ export class AvplaySessionPair {
       return;
     }
 
+    const currentPlaybackMode = this.currentLaneIndex !== null
+      ? this.laneRuntimeStates[this.currentLaneIndex]?.playbackMode ?? null
+      : null;
+    if (currentPlaybackMode === 'direct') {
+      this.logger.info('avplay-trace', `session ${this.index} prepareNextVideo skipped direct current role=${role} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
+      return;
+    }
+
     const existing = this.preparedLanes.get(role);
     if (existing && this.laneState(existing.laneIndex) === 'READY') {
       if (existing.itemId === item.id) {
@@ -337,11 +351,14 @@ export class AvplaySessionPair {
 
     const sourceUrl = resolveAvplaySourceUrl(item.sourceUrl);
     this.logger.info('avplay', `slot ${this.index} lane ${laneIndex + 1} prepare-next role=${role}: ${item.name}`);
+    let playbackMode: AvplayLanePlaybackMode = 'mixedframe';
     try {
       this.resetLaneForPlayback(laneIndex);
-      this.configureLaneForItem(laneIndex, item, sourceUrl);
-      this.applyOffscreenRectToLane(laneIndex, item.name);
-      this.prepareLane(laneIndex, item.name);
+      playbackMode = this.prepareLaneWithDirectRetry(laneIndex, item, sourceUrl, {
+        offscreenBeforeMixedPrepare: true,
+        offscreenAfterDirectPrepare: true,
+        retryDirect: false,
+      });
       if (this.laneState(laneIndex) !== 'READY') {
         const state = this.laneState(laneIndex);
         this.logger.warn('avplay-trace', `session ${this.index} prepareNextVideo not ready role=${role} lane ${laneIndex + 1} state=${state} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
@@ -358,8 +375,9 @@ export class AvplaySessionPair {
       laneIndex,
       itemId: item.id,
       itemName: item.name,
+      playbackMode,
     });
-    this.logger.info('avplay-trace', `session ${this.index} prepareNextVideo ready role=${role} lane ${laneIndex + 1} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
+    this.logger.info('avplay-trace', `session ${this.index} prepareNextVideo ready role=${role} lane ${laneIndex + 1} mode=${playbackMode} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
     this.updateObjectVisibility();
   }
 
@@ -378,6 +396,7 @@ export class AvplaySessionPair {
           laneIndex,
           role: this.resolveLaneRole(laneIndex),
           itemName: runtime.itemName,
+          playbackMode: runtime.playbackMode,
           state: this.laneState(laneIndex),
           queriedCurrentTimeMs: this.readLaneNumber(laneIndex, 'getCurrentTime'),
           queriedDurationMs: this.readLaneNumber(laneIndex, 'getDuration'),
@@ -501,31 +520,72 @@ export class AvplaySessionPair {
     this.updateObjectVisibility();
   }
 
-  private prepareLane(laneIndex: number, itemName: string): void {
+  private prepareLaneWithDirectRetry(
+    laneIndex: number,
+    item: SeamlessContentItem,
+    sourceUrl: string,
+    options: {
+      readonly offscreenBeforeMixedPrepare: boolean;
+      readonly offscreenAfterDirectPrepare: boolean;
+      readonly retryDirect: boolean;
+    },
+  ): AvplayLanePlaybackMode {
+    try {
+      this.configureLaneForItem(laneIndex, item, sourceUrl, 'mixedframe');
+      if (options.offscreenBeforeMixedPrepare) {
+        this.applyOffscreenRectToLane(laneIndex, item.name);
+      }
+      this.prepareLane(laneIndex, item.name, 'mixedframe');
+      return 'mixedframe';
+    } catch (error) {
+      const mixedError = formatAvplayError(error as AVPlayErrorLike, String(error));
+      if (!options.retryDirect) {
+        throw error;
+      }
+      this.logger.warn('avplay-trace', `slot ${this.index} lane ${laneIndex + 1} mixedframe prepare failed, retry direct ${this.traceContext()}${this.formatTraceDetail(`${item.name}: ${mixedError}`)}`);
+      this.stopLane(laneIndex);
+      this.closeLaneForReset(laneIndex, `mixedframe prepare failed ${item.name}`);
+      this.hideLaneSurface(laneIndex, `mixedframe prepare failed ${item.name}`);
+      this.configureLaneForItem(laneIndex, item, sourceUrl, 'direct');
+      this.prepareLane(laneIndex, item.name, 'direct');
+      if (options.offscreenAfterDirectPrepare) {
+        this.applyOffscreenRectToLane(laneIndex, item.name);
+      }
+      this.logger.info('avplay-trace', `slot ${this.index} lane ${laneIndex + 1} direct prepare ready ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
+      return 'direct';
+    }
+  }
+
+  private prepareLane(laneIndex: number, itemName: string, playbackMode: AvplayLanePlaybackMode): void {
     const lane = this.lanes[laneIndex];
-    const traceId = this.traceBegin(laneIndex, 'prepare', itemName);
+    const traceId = this.traceBegin(laneIndex, 'prepare', `${itemName} mode=${playbackMode}`);
     try {
       lane.player.prepare();
       this.laneRuntimeStates[laneIndex].lastPrepareCompletedAt = new Date().toISOString();
-      this.traceEnd(traceId, laneIndex, 'prepare', itemName);
-      this.setMixedFrame(laneIndex, itemName);
+      this.laneRuntimeStates[laneIndex].playbackMode = playbackMode;
+      this.traceEnd(traceId, laneIndex, 'prepare', `${itemName} mode=${playbackMode}`);
+      if (playbackMode === 'mixedframe') {
+        this.setMixedFrame(laneIndex, itemName);
+      }
       this.logger.debug('avplay', `slot ${this.index} lane ${laneIndex + 1} prepared: ${itemName}`);
     } catch (error) {
-      this.traceFail(traceId, laneIndex, 'prepare', error, itemName);
+      this.traceFail(traceId, laneIndex, 'prepare', error, `${itemName} mode=${playbackMode}`);
       throw new Error(`slot ${this.index} lane ${laneIndex + 1} AVPlay prepare 오류: ${formatAvplayError(error as AVPlayErrorLike, String(error))}`);
     }
   }
 
-  private configureLaneForItem(laneIndex: number, item: SeamlessContentItem, sourceUrl: string): void {
+  private configureLaneForItem(laneIndex: number, item: SeamlessContentItem, sourceUrl: string, playbackMode: AvplayLanePlaybackMode): void {
     const lane = this.lanes[laneIndex];
-    this.laneRuntimeStates[laneIndex] = this.createLaneRuntimeState(item.name);
+    this.laneRuntimeStates[laneIndex] = this.createLaneRuntimeState(item.name, playbackMode);
     this.callLane(laneIndex, 'open', () => {
       lane.player.open(sourceUrl);
-    }, `${item.name} ${sourceUrl}`);
-    this.useVideoMixer(laneIndex, item.name);
+    }, `${item.name} mode=${playbackMode} ${sourceUrl}`);
+    if (playbackMode === 'mixedframe') {
+      this.useVideoMixer(laneIndex, item.name);
+    }
     this.callLaneSafe(laneIndex, 'setListener', () => {
       lane.player.setListener(this.createLaneListener(laneIndex));
-    }, item.name);
+    }, `${item.name} mode=${playbackMode}`);
   }
 
   private applyLaneAudioState(laneIndex: number, audioMuted: boolean, operation: string, itemName: string): void {
@@ -615,6 +675,7 @@ export class AvplaySessionPair {
       lane.player.stop();
     });
     this.laneRuntimeStates[laneIndex].audioMuted = null;
+    this.laneRuntimeStates[laneIndex].playbackMode = null;
   }
 
   private closeLane(laneIndex: number): void {
@@ -894,9 +955,10 @@ export class AvplaySessionPair {
     }
   }
 
-  private createLaneRuntimeState(itemName: string | null = null): AvplayLaneRuntimeState {
+  private createLaneRuntimeState(itemName: string | null = null, playbackMode: AvplayLanePlaybackMode | null = null): AvplayLaneRuntimeState {
     return {
       itemName,
+      playbackMode,
       audioMuted: null,
       callbackCurrentTimeMs: null,
       callbackCurrentTimeAtMs: null,
@@ -912,7 +974,7 @@ export class AvplaySessionPair {
 
   private traceContext(): string {
     const prepared = [...this.preparedLanes.values()]
-      .map((metadata) => `${metadata.role}=lane${metadata.laneIndex + 1}:${metadata.itemName}`)
+      .map((metadata) => `${metadata.role}=lane${metadata.laneIndex + 1}:${metadata.itemName}:${metadata.playbackMode}`)
       .join(',');
     return `current=${this.currentLaneIndex !== null ? this.currentLaneIndex + 1 : '-'} held=${this.heldLaneIndex !== null ? this.heldLaneIndex + 1 : '-'} prepared=${prepared || '-'} item=${this.currentItem?.name ?? '-'}`;
   }
