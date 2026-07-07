@@ -45,29 +45,22 @@ function createPage(isMuted: boolean): SeamlessPagePlan {
 }
 
 describe('TizenAudioPolicy', () => {
-  it('unmuted 영상 슬롯이 없으면 페이지 오디오를 mute 처리한다', () => {
+  it('unmuted 영상 슬롯 여부만 판별하고 전역 볼륨값은 재생 제어에 쓰지 않는다', () => {
     expect(shouldMutePageAudio(createPage(true))).toBe(true);
     expect(shouldMutePageAudio(createPage(false))).toBe(false);
     expect(resolvePageAudioVolume(createPage(true))).toBe(0);
-    expect(resolvePageAudioVolume(createPage(false), 55)).toBe(55);
-    expect(resolvePageAudioVolume({ ...createPage(false), volume: 0, hasExplicitVolume: true }, 55)).toBe(55);
+    expect(resolvePageAudioVolume(createPage(false))).toBe(100);
+    expect(resolvePageAudioVolume({ ...createPage(false), volume: 0, hasExplicitVolume: true })).toBe(100);
   });
 
-  it('페이지 오디오 정책을 TV audio volume에 적용한다', () => {
-    let currentVolume = 12;
-    let currentMute = true;
+  it('페이지 오디오 정책은 TV audio volume을 변경하지 않는다', () => {
     const setMute = vi.fn();
-    const setVolume = vi.fn((volume: number) => {
-      currentVolume = volume;
-    });
+    const setVolume = vi.fn();
     window.tizen = {
       tvaudiocontrol: {
-        isMute: vi.fn(() => currentMute),
-        setMute: vi.fn((muted: boolean) => {
-          currentMute = muted;
-          setMute(muted);
-        }),
-        getVolume: vi.fn(() => currentVolume),
+        isMute: vi.fn(() => true),
+        setMute,
+        getVolume: vi.fn(() => 12),
         setVolume,
       },
     };
@@ -75,33 +68,10 @@ describe('TizenAudioPolicy', () => {
     const policy = new TizenAudioPolicy(new RingLogger(5));
     policy.applyForPage(createPage(true));
     policy.applyForPage(createPage(true));
-    policy.applyForPage(createPage(false), 55);
+    policy.applyForPage(createPage(false));
     policy.restore();
 
-    expect(setVolume).toHaveBeenNthCalledWith(1, 0);
-    expect(setVolume).toHaveBeenNthCalledWith(2, 55);
-    expect(setVolume).toHaveBeenNthCalledWith(3, 12);
-    expect(setMute).toHaveBeenNthCalledWith(1, false);
-    expect(setMute).toHaveBeenNthCalledWith(2, true);
-  });
-
-  it('restore 시 이전 TV audio volume을 복구한다', () => {
-    let currentVolume = 22;
-    const setVolume = vi.fn((volume: number) => {
-      currentVolume = volume;
-    });
-    window.tizen = {
-      tvaudiocontrol: {
-        getVolume: vi.fn(() => currentVolume),
-        setVolume,
-      },
-    };
-
-    const policy = new TizenAudioPolicy(new RingLogger(5));
-    policy.applyForPage(createPage(true));
-    policy.restore();
-
-    expect(setVolume).toHaveBeenNthCalledWith(1, 0);
-    expect(setVolume).toHaveBeenNthCalledWith(2, 22);
+    expect(setVolume).not.toHaveBeenCalled();
+    expect(setMute).not.toHaveBeenCalled();
   });
 });

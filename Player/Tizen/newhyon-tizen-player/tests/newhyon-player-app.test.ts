@@ -1435,13 +1435,13 @@ describe('NewHyOnPlayerApp', () => {
 
     expect(play).toHaveBeenCalledTimes(1);
     expect(setPanelMute).toHaveBeenLastCalledWith('OFF');
-    expect(setVolume).toHaveBeenCalledWith(0);
+    expect(setVolume).not.toHaveBeenCalled();
     expect(document.querySelector('#status-state')?.textContent).toBe('playing');
     expect(document.querySelector('#broadcast-standby')?.classList.contains('broadcast-standby--hidden')).toBe(true);
     app.destroy();
   });
 
-  it('저장된 비율유지와 기본 볼륨 설정을 현재 재생에 즉시 적용한다', async () => {
+  it('저장된 비율유지는 현재 재생에 적용하지만 기본 볼륨 설정은 TV 전역 볼륨을 변경하지 않는다', async () => {
     const play = vi.fn();
     const player = createPlayer(play);
     const setVolume = vi.fn();
@@ -1477,13 +1477,13 @@ describe('NewHyOnPlayerApp', () => {
     await app.start();
     expect(play).toHaveBeenCalledTimes(1);
     expect(player.setDisplayMethod).toHaveBeenCalledWith('PLAYER_DISPLAY_MODE_FULL_SCREEN');
-    expect(setVolume).toHaveBeenCalledWith(20);
+    expect(setVolume).not.toHaveBeenCalled();
     setVolume.mockClear();
 
     expect(
       (app as unknown as { applyDefaultVolumePreviewToCurrentPage(volume: number): boolean }).applyDefaultVolumePreviewToCurrentPage(42),
-    ).toBe(true);
-    expect(setVolume).toHaveBeenCalledWith(42);
+    ).toBe(false);
+    expect(setVolume).not.toHaveBeenCalled();
     setVolume.mockClear();
 
     (app as unknown as { applyPlayerSettings(settings: typeof DEFAULT_PLAYER_SETTINGS): void }).applyPlayerSettings({
@@ -1498,11 +1498,11 @@ describe('NewHyOnPlayerApp', () => {
     });
 
     expect(player.setDisplayMethod).toHaveBeenCalledWith('PLAYER_DISPLAY_MODE_LETTER_BOX');
-    expect(setVolume).toHaveBeenLastCalledWith(42);
+    expect(setVolume).not.toHaveBeenCalled();
     app.destroy();
   });
 
-  it('음소거 페이지에서 기본 볼륨 저장 시 현재 TV 볼륨을 0으로 다시 덮어쓰지 않는다', async () => {
+  it('기본 볼륨 저장 시 현재 TV 볼륨을 덮어쓰지 않는다', async () => {
     const play = vi.fn();
     const player = createPlayer(play);
     const setVolume = vi.fn();
@@ -1530,7 +1530,7 @@ describe('NewHyOnPlayerApp', () => {
     });
 
     await app.start();
-    expect(setVolume).toHaveBeenCalledWith(0);
+    expect(setVolume).not.toHaveBeenCalled();
     setVolume.mockClear();
 
     expect(
@@ -1549,6 +1549,40 @@ describe('NewHyOnPlayerApp', () => {
       hudInitiallyVisible: false,
     });
 
+    expect(setVolume).not.toHaveBeenCalled();
+    app.destroy();
+  });
+
+  it('기본 볼륨 테스트는 TV 전역 볼륨 대신 테스트 음원 볼륨만 조절한다', async () => {
+    const play = vi.fn();
+    const setVolume = vi.fn();
+    window.webapis = createWebApis(createPlayer(play));
+    window.tizen = {
+      tvaudiocontrol: {
+        getVolume: vi.fn(() => 20),
+        setVolume,
+        setMute: vi.fn(),
+      },
+    };
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        defaultVolume: 20,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+    (app as unknown as { playVolumeTest(volume: number): void }).playVolumeTest(42);
+
+    const audio = (app as unknown as { volumeTestAudio: HTMLAudioElement }).volumeTestAudio;
+    expect(audio.volume).toBe(0.42);
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
     expect(setVolume).not.toHaveBeenCalled();
     app.destroy();
   });
