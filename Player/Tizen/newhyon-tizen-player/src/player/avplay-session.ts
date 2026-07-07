@@ -211,26 +211,27 @@ export class AvplaySessionPair {
     this.updateObjectVisibility();
   }
 
-  stopCurrentAsync(): void {
+  stopCurrentAsync(): Promise<void> {
     this.nextOperationId();
     const laneToStop = this.currentLaneIndex;
     this.logger.info('avplay-trace', `session ${this.index} stopCurrentAsync lane=${laneToStop !== null ? laneToStop + 1 : '-'} ${this.traceContext()}`);
-    if (laneToStop !== null) {
-      this.hideLaneSurface(laneToStop, 'stop-current-async');
-    }
     this.currentItem = null;
     this.currentEndedHandler = null;
     this.currentLaneIndex = null;
     this.heldLaneIndex = null;
     this.clearAllPreparedMetadata();
-    this.updateObjectVisibility();
-    if (laneToStop !== null) {
-      void this.afterNextFrame(() => {
-        this.stopLane(laneToStop);
-        this.closeLane(laneToStop);
-        this.updateObjectVisibility();
-      });
+
+    if (laneToStop === null) {
+      this.updateObjectVisibility();
+      return Promise.resolve();
     }
+
+    return this.afterNextFrame(() => {
+      this.hideLaneSurface(laneToStop, 'stop-current-async');
+      this.stopLane(laneToStop);
+      this.closeLane(laneToStop);
+      this.updateObjectVisibility();
+    });
   }
 
   hideCurrentKeepPrepared(options: { readonly deferStopUntilNextFrame?: boolean } = {}): Promise<void> {
