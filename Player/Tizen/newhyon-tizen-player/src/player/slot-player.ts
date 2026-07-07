@@ -539,8 +539,8 @@ export class SlotPlayer {
         };
         await this.showImage(item, {
           promoteSlotLayer: hasActiveVideoSurface,
+          onImageReadyToReveal: hideActiveVideoSurface,
           onVisibleApplied: () => {
-            hideActiveVideoSurface();
             if (!hasActiveVideoSurface) {
               this.element.classList.remove('slot--video-active');
             }
@@ -709,6 +709,7 @@ export class SlotPlayer {
       readonly waitForVisiblePaint?: boolean;
       readonly promoteSlotLayer?: boolean;
       readonly onPromotedPaint?: () => void | Promise<void>;
+      readonly onImageReadyToReveal?: () => void;
       readonly onVisibleApplied?: () => void;
       readonly onVisiblePaintPromise?: (promise: Promise<void>) => void;
     } = {},
@@ -727,6 +728,7 @@ export class SlotPlayer {
     } else {
       await this.prepareImageElement(image, item, 'show');
     }
+    options.onImageReadyToReveal?.();
 
     const visibleStartedAt = performance.now();
     if (options.promoteSlotLayer === true) {
@@ -824,7 +826,7 @@ export class SlotPlayer {
       await this.yieldImagePreparationFrame(item, `after decode ${reason}`, prepareStartedAt);
     }
     const preparedClassStartedAt = performance.now();
-    image.style.zIndex = options.underVideo === true ? IMAGE_LAYER_PROMOTED : IMAGE_LAYER_BOTTOM;
+    image.style.zIndex = IMAGE_LAYER_BOTTOM;
     image.classList.add('slot-image--prepared');
     if (options.underVideo === true) {
       image.classList.add('slot-image--under-video');

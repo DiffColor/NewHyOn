@@ -337,11 +337,11 @@ body {
 }
 
 .slot-image--prepared {
-  opacity: 0;
+  opacity: 1;
 }
 
 .slot-image--under-video {
-  opacity: 0;
+  opacity: 1;
 }
 
 .slot-image--visible {
