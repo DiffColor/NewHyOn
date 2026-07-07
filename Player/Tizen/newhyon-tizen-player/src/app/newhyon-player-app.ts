@@ -9,7 +9,7 @@ import {
   type RemoteControlAction,
 } from '../input/remote-control';
 import { type AvplayPreparedRole, type AvplaySessionPair, createAvplaySessionPair } from '../player/avplay-session';
-import { TizenAudioPolicy } from '../player/audio-policy';
+import { shouldMutePageAudio, TizenAudioPolicy } from '../player/audio-policy';
 import { SlotPlayer, type SlotPlayerTimelineSnapshot } from '../player/slot-player';
 import { RuntimeHealthReporter } from './runtime-health-reporter';
 import { collectRuntimeDiagnostics, formatRuntimeDiagnostics } from './runtime-diagnostics';
@@ -207,6 +207,7 @@ export class NewHyOnPlayerApp {
   private pageStartCount = 0;
   private contentShowCount = 0;
   private lastContent = '-';
+  private settingsVolumePreviewed = false;
   private communicationStatus = 'not-started';
   private communication: CommunicationBootstrapResult | null = null;
   private dbStatus: ConnectionStatus = 'not-configured';
@@ -297,15 +298,24 @@ export class NewHyOnPlayerApp {
           this.resumeSlotsAfterSettingsKey('settings-apply-resume', { allowOverlayOpen: true });
         },
         onClose: (reason) => {
+          const shouldReapplyAudio = this.settingsVolumePreviewed || this.isVolumeTestPlaying();
           this.stopVolumeTest();
+          if (shouldReapplyAudio && !this.destroyed) {
+            this.audioPolicy.forgetLastApplied();
+            this.applyCurrentPageAudioPolicy('settings-close');
+          }
+          this.settingsVolumePreviewed = false;
           if (reason === 'return-key' || reason === 'button') {
             this.resumeSlotsAfterSettingsKey(reason === 'return-key' ? 'settings-return-resume' : 'settings-close-resume');
           }
         },
         onVolumePreview: (volume) => {
-          this.applyDefaultVolumePreviewToCurrentPage(volume);
+          if (this.applyDefaultVolumePreviewToCurrentPage(volume)) {
+            this.settingsVolumePreviewed = true;
+          }
         },
         onPlayVolumeTest: (volume) => {
+          this.settingsVolumePreviewed = true;
           this.playVolumeTest(volume);
         },
         onAuthenticate: () => {
@@ -405,6 +415,25 @@ export class NewHyOnPlayerApp {
     this.logger.info('audio', `volume test level=${normalizedVolume} (${source})`);
   }
 
+  private applyTvVolume(volume: number, source: string): void {
+    const normalizedVolume = normalizeVolume(volume);
+    const audioControl = window.tizen?.tvaudiocontrol;
+    if (typeof audioControl?.setVolume !== 'function') {
+      this.logger.warn('audio', `TV 볼륨 적용 API 없음 (${source}, volume=${normalizedVolume})`);
+      return;
+    }
+
+    try {
+      if (normalizedVolume > 0 && typeof audioControl.setMute === 'function') {
+        audioControl.setMute(false);
+      }
+      audioControl.setVolume(normalizedVolume);
+      this.logger.info('audio', `TV volume=${normalizedVolume} (${source})`);
+    } catch (error) {
+      this.logger.warn('audio', `TV 볼륨 적용 실패 (${source}, volume=${normalizedVolume}): ${formatError(error)}`);
+    }
+  }
+
   private playVolumeTest(volume: number): void {
     this.applyVolumeTestLevel(volume, 'settings-volume-test');
     if (!this.volumeTestAudio.paused) {
@@ -479,6 +508,9 @@ export class NewHyOnPlayerApp {
         this.slotPlayers.forEach((slotPlayer) => {
           slotPlayer.updatePlaybackSettings(settings.preserveAspectRatio, settings.switchOnContentEnd);
         });
+      }
+      if (defaultVolumeChanged) {
+        this.applyDefaultVolumeChangeToCurrentPage();
       }
       this.logger.info(
         'settings',
@@ -1406,12 +1438,23 @@ export class NewHyOnPlayerApp {
   }
 
   private applyDefaultVolumePreviewToCurrentPage(volume: number): boolean {
-    if (!this.isVolumeTestPlaying()) {
+    const page = this.pagePlans[this.pageIndex];
+    if (!page || shouldMutePageAudio(page)) {
       return false;
     }
 
-    this.applyVolumeTestLevel(volume, 'settings-preview');
+    this.applyTvVolume(volume, 'settings-preview');
     return true;
+  }
+
+  private applyDefaultVolumeChangeToCurrentPage(): void {
+    const page = this.pagePlans[this.pageIndex];
+    if (!page) {
+      return;
+    }
+
+    this.audioPolicy.forgetLastApplied();
+    this.applyPageAudioPolicy(page, 'settings-apply');
   }
 
   private applyPageAudioPolicy(page: SeamlessPagePlan, _source: string): void {
@@ -1420,7 +1463,7 @@ export class NewHyOnPlayerApp {
       return;
     }
 
-    this.audioPolicy.applyForPage(page);
+    this.audioPolicy.applyForPage(page, this.config.settings.defaultVolume);
   }
 
   private applyPanelMute(muted: boolean, source: string): void {
