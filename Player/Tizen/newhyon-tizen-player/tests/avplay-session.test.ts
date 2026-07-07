@@ -980,6 +980,48 @@ describe('AvplaySession', () => {
     expect(playerA.play).toHaveBeenCalledTimes(1);
   });
 
+  it('unmuted 영상도 첫 playtime 전에는 오디오를 켜지 않고 playtime에서 켠다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    const listenerRef: { current: AVPlayListener | null } = { current: null };
+    playerA.setListener = vi.fn((nextListener) => {
+      listenerRef.current = nextListener;
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+    const unmutedSlot = {
+      ...createSlotPlan(),
+      isMuted: false,
+    };
+    const onPlaybackStarted = vi.fn();
+
+    await session.play(
+      createVideoItem('audio-sync.mp4'),
+      unmutedSlot,
+      document.createElement('section'),
+      false,
+      vi.fn(),
+      {
+        deferUnmutedAudioUntilPlaybackStart: true,
+        onPlaybackStarted,
+      },
+    );
+
+    expect(playerA.disableAudioStream).toHaveBeenCalledTimes(1);
+    expect(playerA.enableAudioStream).not.toHaveBeenCalled();
+
+    listenerRef.current?.oncurrentplaytime?.(480);
+
+    expect(playerA.enableAudioStream).toHaveBeenCalledTimes(1);
+    expect(onPlaybackStarted).toHaveBeenCalledWith(480);
+    expect(session.debugSnapshot().lanes[0]?.audioMuted).toBe(false);
+  });
+
   it('prepare 실패 시 play까지 진행하지 않는다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();

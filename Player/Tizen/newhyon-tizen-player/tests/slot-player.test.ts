@@ -621,8 +621,10 @@ describe('SlotPlayer', () => {
       _element: HTMLElement,
       _preserveAspectRatio: boolean,
       onStreamEnded: () => boolean | Promise<boolean> | void,
+      options?: { readonly onPlaybackStarted?: (currentTimeMs: number) => void },
     ) => {
       ended.handler = onStreamEnded;
+      options?.onPlaybackStarted?.(0);
       return { durationMs: 5000 };
     });
     const session = {
@@ -948,8 +950,10 @@ describe('SlotPlayer', () => {
       _element: HTMLElement,
       _preserveAspectRatio: boolean,
       onStreamEnded: () => void,
+      options?: { readonly onPlaybackStarted?: (currentTimeMs: number) => void },
     ) => {
       ended.handler = onStreamEnded;
+      options?.onPlaybackStarted?.(0);
     });
     const session = {
       play,
@@ -1015,8 +1019,9 @@ describe('SlotPlayer', () => {
     ended.handler();
     await vi.runOnlyPendingTimersAsync();
 
-    expect(play).toHaveBeenCalledTimes(1);
-    expect(slot.blocksPageTransitionForContentEnd()).toBe(false);
+    expect(play).toHaveBeenCalledTimes(2);
+    expect((play.mock.calls[1]?.[0] as SeamlessContentItem).name).toBe('second.mp4');
+    expect(slot.blocksPageTransitionForContentEnd()).toBe(true);
   });
 
   it('영상 종료 이벤트 모드이면 컨텐츠 종료 전환 설정이 꺼져도 페이지 전환을 막는다', async () => {
@@ -1029,8 +1034,10 @@ describe('SlotPlayer', () => {
       _element: HTMLElement,
       _preserveAspectRatio: boolean,
       onStreamEnded: () => void,
+      options?: { readonly onPlaybackStarted?: (currentTimeMs: number) => void },
     ) => {
       ended.handler = onStreamEnded;
+      options?.onPlaybackStarted?.(0);
       return { durationMs: 10000 };
     });
     const session = {
@@ -1063,7 +1070,9 @@ describe('SlotPlayer', () => {
     ended.handler();
     await Promise.resolve();
 
-    expect(slot.blocksPageTransitionForContentEnd()).toBe(false);
+    expect(play).toHaveBeenCalledTimes(2);
+    expect((play.mock.calls[1]?.[0] as SeamlessContentItem).name).toBe('second.mp4');
+    expect(slot.blocksPageTransitionForContentEnd()).toBe(true);
   });
 
   it('페이지 끝에서 실제 영상 종료가 1초 이내이면 타이머 전환 영상도 종료 이벤트를 기다린다', async () => {
@@ -1078,8 +1087,10 @@ describe('SlotPlayer', () => {
       _element: HTMLElement,
       _preserveAspectRatio: boolean,
       onStreamEnded: () => void,
+      options?: { readonly onPlaybackStarted?: (currentTimeMs: number) => void },
     ) => {
       ended.handler = onStreamEnded;
+      options?.onPlaybackStarted?.(0);
       return { durationMs: 11000 };
     });
     const session = {
@@ -1715,6 +1726,55 @@ describe('SlotPlayer', () => {
       await vi.runOnlyPendingTimersAsync();
       await vi.runAllTicks();
       expect(callOrder).toEqual(['hide', 'stop']);
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
+      }
+    }
+  });
+
+  it('페이지 시간이 만료되어도 마지막 이미지 컨텐츠는 표시 시간을 채운 뒤 페이지 전환을 허용한다', async () => {
+    vi.useFakeTimers();
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      configurable: true,
+      get() {
+        return this.getAttribute('src') ?? '';
+      },
+      set(value: string) {
+        this.setAttribute('src', value);
+        queueMicrotask(() => this.onload?.(new Event('load')));
+      },
+    });
+
+    try {
+      const slot = new SlotPlayer(
+        0,
+        document.createElement('section'),
+        createTwoImageSlot(),
+        false,
+        true,
+        () => {
+          throw new Error('이미지 슬롯은 AVPlay 세션을 사용하지 않습니다.');
+        },
+        new RingLogger(5),
+      );
+
+      await slot.start();
+      slot.setPageTimeline(5000, 5000, false);
+      expect(slot.blocksPageTransitionForContentEnd()).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(5000);
+      await slot.syncToPageElapsed(10000, 5000, false);
+      expect(slot.timelineSnapshot().itemName).toBe('second.png');
+      expect(slot.timelineSnapshot().elapsedMs).toBe(0);
+      expect(slot.blocksPageTransitionForContentEnd()).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(9999);
+      expect(slot.blocksPageTransitionForContentEnd()).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(slot.blocksPageTransitionForContentEnd()).toBe(false);
     } finally {
       if (descriptor) {
         Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);

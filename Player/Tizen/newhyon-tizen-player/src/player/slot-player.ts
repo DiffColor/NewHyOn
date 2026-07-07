@@ -327,8 +327,17 @@ export class SlotPlayer {
       return false;
     }
 
+    const lastPlayableIndex = this.resolveLastPlayableIndex();
+    if (lastPlayableIndex !== null && this.itemIndex !== lastPlayableIndex) {
+      return true;
+    }
+
+    if (!this.hasCurrentItemDurationEnded(item)) {
+      return true;
+    }
+
     if (item.contentType === 'Image') {
-      return this.switchOnContentEnd && !this.hasCurrentItemDurationEnded(item);
+      return false;
     }
 
     if (!this.shouldWaitForVideoEndForPageTransition(item) || this.contentEndReachedForPageTransition) {
@@ -485,6 +494,9 @@ export class SlotPlayer {
     if (target.itemIndex === this.itemIndex) {
       const item = this.currentItem();
       if (item) {
+        if (item.contentType === 'Video' && this.itemStartedAt < 0) {
+          return;
+        }
         this.startPassiveItemClock(item, target?.itemElapsedMs ?? this.currentItemTimelineElapsedMilliseconds(item));
       }
       return;
@@ -492,7 +504,7 @@ export class SlotPlayer {
 
     this.itemIndex = target.itemIndex;
     this.resetItemClock();
-    await this.showCurrentItemAtElapsed(target.itemElapsedMs);
+    await this.showCurrentItemAtElapsed(0);
   }
 
   private async showCurrentItemAtElapsed(
@@ -514,6 +526,7 @@ export class SlotPlayer {
     this.pageTransitionVideoWaitStartedAt = -1;
     this.currentVideoLoopState = null;
     this.currentVideoCompletionCount = 0;
+    let videoPlaybackStarted = false;
     try {
       let releaseBeforePrepareNext: Promise<void> | null = null;
       if (item.contentType === 'Image') {
@@ -555,9 +568,25 @@ export class SlotPlayer {
       } else {
         this.element.classList.add('slot--video-active');
         const nextVideoSession = this.videoSession ?? this.getVideoSession();
+        const markVideoPlaybackStarted = (currentTimeMs: number) => {
+          if (
+            videoPlaybackStarted
+            || !this.active
+            || !this.isContentGenerationCurrent(generation)
+            || this.currentItem()?.id !== item.id
+          ) {
+            return;
+          }
+
+          videoPlaybackStarted = true;
+          this.startPassiveItemClock(item, 0);
+          this.logger.info('slot', `slot ${this.slotIndex + 1} 영상 재생 타이머 시작: ${item.name} playtime=${Math.round(currentTimeMs)}ms`);
+        };
         const playbackInfo = await nextVideoSession.play(item, this.slot, this.element, this.preserveAspectRatio, () => this.handleVideoEnded(item.id), {
           waitForFirstFrame: false,
           preparedRoles: options.preparedRoles ?? ['next-content'],
+          deferUnmutedAudioUntilPlaybackStart: true,
+          onPlaybackStarted: markVideoPlaybackStarted,
         });
         if (!this.isContentGenerationCurrent(generation)) {
           return false;
@@ -588,7 +617,14 @@ export class SlotPlayer {
       this.switchingItem = false;
     }
 
-    this.startPassiveItemClock(item, itemElapsedMs);
+    if (item.contentType === 'Video') {
+      if (!videoPlaybackStarted) {
+        this.itemPausedElapsedMs = 0;
+        this.itemStartedAt = -1;
+      }
+    } else {
+      this.startPassiveItemClock(item, itemElapsedMs);
+    }
     return true;
   }
 
@@ -638,6 +674,15 @@ export class SlotPlayer {
     }
 
     if (!this.loopCurrentPageAtPageEnd && (this.isPageTimelineExpired() || this.isPageTransitionScheduled())) {
+      const lastPlayableIndex = this.resolveLastPlayableIndex();
+      if (lastPlayableIndex !== null && this.itemIndex !== lastPlayableIndex && this.canAdvanceContent()) {
+        if (typeof this.videoSession?.stopCurrentForCompletedStream === 'function') {
+          this.videoSession.stopCurrentForCompletedStream();
+        }
+        await this.advance();
+        return true;
+      }
+
       this.contentEndReachedForPageTransition = true;
       this.queuePageTransitionContentEnd(item);
       return false;
@@ -1384,7 +1429,9 @@ export class SlotPlayer {
       return null;
     }
 
-    const cycleElapsedMs = Math.max(0, pageElapsedMs) % totalDurationMs;
+    const cycleElapsedMs = this.loopCurrentPageAtPageEnd
+      ? Math.max(0, pageElapsedMs) % totalDurationMs
+      : Math.min(Math.max(0, pageElapsedMs), totalDurationMs);
     let cursorMs = 0;
     for (let index = 0; index < durations.length; index += 1) {
       const durationMs = durations[index]!;
@@ -1418,6 +1465,17 @@ export class SlotPlayer {
 
   private resolvePlayableStartIndex(slot: SeamlessSlotPlan = this.slot): number | null {
     for (let index = 0; index < slot.items.length; index += 1) {
+      const item = slot.items[index];
+      if (item && this.isItemPlayable(item)) {
+        return index;
+      }
+    }
+
+    return null;
+  }
+
+  private resolveLastPlayableIndex(slot: SeamlessSlotPlan = this.slot): number | null {
+    for (let index = slot.items.length - 1; index >= 0; index -= 1) {
       const item = slot.items[index];
       if (item && this.isItemPlayable(item)) {
         return index;

@@ -1988,13 +1988,12 @@ export class NewHyOnPlayerApp {
       return;
     }
 
-    const pageElapsedMs = this.currentPageElapsedMilliseconds();
     const rawPageElapsedMs = this.currentPageRawElapsedMilliseconds();
     this.render();
     this.checkSchedules();
     const pageTransitionStarted = this.checkPageTransition(rawPageElapsedMs);
-    if (!pageTransitionStarted && !this.pageTransitionInProgress && !this.isCurrentPageExpired(rawPageElapsedMs)) {
-      this.scheduleSlotTimelineSync(pageElapsedMs, this.currentPageDurationMilliseconds(), this.pagePlans.length <= 1);
+    if (!pageTransitionStarted && !this.pageTransitionInProgress) {
+      this.scheduleSlotTimelineSync(rawPageElapsedMs, this.currentPageDurationMilliseconds(), this.pagePlans.length <= 1);
     }
   }
 

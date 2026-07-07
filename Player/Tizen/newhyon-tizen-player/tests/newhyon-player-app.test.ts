@@ -1276,7 +1276,7 @@ describe('NewHyOnPlayerApp', () => {
     }
   });
 
-  it('페이지 종료 tick이 먼저 와도 영상 종료 이벤트와 함께 다음 페이지로 전환한다', async () => {
+  it('페이지 종료 tick이 먼저 와도 남은 페이지 컨텐츠를 재생한 뒤 다음 페이지로 전환한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn();
     const listeners: AVPlayListener[] = [];
@@ -1313,9 +1313,25 @@ describe('NewHyOnPlayerApp', () => {
     await vi.runAllTicks();
     await Promise.resolve();
     await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.runAllTicks();
+
+    expect(document.querySelector('#status-page')?.textContent).toContain('first-page');
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(document.querySelector('#status-slots')?.textContent).toContain('first-b.mp4');
+
+    await vi.advanceTimersByTimeAsync(10000);
+    await vi.advanceTimersByTimeAsync(32);
+    listeners.slice().forEach((listener) => listener.onstreamcompleted?.());
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.runAllTicks();
+    await Promise.resolve();
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.runAllTicks();
 
     expect(document.querySelector('#status-page')?.textContent).toContain('second-page');
-    expect(play).toHaveBeenCalledTimes(2);
+    expect(play).toHaveBeenCalledTimes(3);
     expect(document.querySelector('#status-slots')?.textContent).toContain('second.mp4');
     app.destroy();
   });
