@@ -41,17 +41,30 @@ function renderAppShell(): void {
 
 function createPlayer(play: () => void, onListener?: (listener: AVPlayListener) => void): AVPlayApi {
   let listener: AVPlayListener | null = null;
+  let state = 'IDLE';
   return {
-    open: vi.fn(),
-    prepare: vi.fn(),
-    prepareAsync: vi.fn((successCallback: () => void) => successCallback()),
+    open: vi.fn(() => {
+      state = 'IDLE';
+    }),
+    prepare: vi.fn(() => {
+      state = 'READY';
+    }),
+    prepareAsync: vi.fn((successCallback: () => void) => {
+      state = 'READY';
+      successCallback();
+    }),
     play: vi.fn(() => {
+      state = 'PLAYING';
       play();
       listener?.oncurrentplaytime?.(0);
     }),
     pause: vi.fn(),
-    stop: vi.fn(),
-    close: vi.fn(),
+    stop: vi.fn(() => {
+      state = 'IDLE';
+    }),
+    close: vi.fn(() => {
+      state = 'NONE';
+    }),
     setListener: vi.fn((nextListener) => {
       listener = nextListener;
       onListener?.(nextListener);
@@ -64,7 +77,7 @@ function createPlayer(play: () => void, onListener?: (listener: AVPlayListener) 
     setLooping: vi.fn(),
     disableAudioStream: vi.fn(),
     enableAudioStream: vi.fn(),
-    getState: vi.fn(() => 'IDLE'),
+    getState: vi.fn(() => state),
   };
 }
 
@@ -79,6 +92,10 @@ function createStatefulStorePlayer(play: () => void, onListener?: (listener: AVP
   });
   player.prepare = vi.fn(() => {
     state = 'READY';
+  });
+  player.prepareAsync = vi.fn((successCallback: () => void) => {
+    state = 'READY';
+    successCallback();
   });
   player.stop = vi.fn(() => {
     state = 'IDLE';
@@ -841,7 +858,8 @@ describe('NewHyOnPlayerApp', () => {
     expect(play).toHaveBeenCalledTimes(1);
     expect(getPlayer).toHaveBeenCalledTimes(4);
     expect(players[0]?.prepare).toHaveBeenCalledTimes(1);
-    expect(players[1]?.prepare).toHaveBeenCalledTimes(1);
+    expect(players[1]?.prepare).not.toHaveBeenCalled();
+    expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
     expect(players[1]?.setDisplayRect).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(6499);
@@ -850,7 +868,8 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelectorAll('.slot')).toHaveLength(1);
     expect(play).toHaveBeenCalledTimes(1);
     expect(getPlayer).toHaveBeenCalledTimes(4);
-    expect(players[1]?.prepare).toHaveBeenCalledTimes(1);
+    expect(players[1]?.prepare).not.toHaveBeenCalled();
+    expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(3501);
     await vi.advanceTimersByTimeAsync(64);
@@ -860,7 +879,8 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelectorAll('.slot')).toHaveLength(1);
     expect(play).toHaveBeenCalledTimes(2);
     expect(getPlayer).toHaveBeenCalledTimes(4);
-    expect(players[1]?.prepare).toHaveBeenCalledTimes(1);
+    expect(players[1]?.prepare).not.toHaveBeenCalled();
+    expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
     expect(window.NEWHYON_PLAYER_HEALTH?.diagnostics.pageStartCount).toBe(2);
     app.destroy();
   });
@@ -941,7 +961,8 @@ describe('NewHyOnPlayerApp', () => {
 
     await app.start();
     expect(players[1]?.open).toHaveBeenLastCalledWith('https://example.com/second.mp4');
-    expect(players[1]?.prepare).toHaveBeenCalledTimes(1);
+    expect(players[1]?.prepare).not.toHaveBeenCalled();
+    expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
     const openCallCounts = players.map((player) => vi.mocked(player.open).mock.calls.length);
 
     await vi.advanceTimersByTimeAsync(10000);
@@ -994,7 +1015,8 @@ describe('NewHyOnPlayerApp', () => {
     expect(players[0]?.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');
     expect(players[0]?.setStreamingProperty).toHaveBeenCalledWith('SET_MIXEDFRAME');
     expect(players[1]?.setDisplayRect).toHaveBeenCalledTimes(1);
-    expect(players[1]?.prepare).toHaveBeenCalledTimes(1);
+    expect(players[1]?.prepare).not.toHaveBeenCalled();
+    expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
     expect(players[1]?.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');
     expect(players[1]?.setStreamingProperty).toHaveBeenCalledWith('SET_MIXEDFRAME');
 
@@ -1004,7 +1026,8 @@ describe('NewHyOnPlayerApp', () => {
     await vi.runAllTicks();
     await Promise.resolve();
     await Promise.resolve();
-    expect(players[1]?.prepare).toHaveBeenCalledTimes(1);
+    expect(players[1]?.prepare).not.toHaveBeenCalled();
+    expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
     expect(players[1]?.setDisplayRect).toHaveBeenCalledTimes(2);
     expect(players[1]?.setDisplayRect).toHaveBeenLastCalledWith(0, 0, width, height);
     expect(players[1]?.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');

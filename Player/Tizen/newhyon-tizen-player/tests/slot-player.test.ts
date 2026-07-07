@@ -1481,6 +1481,9 @@ describe('SlotPlayer', () => {
         stop: vi.fn(() => {
           callOrder.push('stop');
         }),
+        stopCurrentAsync: vi.fn(() => {
+          callOrder.push('stopCurrentAsync');
+        }),
         state: vi.fn(() => 'PLAYING'),
         applyDisplayRect: vi.fn(),
       } as unknown as AvplaySession;
@@ -1500,6 +1503,11 @@ describe('SlotPlayer', () => {
 
       await slot.start();
       expect(release).not.toHaveBeenCalled();
+      await vi.runAllTicks();
+      await vi.advanceTimersByTimeAsync(32);
+      const preparedImage = element.querySelector<HTMLImageElement>('.slot-image--under-video');
+      expect(preparedImage?.getAttribute('src')).toBe('second.png');
+      expect(preparedImage?.style.zIndex).toBe('2');
 
       const syncPromise = slot.syncToPageElapsed(10000);
       let syncResolved = false;
@@ -1509,14 +1517,15 @@ describe('SlotPlayer', () => {
       await vi.runAllTicks();
       await syncPromise;
       expect(syncResolved).toBe(true);
-      expect(session.hide).toHaveBeenCalledTimes(1);
+      expect(session.hide).not.toHaveBeenCalled();
       await vi.runAllTicks();
       await vi.runOnlyPendingTimersAsync();
       await vi.runOnlyPendingTimersAsync();
-      expect(session.stop).toHaveBeenCalledTimes(1);
+      expect(session.stop).not.toHaveBeenCalled();
+      expect(session.stopCurrentAsync).toHaveBeenCalledTimes(1);
       expect(release).toHaveBeenCalledWith(session);
       expect(slot.snapshot()).toContain('second.png (IMAGE)');
-      expect(callOrder).toEqual(['hide', 'stop']);
+      expect(callOrder).toEqual(['stopCurrentAsync']);
     } finally {
       if (descriptor) {
         Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);
@@ -1690,6 +1699,9 @@ describe('SlotPlayer', () => {
         stop: vi.fn(() => {
           callOrder.push('stop');
         }),
+        stopCurrentAsync: vi.fn(() => {
+          callOrder.push('stopCurrentAsync');
+        }),
         state: vi.fn(() => 'PLAYING'),
         applyDisplayRect: vi.fn(),
       } as unknown as AvplaySession;
@@ -1715,7 +1727,9 @@ describe('SlotPlayer', () => {
       await vi.runOnlyPendingTimersAsync();
       await vi.runOnlyPendingTimersAsync();
       await vi.runAllTicks();
-      expect(callOrder).toEqual(['hide', 'stop']);
+      expect(session.stop).not.toHaveBeenCalled();
+      expect(session.stopCurrentAsync).toHaveBeenCalledTimes(1);
+      expect(callOrder).toEqual(['stopCurrentAsync']);
     } finally {
       if (descriptor) {
         Object.defineProperty(HTMLImageElement.prototype, 'src', descriptor);

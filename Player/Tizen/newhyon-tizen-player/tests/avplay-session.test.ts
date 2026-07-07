@@ -227,6 +227,10 @@ describe('AvplaySession', () => {
     playerB.prepare = vi.fn(() => {
       playerBState = 'READY';
     });
+    playerB.prepareAsync = vi.fn((successCallback: () => void) => {
+      playerBState = 'READY';
+      successCallback();
+    });
     playerB.play = vi.fn(() => {
       playerBState = 'PLAYING';
     });
@@ -316,6 +320,10 @@ describe('AvplaySession', () => {
     });
     playerB.prepare = vi.fn(() => {
       playerBState = 'READY';
+    });
+    playerB.prepareAsync = vi.fn((successCallback: () => void) => {
+      playerBState = 'READY';
+      successCallback();
     });
     playerB.stop = vi.fn(() => {
       playerBState = 'IDLE';
@@ -438,6 +446,11 @@ describe('AvplaySession', () => {
       callOrder.push('b.prepare');
       playerBState = 'READY';
     });
+    playerB.prepareAsync = vi.fn((successCallback: () => void) => {
+      callOrder.push('b.prepareAsync');
+      playerBState = 'READY';
+      successCallback();
+    });
     playerB.setDisplayRect = vi.fn(() => {
       callOrder.push('b.rect');
     });
@@ -462,7 +475,7 @@ describe('AvplaySession', () => {
     expect(callOrder).toEqual([
       'b.open',
       'b.rect',
-      'b.prepare',
+      'b.prepareAsync',
     ]);
     callOrder.length = 0;
 
@@ -474,7 +487,8 @@ describe('AvplaySession', () => {
       'a.stop',
     ]);
     expect(playerB.open).toHaveBeenCalledTimes(1);
-    expect(playerB.prepare).toHaveBeenCalledTimes(1);
+    expect(playerB.prepare).not.toHaveBeenCalled();
+    expect(playerB.prepareAsync).toHaveBeenCalledTimes(1);
   });
 
   it('사전 준비 mixedframe prepare 실패는 current 재생 보호를 위해 direct 준비를 같이 하지 않는다', async () => {
@@ -493,13 +507,12 @@ describe('AvplaySession', () => {
     playerB.open = vi.fn(() => {
       playerBState = 'IDLE';
     });
-    playerB.prepare = vi.fn()
-      .mockImplementationOnce(() => {
-        throw new Error('prepare failed');
-      })
-      .mockImplementationOnce(() => {
-        playerBState = 'READY';
-      });
+    playerB.prepareAsync = vi.fn((_successCallback: () => void, errorCallback?: (error: AVPlayErrorLike) => void) => {
+      errorCallback?.(new Error('prepare failed'));
+    });
+    playerB.prepare = vi.fn(() => {
+      playerBState = 'READY';
+    });
     playerB.close = vi.fn(() => {
       playerBState = 'NONE';
     });
@@ -518,10 +531,13 @@ describe('AvplaySession', () => {
 
     await session.play(createVideoItem('current.mp4'), slot, slotElement, false, vi.fn());
 
-    expect(() => session.prepareNextVideo(createVideoItem('next.mp4'), slot)).toThrow('AVPlay prepare 오류');
+    session.prepareNextVideo(createVideoItem('next.mp4'), slot);
+    await Promise.resolve();
+    await Promise.resolve();
     expect(playerB.close).toHaveBeenCalledTimes(1);
     expect(playerB.open).toHaveBeenCalledTimes(1);
-    expect(playerB.prepare).toHaveBeenCalledTimes(1);
+    expect(playerB.prepareAsync).toHaveBeenCalledTimes(1);
+    expect(playerB.prepare).not.toHaveBeenCalled();
     expect(playerB.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');
     expect(playerB.setStreamingProperty).not.toHaveBeenCalledWith('SET_MIXEDFRAME');
     expect(session.debugSnapshot().lanes[1]?.role).toBe('idle');
@@ -529,7 +545,7 @@ describe('AvplaySession', () => {
     await session.play(createVideoItem('next.mp4'), slot, slotElement, false, vi.fn());
 
     expect(playerB.open).toHaveBeenCalledTimes(2);
-    expect(playerB.prepare).toHaveBeenCalledTimes(2);
+    expect(playerB.prepare).toHaveBeenCalledTimes(1);
     expect(playerB.play).toHaveBeenCalledTimes(1);
   });
 
@@ -797,6 +813,10 @@ describe('AvplaySession', () => {
     playerB.prepare = vi.fn(() => {
       playerBState = 'READY';
     });
+    playerB.prepareAsync = vi.fn((successCallback: () => void) => {
+      playerBState = 'READY';
+      successCallback();
+    });
     playerB.stop = vi.fn(() => {
       playerBState = 'IDLE';
     });
@@ -805,6 +825,10 @@ describe('AvplaySession', () => {
     });
     playerC.prepare = vi.fn(() => {
       playerCState = 'READY';
+    });
+    playerC.prepareAsync = vi.fn((successCallback: () => void) => {
+      playerCState = 'READY';
+      successCallback();
     });
     playerC.play = vi.fn(() => {
       playerCState = 'PLAYING';
@@ -840,7 +864,8 @@ describe('AvplaySession', () => {
     });
 
     expect(playerC.open).toHaveBeenCalledTimes(1);
-    expect(playerC.prepare).toHaveBeenCalledTimes(1);
+    expect(playerC.prepare).not.toHaveBeenCalled();
+    expect(playerC.prepareAsync).toHaveBeenCalledTimes(1);
     expect(playerC.play).toHaveBeenCalledTimes(1);
     expect(playerA.stop).toHaveBeenCalledTimes(1);
     expect(playerB.stop).toHaveBeenCalledTimes(1);
@@ -883,6 +908,10 @@ describe('AvplaySession', () => {
     playerB.prepare = vi.fn(() => {
       playerBState = 'READY';
     });
+    playerB.prepareAsync = vi.fn((successCallback: () => void) => {
+      playerBState = 'READY';
+      successCallback();
+    });
     playerB.play = vi.fn(() => {
       playerBState = 'PLAYING';
     });
@@ -891,6 +920,10 @@ describe('AvplaySession', () => {
     });
     playerC.prepare = vi.fn(() => {
       playerCState = 'READY';
+    });
+    playerC.prepareAsync = vi.fn((successCallback: () => void) => {
+      playerCState = 'READY';
+      successCallback();
     });
     playerC.play = vi.fn(() => {
       playerCState = 'PLAYING';

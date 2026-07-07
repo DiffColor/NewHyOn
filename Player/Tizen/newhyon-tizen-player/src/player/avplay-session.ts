@@ -211,6 +211,28 @@ export class AvplaySessionPair {
     this.updateObjectVisibility();
   }
 
+  stopCurrentAsync(): void {
+    this.nextOperationId();
+    const laneToStop = this.currentLaneIndex;
+    this.logger.info('avplay-trace', `session ${this.index} stopCurrentAsync lane=${laneToStop !== null ? laneToStop + 1 : '-'} ${this.traceContext()}`);
+    if (laneToStop !== null) {
+      this.hideLaneSurface(laneToStop, 'stop-current-async');
+    }
+    this.currentItem = null;
+    this.currentEndedHandler = null;
+    this.currentLaneIndex = null;
+    this.heldLaneIndex = null;
+    this.clearAllPreparedMetadata();
+    this.updateObjectVisibility();
+    if (laneToStop !== null) {
+      void this.afterNextFrame(() => {
+        this.stopLane(laneToStop);
+        this.closeLane(laneToStop);
+        this.updateObjectVisibility();
+      });
+    }
+  }
+
   hideCurrentKeepPrepared(options: { readonly deferStopUntilNextFrame?: boolean } = {}): Promise<void> {
     const laneToStop = this.currentLaneIndex;
     this.logger.info('avplay-trace', `session ${this.index} hideCurrentKeepPrepared lane=${laneToStop !== null ? laneToStop + 1 : '-'} ${this.traceContext()}`);
@@ -349,9 +371,11 @@ export class AvplaySessionPair {
     }
 
     const existing = this.preparedLanes.get(role);
-    if (existing && this.laneState(existing.laneIndex) === 'READY') {
+    if (existing) {
       if (existing.itemId === item.id) {
-        this.logger.info('avplay-trace', `session ${this.index} prepareNextVideo cache-hit role=${role} lane ${existing.laneIndex + 1} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
+        const state = this.laneState(existing.laneIndex);
+        const status = state === 'READY' ? 'cache-hit' : 'pending';
+        this.logger.info('avplay-trace', `session ${this.index} prepareNextVideo ${status} role=${role} lane ${existing.laneIndex + 1} state=${state} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
         return;
       }
 
@@ -367,20 +391,10 @@ export class AvplaySessionPair {
 
     const sourceUrl = resolveAvplaySourceUrl(item.sourceUrl);
     this.logger.info('avplay', `slot ${this.index} lane ${laneIndex + 1} prepare-next role=${role}: ${item.name}`);
-    let playbackMode: AvplayLanePlaybackMode = 'mixedframe';
     try {
       this.resetLaneForPlayback(laneIndex);
-      playbackMode = this.prepareLaneWithDirectRetry(laneIndex, item, sourceUrl, {
-        offscreenBeforeMixedPrepare: true,
-        offscreenAfterDirectPrepare: true,
-        retryDirect: false,
-      });
-      if (this.laneState(laneIndex) !== 'READY') {
-        const state = this.laneState(laneIndex);
-        this.logger.warn('avplay-trace', `session ${this.index} prepareNextVideo not ready role=${role} lane ${laneIndex + 1} state=${state} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
-        this.resetFailedLane(laneIndex, `prepare-next not-ready role=${role} ${item.name}`);
-        return;
-      }
+      this.configureLaneForItem(laneIndex, item, sourceUrl, 'mixedframe');
+      this.applyOffscreenRectToLane(laneIndex, item.name);
     } catch (error) {
       this.resetFailedLane(laneIndex, `prepare-next role=${role} ${item.name}`, error);
       throw error;
@@ -391,10 +405,32 @@ export class AvplaySessionPair {
       laneIndex,
       itemId: item.id,
       itemName: item.name,
-      playbackMode,
+      playbackMode: 'mixedframe',
     });
-    this.logger.info('avplay-trace', `session ${this.index} prepareNextVideo ready role=${role} lane ${laneIndex + 1} mode=${playbackMode} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
-    this.updateObjectVisibility();
+    void this.prepareLaneAsync(laneIndex, item.name, 'mixedframe')
+      .then(() => {
+        const prepared = this.preparedLanes.get(role);
+        if (!prepared || prepared.laneIndex !== laneIndex || prepared.itemId !== item.id) {
+          this.logger.info('avplay-trace', `session ${this.index} prepareNextVideo stale completion ignored role=${role} lane ${laneIndex + 1} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
+          return;
+        }
+
+        if (this.laneState(laneIndex) !== 'READY') {
+          const state = this.laneState(laneIndex);
+          this.logger.warn('avplay-trace', `session ${this.index} prepareNextVideo not ready role=${role} lane ${laneIndex + 1} state=${state} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
+          this.resetFailedLane(laneIndex, `prepare-next not-ready role=${role} ${item.name}`);
+          return;
+        }
+
+        this.logger.info('avplay-trace', `session ${this.index} prepareNextVideo ready role=${role} lane ${laneIndex + 1} mode=mixedframe ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
+        this.updateObjectVisibility();
+      })
+      .catch((error) => {
+        const prepared = this.preparedLanes.get(role);
+        if (prepared?.laneIndex === laneIndex && prepared.itemId === item.id) {
+          this.resetFailedLane(laneIndex, `prepare-next role=${role} ${item.name}`, error);
+        }
+      });
   }
 
   debugSnapshot(): RuntimeAvplaySessionSnapshot {
@@ -588,6 +624,46 @@ export class AvplaySessionPair {
       this.traceFail(traceId, laneIndex, 'prepare', error, `${itemName} mode=${playbackMode}`);
       throw new Error(`slot ${this.index} lane ${laneIndex + 1} AVPlay prepare 오류: ${formatAvplayError(error as AVPlayErrorLike, String(error))}`);
     }
+  }
+
+  private prepareLaneAsync(laneIndex: number, itemName: string, playbackMode: AvplayLanePlaybackMode): Promise<void> {
+    const lane = this.lanes[laneIndex];
+    const traceId = this.traceBegin(laneIndex, 'prepareAsync', `${itemName} mode=${playbackMode}`);
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const rejectPrepare = (error: unknown) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        this.traceFail(traceId, laneIndex, 'prepareAsync', error, `${itemName} mode=${playbackMode}`);
+        reject(new Error(`slot ${this.index} lane ${laneIndex + 1} AVPlay prepareAsync 오류: ${formatAvplayError(error as AVPlayErrorLike, String(error))}`));
+      };
+      const resolvePrepare = () => {
+        if (settled) {
+          return;
+        }
+        try {
+          this.laneRuntimeStates[laneIndex].lastPrepareCompletedAt = new Date().toISOString();
+          this.laneRuntimeStates[laneIndex].playbackMode = playbackMode;
+          this.traceEnd(traceId, laneIndex, 'prepareAsync', `${itemName} mode=${playbackMode}`);
+          if (playbackMode === 'mixedframe') {
+            this.setMixedFrame(laneIndex, itemName);
+          }
+          this.logger.debug('avplay', `slot ${this.index} lane ${laneIndex + 1} prepared async: ${itemName}`);
+          settled = true;
+          resolve();
+        } catch (error) {
+          rejectPrepare(error);
+        }
+      };
+
+      try {
+        lane.player.prepareAsync(resolvePrepare, rejectPrepare);
+      } catch (error) {
+        rejectPrepare(error);
+      }
+    });
   }
 
   private configureLaneForItem(laneIndex: number, item: SeamlessContentItem, sourceUrl: string, playbackMode: AvplayLanePlaybackMode): void {

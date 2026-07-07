@@ -524,42 +524,21 @@ export class SlotPlayer {
     this.currentVideoLoopState = null;
     this.currentVideoCompletionCount = 0;
     try {
-      let releaseBeforePrepareNext: Promise<void> | null = null;
+      let deferPrepareNextUntilImagePaint = false;
       if (item.contentType === 'Image') {
         const hasActiveVideoSurface = this.videoSession !== null;
-        let videoSurfaceHidden = false;
-        let visiblePaintPromise: Promise<void> = Promise.resolve();
-        const hideActiveVideoSurface = () => {
-          if (!hasActiveVideoSurface || videoSurfaceHidden) {
-            return;
-          }
-
-          this.hideCurrentVideoSurface(false);
-          videoSurfaceHidden = true;
-        };
-        await this.showImage(item, {
-          promoteSlotLayer: hasActiveVideoSurface,
-          onImageReadyToReveal: hideActiveVideoSurface,
-          onVisibleApplied: () => {
-            if (!hasActiveVideoSurface) {
+        if (hasActiveVideoSurface) {
+          await this.showImageUnderActiveVideo(item);
+          deferPrepareNextUntilImagePaint = true;
+        } else {
+          await this.showImage(item, {
+            onVisibleApplied: () => {
               this.element.classList.remove('slot--video-active');
-            }
-          },
-          onVisiblePaintPromise: (promise) => {
-            visiblePaintPromise = promise.then(() => {
-              if (hasActiveVideoSurface) {
-                this.element.classList.remove('slot--video-active');
-              }
-            });
-          },
-        });
+            },
+          });
+        }
         if (!this.isContentGenerationCurrent(generation)) {
           return false;
-        }
-        if (hasActiveVideoSurface) {
-          releaseBeforePrepareNext = visiblePaintPromise.then(() => this.releaseCurrentVideoSession({
-            keepPrepared: false,
-          }));
         }
       } else {
         this.element.classList.add('slot--video-active');
@@ -578,10 +557,8 @@ export class SlotPlayer {
         this.prepareNextImageForCurrentVideo(generation);
       }
       this.onContentShown(this.slotIndex, item);
-      if (releaseBeforePrepareNext) {
-        void releaseBeforePrepareNext
-          .then(() => this.waitForPaint())
-          .then(() => this.prepareNextContent(generation));
+      if (deferPrepareNextUntilImagePaint) {
+        void this.waitForPaint().then(() => this.prepareNextContent(generation));
       } else {
         void this.prepareNextContent(generation);
       }
@@ -777,6 +754,47 @@ export class SlotPlayer {
     this.logger.info('slot', `slot ${this.slotIndex + 1} image: ${item.name}`);
   }
 
+  private async showImageUnderActiveVideo(item: SeamlessContentItem): Promise<void> {
+    const showStartedAt = performance.now();
+    const image = this.preparedImageId === item.id && this.preparedImageElement
+      ? this.preparedImageElement
+      : this.standbyImage;
+    const previousImage = image === this.currentImage ? this.standbyImage : this.currentImage;
+    this.applyImageDisplayMode();
+
+    if (this.preparedImageId === item.id && this.preparedImagePromise) {
+      const waitStartedAt = performance.now();
+      await this.preparedImagePromise;
+      this.logImageTiming(item, 'show under-video prepared wait', waitStartedAt, `total=${this.elapsed(showStartedAt)}ms`);
+    } else {
+      await this.prepareImageElement(image, item, 'show-under-video', { underVideo: true });
+    }
+
+    const readyStartedAt = performance.now();
+    image.style.zIndex = IMAGE_LAYER_TOP;
+    image.classList.add('slot-image--prepared');
+    image.classList.add('slot-image--under-video');
+    image.classList.remove('slot-image--visible');
+    this.logImageTiming(item, 'under-video already ready', readyStartedAt, `total=${this.elapsed(showStartedAt)}ms`);
+
+    await this.releaseCurrentVideoSession({ keepPrepared: false, stopCurrentOnlyAsync: true });
+    this.element.classList.remove('slot--video-active');
+    this.logImageTiming(item, 'video stopped for image reveal', readyStartedAt, `total=${this.elapsed(showStartedAt)}ms`);
+
+    previousImage.classList.remove('slot-image--visible');
+    previousImage.classList.remove('slot-image--prepared');
+    previousImage.classList.remove('slot-image--under-video');
+    previousImage.style.zIndex = IMAGE_LAYER_BOTTOM;
+    image.classList.remove('slot-image--prepared');
+    image.classList.remove('slot-image--under-video');
+    image.classList.add('slot-image--visible');
+    image.style.zIndex = IMAGE_LAYER_TOP;
+    this.currentImage = image;
+    this.standbyImage = previousImage;
+    this.consumePreparedImage(item.id);
+    this.logger.info('slot', `slot ${this.slotIndex + 1} image: ${item.name}`);
+  }
+
   private async prepareImageElement(
     image: HTMLImageElement,
     item: SeamlessContentItem,
@@ -826,13 +844,14 @@ export class SlotPlayer {
       await this.yieldImagePreparationFrame(item, `after decode ${reason}`, prepareStartedAt);
     }
     const preparedClassStartedAt = performance.now();
+    if (options.underVideo === true) {
+      await this.applyPreparedImageUnderVideoLayer(image, item, reason);
+      return;
+    }
+
     image.style.zIndex = IMAGE_LAYER_BOTTOM;
     image.classList.add('slot-image--prepared');
-    if (options.underVideo === true) {
-      image.classList.add('slot-image--under-video');
-    } else {
-      image.classList.remove('slot-image--under-video');
-    }
+    image.classList.remove('slot-image--under-video');
     this.logImageTiming(item, `prepared class applied ${reason}`, preparedClassStartedAt, `total=${this.elapsed(prepareStartedAt)}ms`);
     if (shouldYieldPreparation) {
       await this.yieldImagePreparationFrame(item, `after prepared class ${reason}`, prepareStartedAt);
@@ -848,6 +867,22 @@ export class SlotPlayer {
     } finally {
       stopPreparedPaintProbe();
     }
+  }
+
+  private async applyPreparedImageUnderVideoLayer(
+    image: HTMLImageElement,
+    item: SeamlessContentItem,
+    reason: string,
+  ): Promise<void> {
+    const layerStartedAt = performance.now();
+    image.style.zIndex = IMAGE_LAYER_TOP;
+    image.classList.add('slot-image--prepared');
+    image.classList.add('slot-image--under-video');
+    image.classList.remove('slot-image--visible');
+    this.logImageTiming(item, `under-video layer applied ${reason}`, layerStartedAt);
+    image.getBoundingClientRect();
+    await this.waitForPaint();
+    this.logImageTiming(item, `under-video layer paint ${reason}`, layerStartedAt);
   }
 
   private applyImageDisplayMode(): void {
@@ -928,6 +963,24 @@ export class SlotPlayer {
 
   private prepareImageContent(item: SeamlessContentItem, options: { readonly underVideo?: boolean } = {}): Promise<void> {
     if (this.preparedImageId === item.id && this.preparedImagePromise) {
+      if (options.underVideo === true && this.preparedImageElement) {
+        const image = this.preparedImageElement;
+        this.preparedImagePromise = this.preparedImagePromise.then(async () => {
+          if (this.preparedImageId !== item.id || this.preparedImageElement !== image) {
+            return;
+          }
+
+          if (image.classList.contains('slot-image--under-video') && image.style.zIndex === IMAGE_LAYER_TOP) {
+            return;
+          }
+
+          await this.applyPreparedImageUnderVideoLayer(image, item, 'next-content upgrade');
+        }).catch((error) => {
+          this.clearPreparedImage();
+          this.logger.warn('slot', `slot ${this.slotIndex + 1} 다음 이미지 준비 실패: ${String(error)}`);
+          throw error;
+        });
+      }
       return this.preparedImagePromise;
     }
 
@@ -1231,24 +1284,10 @@ export class SlotPlayer {
     };
   }
 
-  private hideCurrentVideoSurface(keepPrepared: boolean): void {
-    const session = this.videoSession;
-    if (!session) {
-      return;
-    }
-
-    this.currentVideoLoopState = null;
-    if (keepPrepared) {
-      void (session.hideCurrentKeepPrepared?.() ?? Promise.resolve());
-      return;
-    }
-
-    session.hide?.();
-  }
-
   private releaseCurrentVideoSession(options: {
     readonly deferStopUntilNextFrame?: boolean;
     readonly keepPrepared?: boolean;
+    readonly stopCurrentOnlyAsync?: boolean;
   } = {}): Promise<void> {
     if (!this.videoSession) {
       return Promise.resolve();
@@ -1264,6 +1303,12 @@ export class SlotPlayer {
 
     this.videoSession = null;
     this.currentVideoLoopState = null;
+    if (options.stopCurrentOnlyAsync === true && typeof session.stopCurrentAsync === 'function') {
+      session.stopCurrentAsync();
+      this.releaseVideoSession(session);
+      return Promise.resolve();
+    }
+
     if (options.deferStopUntilNextFrame === true) {
       session.hide?.();
       return this.afterNextFrame(() => {
