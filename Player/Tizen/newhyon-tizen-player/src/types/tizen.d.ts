@@ -208,8 +208,10 @@ declare global {
   }
 
   interface TizenFileStream {
+    position?: number;
     readonly bytesAvailable?: number;
     read?(count: number): string;
+    readBytes?(byteCount: number): number[];
     write(text: string): void;
     close(): void;
   }

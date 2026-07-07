@@ -165,6 +165,127 @@ describe('cacheRemoteManifestContent', () => {
       .toMatch(/^downloads\/content-guid-1-/);
   });
 
+  it('저장된 콘텐츠 해시가 manifest 해시와 다르면 다시 다운로드한다', async () => {
+    const manifest = createManifest();
+    const content = manifest.pages[0]?.PIC_Elements?.[0]?.EIF_ContentsInfoClassList?.[0];
+    if (!content) {
+      throw new Error('테스트 콘텐츠가 없습니다.');
+    }
+    content.CIF_FileHash = '542620E3A2A92ED1';
+    let downloadCompleted = false;
+    const createFile = (bytes: number[]): TizenFile => ({
+      fileSize: bytes.length,
+      resolve: vi.fn(),
+      createFile: vi.fn(),
+      openStream: vi.fn((mode, onsuccess) => {
+        const stream = {
+          position: 0,
+          readBytes(byteCount: number) {
+            const start = this.position ?? 0;
+            const chunk = bytes.slice(start, start + byteCount);
+            this.position = start + chunk.length;
+            return chunk;
+          },
+          write: vi.fn(),
+          close: vi.fn(),
+        } satisfies TizenFileStream;
+        onsuccess(stream);
+      }),
+    });
+    window.tizen = {
+      ...window.tizen,
+      filesystem: {
+        toURI: (path) => `file:///opt/usr/home/owner/content/${path}`,
+        pathExists: (path) => path.startsWith('downloads/content-guid-1-'),
+        resolve: vi.fn((_path, onsuccess) => {
+          onsuccess(createFile(downloadCompleted ? [1, 2, 3, 4] : [5, 6, 7, 8]));
+        }),
+      },
+      download: {
+        start: vi.fn((_request, callback) => {
+          downloadCompleted = true;
+          callback?.oncompleted?.(1, 'downloads/content-guid-1-test.mp4');
+          return 1;
+        }),
+      },
+    };
+
+    const cached = await cacheRemoteManifestContent(manifest);
+
+    expect(window.tizen?.download?.start).toHaveBeenCalledTimes(1);
+    expect(cached.pages[0]?.PIC_Elements?.[0]?.EIF_ContentsInfoClassList?.[0]?.CIF_FileFullPath)
+      .toBe('downloads/content-guid-1-test.mp4');
+  });
+
+  it('저장 manifest의 로컬 file URI 해시가 다르면 Contents 파일명으로 다시 다운로드한다', async () => {
+    const manifest = createManifest();
+    const content = manifest.pages[0]?.PIC_Elements?.[0]?.EIF_ContentsInfoClassList?.[0];
+    if (!content) {
+      throw new Error('테스트 콘텐츠가 없습니다.');
+    }
+    content.CIF_FileName = 'video.mp4';
+    content.CIF_FileFullPath = 'file:///opt/usr/home/owner/apps_rw/NewHyOnFtpD01/shared/data/downloads/corrupt.mp4';
+    content.CIF_RelativePath = content.CIF_FileFullPath;
+    content.CIF_FileHash = '542620E3A2A92ED1';
+    let downloadCompleted = false;
+    const createFile = (bytes: number[]): TizenFile => ({
+      fileSize: bytes.length,
+      resolve: vi.fn(),
+      createFile: vi.fn(),
+      openStream: vi.fn((_mode, onsuccess) => {
+        const stream = {
+          position: 0,
+          readBytes(byteCount: number) {
+            const start = this.position ?? 0;
+            const chunk = bytes.slice(start, start + byteCount);
+            this.position = start + chunk.length;
+            return chunk;
+          },
+          write: vi.fn(),
+          close: vi.fn(),
+        } satisfies TizenFileStream;
+        onsuccess(stream);
+      }),
+    });
+    window.tizen = {
+      ...window.tizen,
+      filesystem: {
+        toURI: (path) => `file:///opt/usr/home/owner/content/${path}`,
+        pathExists: () => false,
+        resolve: vi.fn((_path, onsuccess) => {
+          onsuccess(createFile(downloadCompleted ? [1, 2, 3, 4] : [5, 6, 7, 8]));
+        }),
+      },
+      application: {
+        launchAppControl: vi.fn((appControl: TizenApplicationControl, _appId, _onsuccess, _onerror, replyCallback) => {
+          downloadCompleted = true;
+          const fileName = appControl.data?.find((item) => item.key === 'fileName')?.value[0] ?? 'content.bin';
+          replyCallback?.onsuccess?.([
+            { key: 'status', value: ['ok'] },
+            { key: 'path', value: [`downloads/${fileName}`] },
+          ]);
+        }),
+      },
+    };
+
+    const cached = await cacheRemoteManifestContent(manifest, {
+      ftp: {
+        host: '192.168.50.10',
+        port: 21,
+        basePath: '/NewHyOn',
+        userName: 'user',
+        password: 'pass',
+      },
+    });
+
+    const launch = vi.mocked(window.tizen!.application!.launchAppControl!);
+    const request = launch.mock.calls[0]?.[0];
+    expect(request?.data?.find((item) => item.key === 'remotePath')?.value[0])
+      .toBe('/NewHyOn/Contents/video.mp4');
+    expect(cached.pages[0]?.PIC_Elements?.[0]?.EIF_ContentsInfoClassList?.[0]?.CIF_FileFullPath)
+      .toMatch(/^downloads\/content-guid-1-/);
+  });
+
   it('HTTP 이미지는 Contents/tizen 리사이즈 이미지를 먼저 받아 같은 로컬 캐시 파일명으로 저장한다', async () => {
     const manifest = createManifest();
     manifest.pages[0]!.PIC_Elements![0]!.EIF_ContentsInfoClassList = [
@@ -175,6 +296,7 @@ describe('cacheRemoteManifestContent', () => {
         CIF_PlayMinute: '00',
         CIF_PlaySec: '05',
         CIF_StrGUID: 'image-guid-1',
+        CIF_FileHash: '542620E3A2A92ED1',
       },
     ];
     window.tizen = {
@@ -527,12 +649,15 @@ describe('cacheRemoteManifestContent', () => {
     };
 
     const cachePromise = cacheRemoteManifestContent(manifest);
-    await Promise.resolve();
+    for (let attempt = 0; attempt < 10 && vi.mocked(window.tizen!.download!.start).mock.calls.length < 1; attempt += 1) {
+      await Promise.resolve();
+    }
 
     expect(window.tizen?.download?.start).toHaveBeenCalledTimes(1);
     callbacks[0]?.oncompleted?.(1, 'downloads/first.mp4');
-    await Promise.resolve();
-    await Promise.resolve();
+    for (let attempt = 0; attempt < 10 && vi.mocked(window.tizen!.download!.start).mock.calls.length < 2; attempt += 1) {
+      await Promise.resolve();
+    }
     expect(window.tizen?.download?.start).toHaveBeenCalledTimes(2);
     callbacks[1]?.oncompleted?.(2, 'downloads/second.mp4');
 

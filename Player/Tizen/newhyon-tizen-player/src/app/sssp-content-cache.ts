@@ -8,6 +8,14 @@ const FTP_DOWNLOAD_TIMEOUT_MS = 60000;
 const TIZEN_DOWNLOAD_TIMEOUT_MS = 60000;
 const TIZEN_IMAGE_CACHE_STATE_KEY = 'newhyon-tizen-player.tizen-image-cache.v1';
 const IMAGE_EXTENSION_SET = new Set(['.jpg', '.jpeg', '.bmp', '.png', '.gif', '.webp']);
+const XXHASH64_HEX_PATTERN = /^[0-9a-f]{16}$/i;
+const PARTIAL_HASH_BLOCK_SIZE = 1024;
+const UINT64_MASK = 0xffffffffffffffffn;
+const XXH64_PRIME_1 = 11400714785074694791n;
+const XXH64_PRIME_2 = 14029467366897019727n;
+const XXH64_PRIME_3 = 1609587929392839161n;
+const XXH64_PRIME_4 = 9650029242287828579n;
+const XXH64_PRIME_5 = 2870177450012600261n;
 
 export interface ContentCacheProgress {
   readonly completed: number;
@@ -27,6 +35,7 @@ interface DownloadTarget {
   readonly ftpSource?: FtpDownloadSource;
   readonly fileName: string;
   readonly virtualPath: string;
+  readonly expectedHash: string | null;
 }
 
 interface DownloadOptions {
@@ -35,6 +44,18 @@ interface DownloadOptions {
 
 interface PreferredTizenImageCacheEntry {
   readonly size: number;
+}
+
+interface LocalHashState {
+  readonly status: 'not-local' | 'valid' | 'invalid';
+  readonly path?: string;
+  readonly expectedHash?: string;
+  readonly actualHash?: string | null;
+}
+
+interface LocalHashTarget {
+  readonly path: string;
+  readonly expectedHash: string;
 }
 
 type PreferredTizenImageCacheState = Record<string, PreferredTizenImageCacheEntry>;
@@ -64,8 +85,24 @@ export async function cacheRemoteManifestContent(
     for (const element of page.PIC_Elements ?? []) {
       const contents: ContentsInfoClass[] = [];
       for (const content of element.EIF_ContentsInfoClassList ?? []) {
-        const source = resolveDownloadSource(content, options);
+        const localHashTarget = resolveLocalHashTarget(content);
+        const localHashState = localHashTarget
+          ? await resolveLocalHashState(localHashTarget)
+          : { status: 'not-local' } satisfies LocalHashState;
+        if (localHashState.status === 'valid') {
+          contents.push(content);
+          continue;
+        }
+
+        const source = localHashState.status === 'invalid'
+          ? resolveLocalHashRepairDownloadSource(content, options)
+          : resolveDownloadSource(content, options);
         if (!source) {
+          if (localHashState.status === 'invalid') {
+            throw new Error(
+              `저장 콘텐츠 해시 불일치: ${content.CIF_FileName} expected=${localHashState.expectedHash} actual=${localHashState.actualHash ?? '-'} path=${localHashState.path ?? '-'}`,
+            );
+          }
           contents.push(content);
           continue;
         }
@@ -118,7 +155,10 @@ export function countRemoteManifestContentForOptions(
 function collectRemoteContents(pages: readonly PageInfoClass[], options: ContentCacheOptions): ContentsInfoClass[] {
   return pages.flatMap((page) => page.PIC_Elements ?? [])
     .flatMap((element) => element.EIF_ContentsInfoClassList ?? [])
-    .filter((content) => Boolean(resolveDownloadSource(content, options)));
+    .filter((content) => Boolean(
+      resolveDownloadSource(content, options)
+      || resolveLocalHashRepairDownloadSource(content, options),
+    ));
 }
 
 function readContentSourceUrl(content: ContentsInfoClass, options: ContentCacheOptions): string {
@@ -163,6 +203,33 @@ function resolveDownloadSource(content: ContentsInfoClass, options: ContentCache
   }
 
   return buildRemoteUrl(options.remoteBaseUrl, sourceUrl);
+}
+
+function resolveLocalHashRepairDownloadSource(content: ContentsInfoClass, options: ContentCacheOptions): string | FtpDownloadSource {
+  if (isImageContent(content) || !normalizeExpectedXxHash64(content.CIF_FileHash) || !resolveLocalReadablePath(content)) {
+    return '';
+  }
+
+  const remoteFileName = sanitizeRemoteFileName(content.CIF_FileName)
+    || sanitizeRemoteFileName(content.CIF_RelativePath ?? '')
+    || sanitizeRemoteFileName(content.CIF_FileFullPath ?? '');
+  if (!remoteFileName) {
+    return '';
+  }
+  const remotePath = buildRemotePath('Contents', remoteFileName);
+
+  if (options.ftp) {
+    return {
+      ...options.ftp,
+      remotePath: buildRemotePath(options.ftp.basePath, remotePath),
+    };
+  }
+
+  if (options.remoteBaseUrl?.trim()) {
+    return buildRemoteUrl(options.remoteBaseUrl, remotePath);
+  }
+
+  return '';
 }
 
 function buildRemoteUrl(remoteBaseUrl: string, relativePath: string): string {
@@ -230,6 +297,7 @@ function buildDownloadTarget(
     ftpSource: typeof source === 'string' ? undefined : source,
     fileName,
     virtualPath: `${DOWNLOAD_ROOT}/${fileName}`,
+    expectedHash: normalizeExpectedXxHash64(content.CIF_FileHash),
   };
 }
 
@@ -241,7 +309,10 @@ async function downloadContentToTizenStorage(
   const target = buildDownloadTarget(source, content, options.cacheNamespace);
   const preferredSource = buildPreferredTizenImageSource(source, content);
   if (preferredSource) {
-    const preferredTarget = withDownloadSource(target, preferredSource);
+    const preferredTarget = {
+      ...withDownloadSource(target, preferredSource),
+      expectedHash: null,
+    };
     try {
       const remoteSize = await queryRemoteContentSize(preferredTarget);
       const preferredCachedPath = await resolvePreferredTizenImageCachedPath(target, remoteSize);
@@ -275,6 +346,11 @@ function withDownloadSource(target: DownloadTarget, source: string | FtpDownload
     sourceUrl: typeof source === 'string' ? source : '',
     ftpSource: typeof source === 'string' ? undefined : source,
   };
+}
+
+function normalizeExpectedXxHash64(value: string | undefined): string | null {
+  const trimmed = value?.trim() ?? '';
+  return XXHASH64_HEX_PATTERN.test(trimmed) ? trimmed.toUpperCase() : null;
 }
 
 function buildPreferredTizenImageSource(
@@ -361,17 +437,17 @@ function isImageContent(content: ContentsInfoClass): boolean {
 }
 
 async function resolvePreferredTizenImageCachedPath(target: DownloadTarget, remoteSize: number): Promise<string | null> {
-  const cachedVirtualPath = resolveCachedVirtualPath(target);
-  if (!cachedVirtualPath) {
+  const pathExists = window.tizen?.filesystem?.pathExists;
+  if (!pathExists?.(target.virtualPath)) {
     return null;
   }
 
-  const localSize = await queryLocalVirtualPathSize(cachedVirtualPath);
+  const localSize = await queryLocalVirtualPathSize(target.virtualPath);
   if (localSize !== null) {
-    return localSize === remoteSize ? cachedVirtualPath : null;
+    return localSize === remoteSize ? target.virtualPath : null;
   }
 
-  return isPreferredTizenImageCached(target, remoteSize) ? cachedVirtualPath : null;
+  return isPreferredTizenImageCached(target, remoteSize) ? target.virtualPath : null;
 }
 
 function isPreferredTizenImageCached(target: DownloadTarget, remoteSize: number): boolean {
@@ -520,17 +596,21 @@ function stableHash(value: string): string {
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
-function downloadToTizenStorage(target: DownloadTarget, options: DownloadOptions = {}): Promise<string> {
+async function downloadToTizenStorage(target: DownloadTarget, options: DownloadOptions = {}): Promise<string> {
   const tizen = window.tizen;
   if (options.skipCache !== true) {
-    const cachedVirtualPath = resolveCachedVirtualPath(target);
+    const cachedVirtualPath = await resolveCachedVirtualPath(target);
     if (cachedVirtualPath) {
-      return Promise.resolve(cachedVirtualPath);
+      return cachedVirtualPath;
     }
   }
 
   if (target.ftpSource) {
-    return downloadFtpToTizenStorage(target);
+    const downloadedPath = await downloadFtpToTizenStorage(target);
+    if (target.expectedHash) {
+      await verifyDownloadedHash(target, downloadedPath);
+    }
+    return downloadedPath;
   }
 
   const download = tizen?.download;
@@ -539,7 +619,7 @@ function downloadToTizenStorage(target: DownloadTarget, options: DownloadOptions
     throw new Error('Tizen Download API를 사용할 수 없습니다.');
   }
 
-  return new Promise((resolve, reject) => {
+  const downloadedPath = await new Promise<string>((resolve, reject) => {
     const request = new DownloadRequest(target.sourceUrl, DOWNLOAD_ROOT, target.fileName, 'ALL');
     let settled = false;
     let downloadId = 0;
@@ -572,19 +652,243 @@ function downloadToTizenStorage(target: DownloadTarget, options: DownloadOptions
       },
     });
   });
+  if (target.expectedHash) {
+    await verifyDownloadedHash(target, downloadedPath);
+  }
+  return downloadedPath;
 }
 
-function resolveCachedVirtualPath(target: DownloadTarget): string | null {
+async function resolveCachedVirtualPath(target: DownloadTarget): Promise<string | null> {
   const pathExists = window.tizen?.filesystem?.pathExists;
   if (!pathExists) {
     return null;
   }
 
-  if (pathExists(target.virtualPath)) {
+  if (!pathExists(target.virtualPath)) {
+    return null;
+  }
+
+  if (!target.expectedHash) {
     return target.virtualPath;
   }
 
+  const localHash = await computeLocalPartialXxHash64(target.virtualPath);
+  return localHash === target.expectedHash ? target.virtualPath : null;
+}
+
+async function verifyDownloadedHash(target: DownloadTarget, downloadedPath: string): Promise<void> {
+  if (!target.expectedHash) {
+    return;
+  }
+
+  const localHash = await computeLocalPartialXxHash64(downloadedPath);
+  if (localHash !== target.expectedHash) {
+    throw new Error(`콘텐츠 해시 검증 실패: ${target.fileName} expected=${target.expectedHash} actual=${localHash ?? '-'}`);
+  }
+}
+
+async function resolveLocalHashState(target: LocalHashTarget): Promise<LocalHashState> {
+  const actualHash = await computeLocalPartialXxHash64(target.path);
+  return actualHash === target.expectedHash
+    ? { status: 'valid', path: target.path, expectedHash: target.expectedHash, actualHash }
+    : { status: 'invalid', path: target.path, expectedHash: target.expectedHash, actualHash };
+}
+
+function resolveLocalHashTarget(content: ContentsInfoClass): LocalHashTarget | null {
+  if (isImageContent(content)) {
+    return null;
+  }
+
+  const expectedHash = normalizeExpectedXxHash64(content.CIF_FileHash);
+  const localPath = resolveLocalReadablePath(content);
+  if (!expectedHash || !localPath) {
+    return null;
+  }
+
+  return {
+    path: localPath,
+    expectedHash,
+  };
+}
+
+function resolveLocalReadablePath(content: ContentsInfoClass): string | null {
+  return resolveReadableTizenPath(content.CIF_FileFullPath)
+    ?? resolveReadableTizenPath(content.CIF_RelativePath);
+}
+
+function resolveReadableTizenPath(value: string | undefined): string | null {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed) {
+    return null;
+  }
+
+  if (isTizenVirtualPath(trimmed) || trimmed.startsWith('file://')) {
+    return trimmed;
+  }
+
   return null;
+}
+
+function computeLocalPartialXxHash64(virtualPath: string): Promise<string | null> {
+  const filesystem = window.tizen?.filesystem;
+  if (!filesystem?.resolve) {
+    return Promise.resolve(null);
+  }
+
+  return new Promise((resolve) => {
+    filesystem.resolve?.(
+      virtualPath,
+      (file) => {
+        file.openStream(
+          'r',
+          (stream) => {
+            try {
+              const fileSize = Math.max(0, Math.round(Number(file.fileSize ?? 0)));
+              if (fileSize <= 0 || typeof stream.readBytes !== 'function') {
+                resolve(null);
+                return;
+              }
+
+              const hashInput = readPartialHashInput(stream, fileSize);
+              resolve(xxh64Hex(hashInput));
+            } catch {
+              resolve(null);
+            } finally {
+              stream.close();
+            }
+          },
+          () => resolve(null),
+        );
+      },
+      () => resolve(null),
+      'r',
+    );
+  });
+}
+
+function readPartialHashInput(stream: TizenFileStream, fileSize: number): Uint8Array {
+  if (fileSize < PARTIAL_HASH_BLOCK_SIZE * 3) {
+    stream.position = 0;
+    return Uint8Array.from(stream.readBytes?.(fileSize) ?? []);
+  }
+
+  const block1 = readStreamBytesAt(stream, 0, PARTIAL_HASH_BLOCK_SIZE);
+  const block2 = readStreamBytesAt(stream, Math.floor(fileSize / 2), PARTIAL_HASH_BLOCK_SIZE);
+  const block3 = readStreamBytesAt(stream, Math.max(0, fileSize - PARTIAL_HASH_BLOCK_SIZE), PARTIAL_HASH_BLOCK_SIZE);
+  const sizeBytes = new Uint8Array(8);
+  new DataView(sizeBytes.buffer).setBigUint64(0, BigInt(fileSize), false);
+  const input = new Uint8Array(block1.length + block2.length + block3.length + sizeBytes.length);
+  input.set(block1, 0);
+  input.set(block2, block1.length);
+  input.set(block3, block1.length + block2.length);
+  input.set(sizeBytes, block1.length + block2.length + block3.length);
+  return input;
+}
+
+function readStreamBytesAt(stream: TizenFileStream, position: number, byteCount: number): Uint8Array {
+  stream.position = position;
+  return Uint8Array.from(stream.readBytes?.(byteCount) ?? []);
+}
+
+function xxh64Hex(input: Uint8Array): string {
+  let offset = 0;
+  let hash: bigint;
+  if (input.length >= 32) {
+    let v1 = toUint64(XXH64_PRIME_1 + XXH64_PRIME_2);
+    let v2 = XXH64_PRIME_2;
+    let v3 = 0n;
+    let v4 = toUint64(-XXH64_PRIME_1);
+    const limit = input.length - 32;
+
+    while (offset <= limit) {
+      v1 = xxh64Round(v1, readUint64LE(input, offset));
+      offset += 8;
+      v2 = xxh64Round(v2, readUint64LE(input, offset));
+      offset += 8;
+      v3 = xxh64Round(v3, readUint64LE(input, offset));
+      offset += 8;
+      v4 = xxh64Round(v4, readUint64LE(input, offset));
+      offset += 8;
+    }
+
+    hash = toUint64(
+      rotateLeft64(v1, 1)
+      + rotateLeft64(v2, 7)
+      + rotateLeft64(v3, 12)
+      + rotateLeft64(v4, 18),
+    );
+    hash = xxh64MergeRound(hash, v1);
+    hash = xxh64MergeRound(hash, v2);
+    hash = xxh64MergeRound(hash, v3);
+    hash = xxh64MergeRound(hash, v4);
+  } else {
+    hash = XXH64_PRIME_5;
+  }
+
+  hash = toUint64(hash + BigInt(input.length));
+  while (offset + 8 <= input.length) {
+    const lane = xxh64Round(0n, readUint64LE(input, offset));
+    hash = toUint64(rotateLeft64(hash ^ lane, 27) * XXH64_PRIME_1 + XXH64_PRIME_4);
+    offset += 8;
+  }
+
+  if (offset + 4 <= input.length) {
+    hash = toUint64(hash ^ (BigInt(readUint32LE(input, offset)) * XXH64_PRIME_1));
+    hash = toUint64(rotateLeft64(hash, 23) * XXH64_PRIME_2 + XXH64_PRIME_3);
+    offset += 4;
+  }
+
+  while (offset < input.length) {
+    hash = toUint64(hash ^ (BigInt(input[offset] ?? 0) * XXH64_PRIME_5));
+    hash = toUint64(rotateLeft64(hash, 11) * XXH64_PRIME_1);
+    offset += 1;
+  }
+
+  hash = xxh64Avalanche(hash);
+  return hash.toString(16).padStart(16, '0').toUpperCase();
+}
+
+function xxh64Round(accumulator: bigint, input: bigint): bigint {
+  return toUint64(rotateLeft64(toUint64(accumulator + input * XXH64_PRIME_2), 31) * XXH64_PRIME_1);
+}
+
+function xxh64MergeRound(accumulator: bigint, value: bigint): bigint {
+  let merged = toUint64(accumulator ^ xxh64Round(0n, value));
+  merged = toUint64(merged * XXH64_PRIME_1 + XXH64_PRIME_4);
+  return merged;
+}
+
+function xxh64Avalanche(value: bigint): bigint {
+  let hash = value;
+  hash = toUint64((hash ^ (hash >> 33n)) * XXH64_PRIME_2);
+  hash = toUint64((hash ^ (hash >> 29n)) * XXH64_PRIME_3);
+  return toUint64(hash ^ (hash >> 32n));
+}
+
+function rotateLeft64(value: bigint, bits: number): bigint {
+  const normalized = toUint64(value);
+  return toUint64((normalized << BigInt(bits)) | (normalized >> BigInt(64 - bits)));
+}
+
+function readUint64LE(input: Uint8Array, offset: number): bigint {
+  let value = 0n;
+  for (let index = 7; index >= 0; index -= 1) {
+    value = (value << 8n) | BigInt(input[offset + index] ?? 0);
+  }
+  return value;
+}
+
+function readUint32LE(input: Uint8Array, offset: number): number {
+  return (
+    (input[offset] ?? 0)
+    | ((input[offset + 1] ?? 0) << 8)
+    | ((input[offset + 2] ?? 0) << 16)
+    | ((input[offset + 3] ?? 0) << 24)
+  ) >>> 0;
+}
+
+function toUint64(value: bigint): bigint {
+  return value & UINT64_MASK;
 }
 
 function downloadFtpToTizenStorage(target: DownloadTarget): Promise<string> {

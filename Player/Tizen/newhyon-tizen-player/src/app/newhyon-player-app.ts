@@ -329,6 +329,7 @@ export class NewHyOnPlayerApp {
       this.applyConfiguredTvVolume('settings-startup');
       this.writeRuntimeHealth('app-started');
       await this.bootstrapCommunication();
+      await this.repairStoredManifestCache('startup');
       await this.syncContentPeriodsForManifests([this.currentContentManifest], 'startup', false);
       const startupResolution = this.createStartupPagePlans(this.currentContentManifest);
       this.commitPlaybackPlan(startupResolution.pagePlans, startupResolution.mode, 0);
@@ -1130,6 +1131,31 @@ export class NewHyOnPlayerApp {
   private buildUpdateCacheNamespace(commandId: string | null, updateSessionId: number): string {
     const seed = commandId?.trim() || `local-${updateSessionId}-${Date.now()}`;
     return `updatelist-${seed}`;
+  }
+
+  private async repairStoredManifestCache(source: string): Promise<void> {
+    const cacheOptions = this.buildRemoteContentOptions();
+    if (!cacheOptions.ftp && !cacheOptions.remoteBaseUrl) {
+      return;
+    }
+
+    const repairedManifest = await cacheRemoteManifestContent(this.currentContentManifest, {
+      ...cacheOptions,
+      onProgress: (progress) => {
+        this.logger.info(
+          'download',
+          `${source} 저장 콘텐츠 해시 복구: ${progress.completed}/${progress.total} ${progress.fileName}`,
+        );
+      },
+    });
+    if (JSON.stringify(repairedManifest) === JSON.stringify(this.currentContentManifest)) {
+      this.logger.info('download', `${source} 저장 콘텐츠 해시 검증 완료: 변경 없음`);
+      return;
+    }
+
+    this.currentContentManifest = repairedManifest;
+    saveRemoteManifest(repairedManifest);
+    this.logger.info('download', `${source} 저장 콘텐츠 해시 복구 완료`);
   }
 
   private async syncContentPeriodsForManifests(
