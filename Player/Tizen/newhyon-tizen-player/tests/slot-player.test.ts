@@ -621,10 +621,8 @@ describe('SlotPlayer', () => {
       _element: HTMLElement,
       _preserveAspectRatio: boolean,
       onStreamEnded: () => boolean | Promise<boolean> | void,
-      options?: { readonly onPlaybackStarted?: (currentTimeMs: number) => void },
     ) => {
       ended.handler = onStreamEnded;
-      options?.onPlaybackStarted?.(0);
       return { durationMs: 5000 };
     });
     const session = {
@@ -950,10 +948,8 @@ describe('SlotPlayer', () => {
       _element: HTMLElement,
       _preserveAspectRatio: boolean,
       onStreamEnded: () => void,
-      options?: { readonly onPlaybackStarted?: (currentTimeMs: number) => void },
     ) => {
       ended.handler = onStreamEnded;
-      options?.onPlaybackStarted?.(0);
     });
     const session = {
       play,
@@ -1034,10 +1030,8 @@ describe('SlotPlayer', () => {
       _element: HTMLElement,
       _preserveAspectRatio: boolean,
       onStreamEnded: () => void,
-      options?: { readonly onPlaybackStarted?: (currentTimeMs: number) => void },
     ) => {
       ended.handler = onStreamEnded;
-      options?.onPlaybackStarted?.(0);
       return { durationMs: 10000 };
     });
     const session = {
@@ -1087,10 +1081,8 @@ describe('SlotPlayer', () => {
       _element: HTMLElement,
       _preserveAspectRatio: boolean,
       onStreamEnded: () => void,
-      options?: { readonly onPlaybackStarted?: (currentTimeMs: number) => void },
     ) => {
       ended.handler = onStreamEnded;
-      options?.onPlaybackStarted?.(0);
       return { durationMs: 11000 };
     });
     const session = {

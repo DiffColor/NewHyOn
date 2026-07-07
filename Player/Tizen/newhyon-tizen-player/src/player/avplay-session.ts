@@ -54,8 +54,6 @@ interface PreparedLaneMetadata {
 export interface AvplayPlayOptions {
   readonly waitForFirstFrame?: boolean;
   readonly preparedRoles?: readonly AvplayPreparedRole[];
-  readonly deferUnmutedAudioUntilPlaybackStart?: boolean;
-  readonly onPlaybackStarted?: (currentTimeMs: number) => void;
 }
 
 export interface AvplayPlaybackInfo {
@@ -81,12 +79,6 @@ export class AvplaySessionPair {
   private traceSeq = 0;
   private operationSeq = 0;
   private readonly laneRuntimeStates: AvplayLaneRuntimeState[] = [];
-  private readonly pendingPlaybackStarts: Array<{
-    readonly itemId: string;
-    readonly itemName: string;
-    readonly audioMuted: boolean;
-    readonly onPlaybackStarted?: (currentTimeMs: number) => void;
-  } | null> = [];
 
   constructor(
     readonly index: number,
@@ -147,22 +139,13 @@ export class AvplaySessionPair {
       }
       this.setLaneDisplayMethod(nextLaneIndex, preserveAspectRatio ? DISPLAY_METHOD_CONTAIN : DISPLAY_METHOD_FILL);
       this.applyDisplayRectToLane(nextLaneIndex, slot, slotElement);
-      const deferUnmutedAudio = options.deferUnmutedAudioUntilPlaybackStart === true && !slot.isMuted;
-      this.pendingPlaybackStarts[nextLaneIndex] = {
-        itemId: item.id,
-        itemName: item.name,
-        audioMuted: slot.isMuted,
-        onPlaybackStarted: options.onPlaybackStarted,
-      };
-      this.applyLaneAudioState(nextLaneIndex, deferUnmutedAudio ? true : slot.isMuted, 'play.audio', item.name);
+      this.applyLaneAudioState(nextLaneIndex, slot.isMuted, 'play.audio', item.name);
       this.assertOperationCurrent(operationId, nextLaneIndex, 'play.beforePlay', item.name);
       this.callLane(nextLaneIndex, 'play', () => {
         lane.player.play();
       }, item.name);
       this.laneRuntimeStates[nextLaneIndex].lastPlayAt = new Date().toISOString();
-      if (!deferUnmutedAudio || slot.isMuted) {
-        this.applyLaneAudioState(nextLaneIndex, slot.isMuted, 'play.audio.afterPlay', item.name);
-      }
+      this.applyLaneAudioState(nextLaneIndex, slot.isMuted, 'play.audio.afterPlay', item.name);
 
       this.currentItem = item;
       this.currentEndedHandler = onStreamEnded;
@@ -336,8 +319,13 @@ export class AvplaySessionPair {
     }
 
     const existing = this.preparedLanes.get(role);
-    if (existing && existing.itemId === item.id && this.laneState(existing.laneIndex) === 'READY') {
-      this.logger.info('avplay-trace', `session ${this.index} prepareNextVideo cache-hit role=${role} lane ${existing.laneIndex + 1} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
+    if (existing && this.laneState(existing.laneIndex) === 'READY') {
+      if (existing.itemId === item.id) {
+        this.logger.info('avplay-trace', `session ${this.index} prepareNextVideo cache-hit role=${role} lane ${existing.laneIndex + 1} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
+        return;
+      }
+
+      this.logger.info('avplay-trace', `session ${this.index} prepareNextVideo skipped occupied role=${role} lane ${existing.laneIndex + 1} existing=${existing.itemName} ${this.traceContext()}${this.formatTraceDetail(item.name)}`);
       return;
     }
 
@@ -429,7 +417,6 @@ export class AvplaySessionPair {
         const runtime = this.laneRuntimeStates[laneIndex];
         runtime.callbackCurrentTimeMs = Math.round(currentTime);
         runtime.callbackCurrentTimeAtMs = performance.now();
-        this.handlePlaybackStarted(laneIndex, Math.round(currentTime));
       },
       onstreamcompleted: () => {
         this.laneRuntimeStates[laneIndex].lastStreamCompletedAt = new Date().toISOString();
@@ -508,7 +495,6 @@ export class AvplaySessionPair {
       this.heldLaneIndex = null;
     }
     this.stopLane(laneIndex);
-    this.pendingPlaybackStarts[laneIndex] = null;
     this.closeLaneForReset(laneIndex, reason);
     this.laneRuntimeStates[laneIndex] = this.createLaneRuntimeState();
     this.hideLaneSurface(laneIndex, `reset-failed ${reason}`);
@@ -629,24 +615,6 @@ export class AvplaySessionPair {
       lane.player.stop();
     });
     this.laneRuntimeStates[laneIndex].audioMuted = null;
-    this.pendingPlaybackStarts[laneIndex] = null;
-  }
-
-  private handlePlaybackStarted(laneIndex: number, currentTimeMs: number): void {
-    const pending = this.pendingPlaybackStarts[laneIndex];
-    if (!pending) {
-      return;
-    }
-
-    this.pendingPlaybackStarts[laneIndex] = null;
-    if (!pending.audioMuted) {
-      try {
-        this.applyLaneAudioState(laneIndex, false, 'play.audio.onPlaybackStart', pending.itemName);
-      } catch (error) {
-        this.events.onError(`slot ${this.index} lane ${laneIndex + 1} AVPlay audio enable 오류: ${formatAvplayError(error as AVPlayErrorLike, String(error))}`);
-      }
-    }
-    pending.onPlaybackStarted?.(currentTimeMs);
   }
 
   private closeLane(laneIndex: number): void {

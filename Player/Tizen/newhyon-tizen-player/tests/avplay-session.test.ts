@@ -301,6 +301,50 @@ describe('AvplaySession', () => {
     expect(session.debugSnapshot().lanes[1]?.audioMuted).toBeNull();
   });
 
+  it('이미 준비된 next-content READY lane을 다른 next-content로 덮어쓰지 않는다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    let playerAState = 'IDLE';
+    let playerBState = 'IDLE';
+    playerA.getState = vi.fn(() => playerAState);
+    playerB.getState = vi.fn(() => playerBState);
+    playerA.prepare = vi.fn(() => {
+      playerAState = 'READY';
+    });
+    playerA.play = vi.fn(() => {
+      playerAState = 'PLAYING';
+    });
+    playerB.prepare = vi.fn(() => {
+      playerBState = 'READY';
+    });
+    playerB.stop = vi.fn(() => {
+      playerBState = 'IDLE';
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+    const slot = createSlotPlan();
+
+    await session.play(createVideoItem('current.mp4'), slot, document.createElement('section'), false, vi.fn());
+    session.prepareNextVideo(createVideoItem('next.mp4'), slot, 'next-content');
+    const openCallsAfterFirstPrepare = vi.mocked(playerB.open).mock.calls.length;
+    const stopCallsAfterFirstPrepare = vi.mocked(playerB.stop).mock.calls.length;
+
+    session.prepareNextVideo(createVideoItem('other-next.mp4'), slot, 'next-content');
+
+    expect(playerB.open).toHaveBeenCalledTimes(openCallsAfterFirstPrepare);
+    expect(playerB.stop).toHaveBeenCalledTimes(stopCallsAfterFirstPrepare);
+    expect(session.debugSnapshot().lanes[1]).toMatchObject({
+      itemName: 'next.mp4',
+      role: 'next-content',
+      state: 'READY',
+    });
+  });
+
   it('전환 후 현재 lane만 위에 두고 이전 lane은 숨긴다', async () => {
     const host = document.createElement('div');
     const slotElement = document.createElement('section');
@@ -980,7 +1024,7 @@ describe('AvplaySession', () => {
     expect(playerA.play).toHaveBeenCalledTimes(1);
   });
 
-  it('unmuted 영상도 첫 playtime 전에는 오디오를 켜지 않고 playtime에서 켠다', async () => {
+  it('unmuted 영상은 oncurrentplaytime을 기다리지 않고 play 시점에 오디오를 즉시 켠다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
     const listenerRef: { current: AVPlayListener | null } = { current: null };
@@ -998,7 +1042,6 @@ describe('AvplaySession', () => {
       ...createSlotPlan(),
       isMuted: false,
     };
-    const onPlaybackStarted = vi.fn();
 
     await session.play(
       createVideoItem('audio-sync.mp4'),
@@ -1006,19 +1049,14 @@ describe('AvplaySession', () => {
       document.createElement('section'),
       false,
       vi.fn(),
-      {
-        deferUnmutedAudioUntilPlaybackStart: true,
-        onPlaybackStarted,
-      },
     );
 
-    expect(playerA.disableAudioStream).toHaveBeenCalledTimes(1);
-    expect(playerA.enableAudioStream).not.toHaveBeenCalled();
+    expect(playerA.disableAudioStream).not.toHaveBeenCalled();
+    expect(playerA.enableAudioStream).toHaveBeenCalledTimes(2);
 
     listenerRef.current?.oncurrentplaytime?.(480);
 
-    expect(playerA.enableAudioStream).toHaveBeenCalledTimes(1);
-    expect(onPlaybackStarted).toHaveBeenCalledWith(480);
+    expect(playerA.enableAudioStream).toHaveBeenCalledTimes(2);
     expect(session.debugSnapshot().lanes[0]?.audioMuted).toBe(false);
   });
 
