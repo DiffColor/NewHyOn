@@ -145,6 +145,7 @@ export class AvplaySessionPair {
         lane.player.play();
       }, item.name);
       this.laneRuntimeStates[nextLaneIndex].lastPlayAt = new Date().toISOString();
+      this.applyLaneAudioState(nextLaneIndex, slot.isMuted, 'play.audio.afterPlay', item.name);
 
       this.currentItem = item;
       this.currentEndedHandler = onStreamEnded;

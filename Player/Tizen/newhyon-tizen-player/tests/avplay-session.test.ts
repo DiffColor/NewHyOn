@@ -253,7 +253,7 @@ describe('AvplaySession', () => {
     expect(session.debugSnapshot().lanes[1]?.audioMuted).toBe(true);
 
     await session.play(createVideoItem('next.mp4'), unmutedSlot, document.createElement('section'), false, vi.fn());
-    expect(playerB.enableAudioStream).toHaveBeenCalled();
+    expect(playerB.enableAudioStream).toHaveBeenCalledTimes(2);
     expect(session.debugSnapshot().lanes[1]?.audioMuted).toBe(false);
   });
 
