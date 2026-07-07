@@ -466,7 +466,7 @@ describe('SlotPlayer', () => {
     await vi.advanceTimersByTimeAsync(32);
 
     expect(play).toHaveBeenCalledTimes(1);
-    expect(prepareNextVideo).toHaveBeenCalledWith(expect.objectContaining({ id: 'second.mp4' }), 'next-content');
+    expect(prepareNextVideo).toHaveBeenCalledWith(expect.objectContaining({ id: 'second.mp4' }), expect.objectContaining({ isMuted: true }), 'next-content');
   });
 
   it('단일 페이지 루프에서 첫 콘텐츠 재생 중에도 다음 영상을 prepare한다', async () => {
@@ -492,7 +492,7 @@ describe('SlotPlayer', () => {
     await vi.advanceTimersByTimeAsync(32);
 
     expect(play).toHaveBeenCalledTimes(1);
-    expect(prepareNextVideo).toHaveBeenCalledWith(expect.objectContaining({ id: 'second.mp4' }), 'next-content');
+    expect(prepareNextVideo).toHaveBeenCalledWith(expect.objectContaining({ id: 'second.mp4' }), expect.objectContaining({ isMuted: true }), 'next-content');
     expect(clearPrepared).not.toHaveBeenCalled();
   });
 
@@ -518,7 +518,7 @@ describe('SlotPlayer', () => {
       slot: createTwoVideoSlot(),
     }, 'next-schedule-content');
 
-    expect(prepareNextVideo).toHaveBeenCalledWith(expect.objectContaining({ id: 'schedule.mp4' }), 'next-schedule-content');
+    expect(prepareNextVideo).toHaveBeenCalledWith(expect.objectContaining({ id: 'schedule.mp4' }), expect.objectContaining({ isMuted: true }), 'next-schedule-content');
   });
 
   it('현재 콘텐츠 종료 후 전환 설정이 켜지면 영상 종료 이벤트로 다음 콘텐츠를 재생한다', async () => {

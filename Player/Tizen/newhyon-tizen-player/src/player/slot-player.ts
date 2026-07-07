@@ -236,7 +236,7 @@ export class SlotPlayer {
 
     const generation = this.contentGeneration;
     if (target.item.contentType === 'Video') {
-      this.prepareVideoContent(target.item, currentItem, role);
+      this.prepareVideoContent(target.item, target.slot, currentItem, role);
       return;
     }
 
@@ -887,7 +887,7 @@ export class SlotPlayer {
 
     for (const target of targets) {
       if (target.item.contentType === 'Video') {
-        this.prepareVideoContent(target.item, currentItem, target.role);
+        this.prepareVideoContent(target.item, target.slot, currentItem, target.role);
         continue;
       }
 
@@ -923,14 +923,19 @@ export class SlotPlayer {
     return this.preparedImagePromise;
   }
 
-  private prepareVideoContent(item: SeamlessContentItem, currentItem: SeamlessContentItem, role: AvplayPreparedRole): void {
+  private prepareVideoContent(
+    item: SeamlessContentItem,
+    targetSlot: SeamlessSlotPlan,
+    currentItem: SeamlessContentItem,
+    role: AvplayPreparedRole,
+  ): void {
     try {
       const session = this.videoSession ?? this.getVideoSession();
-      session.prepareNextVideo(item, role);
+      session.prepareNextVideo(item, targetSlot, role);
       this.videoSession = session;
-      this.logger.info('slot', `slot ${this.slotIndex + 1} 다음 영상 사전 준비: current=${currentItem.contentType}:${currentItem.name} next=${item.name} role=${role}`);
+      this.logger.info('slot', `slot ${this.slotIndex + 1} 다음 영상 사전 준비: current=${currentItem.contentType}:${currentItem.name} next=${item.name} role=${role} muted=${targetSlot.isMuted}`);
     } catch (error) {
-      this.logger.warn('slot', `slot ${this.slotIndex + 1} 다음 영상 사전 준비 실패: current=${currentItem.contentType}:${currentItem.name} next=${item.name} role=${role} error=${String(error)}`);
+      this.logger.warn('slot', `slot ${this.slotIndex + 1} 다음 영상 사전 준비 실패: current=${currentItem.contentType}:${currentItem.name} next=${item.name} role=${role} muted=${targetSlot.isMuted} error=${String(error)}`);
     }
   }
 

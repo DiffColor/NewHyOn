@@ -62,6 +62,8 @@ function createPlayer(play: () => void, onListener?: (listener: AVPlayListener) 
     setTimeoutForBuffering: vi.fn(),
     setStreamingProperty: vi.fn(),
     setLooping: vi.fn(),
+    disableAudioStream: vi.fn(),
+    enableAudioStream: vi.fn(),
     getState: vi.fn(() => 'IDLE'),
   };
 }

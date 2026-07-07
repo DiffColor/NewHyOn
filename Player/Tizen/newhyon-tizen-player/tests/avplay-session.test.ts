@@ -185,7 +185,7 @@ describe('AvplaySession', () => {
     slotElement.remove();
   });
 
-  it('재생 hot path는 샘플처럼 loop, still, audio 제어를 호출하지 않는다', async () => {
+  it('재생 hot path는 샘플처럼 loop와 still 제어를 호출하지 않는다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
     playerA.getState = vi.fn(() => 'PLAYING');
@@ -207,10 +207,54 @@ describe('AvplaySession', () => {
 
     expect(playerA.setVideoStillMode).not.toHaveBeenCalled();
     expect(playerA.setLooping).not.toHaveBeenCalled();
-    expect(playerA.disableAudioStream).not.toHaveBeenCalled();
     expect(playerB.setVideoStillMode).not.toHaveBeenCalled();
     expect(playerB.setLooping).not.toHaveBeenCalled();
-    expect(playerB.disableAudioStream).not.toHaveBeenCalled();
+  });
+
+  it('slot 음소거 상태를 AVPlay lane별 audio stream에 적용한다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    let playerAState = 'IDLE';
+    let playerBState = 'IDLE';
+    playerA.getState = vi.fn(() => playerAState);
+    playerB.getState = vi.fn(() => playerBState);
+    playerA.play = vi.fn(() => {
+      playerAState = 'PLAYING';
+    });
+    playerA.stop = vi.fn(() => {
+      playerAState = 'IDLE';
+    });
+    playerB.prepare = vi.fn(() => {
+      playerBState = 'READY';
+    });
+    playerB.play = vi.fn(() => {
+      playerBState = 'PLAYING';
+    });
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], document.body, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    });
+    const mutedSlot = createSlotPlan();
+    const unmutedSlot = {
+      ...createSlotPlan(),
+      isMuted: false,
+    };
+
+    await session.play(createVideoItem('muted-current.mp4'), mutedSlot, document.createElement('section'), false, vi.fn());
+    expect(playerA.disableAudioStream).toHaveBeenCalled();
+    expect(playerA.enableAudioStream).not.toHaveBeenCalled();
+    expect(session.debugSnapshot().lanes[0]?.audioMuted).toBe(true);
+
+    session.prepareNextVideo(createVideoItem('next.mp4'), mutedSlot);
+    expect(playerB.disableAudioStream).toHaveBeenCalled();
+    expect(session.debugSnapshot().lanes[1]?.audioMuted).toBe(true);
+
+    await session.play(createVideoItem('next.mp4'), unmutedSlot, document.createElement('section'), false, vi.fn());
+    expect(playerB.enableAudioStream).toHaveBeenCalled();
+    expect(session.debugSnapshot().lanes[1]?.audioMuted).toBe(false);
   });
 
   it('전환 후 현재 lane만 위에 두고 이전 lane은 숨긴다', async () => {
@@ -326,7 +370,7 @@ describe('AvplaySession', () => {
     await session.play(createVideoItem('first.mp4'), slot, slotElement, false, vi.fn());
     callOrder.length = 0;
 
-    session.prepareNextVideo(createVideoItem('second.mp4'));
+    session.prepareNextVideo(createVideoItem('second.mp4'), slot);
     expect(callOrder).toEqual([
       'b.open',
       'b.rect',
@@ -386,7 +430,7 @@ describe('AvplaySession', () => {
 
     await session.play(createVideoItem('current.mp4'), slot, slotElement, false, vi.fn());
 
-    expect(() => session.prepareNextVideo(createVideoItem('next.mp4'))).toThrow('AVPlay prepare 오류');
+    expect(() => session.prepareNextVideo(createVideoItem('next.mp4'), slot)).toThrow('AVPlay prepare 오류');
     expect(playerB.close).toHaveBeenCalledTimes(1);
     expect(session.debugSnapshot().lanes[1]?.role).toBe('idle');
 
@@ -422,7 +466,7 @@ describe('AvplaySession', () => {
     const slotElement = document.createElement('section');
 
     await session.play(createVideoItem('current.mp4'), slot, slotElement, false, vi.fn());
-    session.prepareNextVideo(createVideoItem('prepared.mp4'));
+    session.prepareNextVideo(createVideoItem('prepared.mp4'), slot);
     const preparedRectCalls = vi.mocked(playerB.setDisplayRect).mock.calls.length;
 
     session.applyDisplayRect(slot, slotElement);
@@ -488,8 +532,8 @@ describe('AvplaySession', () => {
     const slotElement = document.createElement('section');
 
     await session.play(createVideoItem('current.mp4'), slot, slotElement, false, vi.fn());
-    session.prepareNextVideo(createVideoItem('next-content.mp4'), 'next-content');
-    session.prepareNextVideo(createVideoItem('next-schedule.mp4'), 'next-schedule-content');
+    session.prepareNextVideo(createVideoItem('next-content.mp4'), slot, 'next-content');
+    session.prepareNextVideo(createVideoItem('next-schedule.mp4'), slot, 'next-schedule-content');
 
     expect(session.debugSnapshot().lanes.map((lane) => lane.role)).toEqual([
       'current',
@@ -580,8 +624,8 @@ describe('AvplaySession', () => {
     const slotElement = document.createElement('section');
 
     await session.play(createVideoItem('current.mp4'), slot, slotElement, false, vi.fn());
-    session.prepareNextVideo(createVideoItem('other-next.mp4'), 'next-content');
-    session.prepareNextVideo(createVideoItem('next.mp4'), 'next-schedule-content');
+    session.prepareNextVideo(createVideoItem('other-next.mp4'), slot, 'next-content');
+    session.prepareNextVideo(createVideoItem('next.mp4'), slot, 'next-schedule-content');
 
     await session.play(createVideoItem('next.mp4'), slot, slotElement, false, vi.fn());
 

@@ -182,6 +182,7 @@ declare global {
     readonly callbackCurrentTimeMs: number | null;
     readonly callbackAgeMs: number | null;
     readonly buffering: boolean;
+    readonly audioMuted: boolean | null;
     readonly lastPlayAt: string | null;
     readonly lastPrepareCompletedAt: string | null;
     readonly lastBufferingStartAt: string | null;

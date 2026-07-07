@@ -25,6 +25,7 @@ interface AvplayPairSession {
 
 interface AvplayLaneRuntimeState {
   itemName: string | null;
+  audioMuted: boolean | null;
   callbackCurrentTimeMs: number | null;
   callbackCurrentTimeAtMs: number | null;
   buffering: boolean;
@@ -132,12 +133,13 @@ export class AvplaySessionPair {
         const sourceUrl = resolveAvplaySourceUrl(item.sourceUrl);
         this.logger.info('avplay', `slot ${this.index} lane ${nextLaneIndex + 1} open: ${item.name}`);
         this.resetLaneForPlayback(nextLaneIndex);
-        this.configureLaneForItem(nextLaneIndex, item, sourceUrl);
+        this.configureLaneForItem(nextLaneIndex, item, sourceUrl, slot.isMuted);
         this.prepareLane(nextLaneIndex, item.name);
         this.assertOperationCurrent(operationId, nextLaneIndex, 'play.prepare', item.name);
       }
       this.setLaneDisplayMethod(nextLaneIndex, preserveAspectRatio ? DISPLAY_METHOD_CONTAIN : DISPLAY_METHOD_FILL);
       this.applyDisplayRectToLane(nextLaneIndex, slot, slotElement);
+      this.applyLaneAudioState(nextLaneIndex, slot.isMuted, 'play.audio', item.name);
       this.assertOperationCurrent(operationId, nextLaneIndex, 'play.beforePlay', item.name);
       this.callLane(nextLaneIndex, 'play', () => {
         lane.player.play();
@@ -310,7 +312,7 @@ export class AvplaySessionPair {
     this.logger.info('avplay-trace', `slot ${this.index} lane ${laneIndex + 1} completed stream will switch on next lane ${this.traceContext()}`);
   }
 
-  prepareNextVideo(item: SeamlessContentItem, role: AvplayPreparedRole = 'next-content'): void {
+  prepareNextVideo(item: SeamlessContentItem, slot: SeamlessSlotPlan, role: AvplayPreparedRole = 'next-content'): void {
     if (item.contentType !== 'Video' || this.currentItem?.id === item.id) {
       return;
     }
@@ -331,7 +333,7 @@ export class AvplaySessionPair {
     this.logger.info('avplay', `slot ${this.index} lane ${laneIndex + 1} prepare-next role=${role}: ${item.name}`);
     try {
       this.resetLaneForPlayback(laneIndex);
-      this.configureLaneForItem(laneIndex, item, sourceUrl);
+      this.configureLaneForItem(laneIndex, item, sourceUrl, slot.isMuted);
       this.applyOffscreenRectToLane(laneIndex, item.name);
       this.prepareLane(laneIndex, item.name);
       if (this.laneState(laneIndex) !== 'READY') {
@@ -376,6 +378,7 @@ export class AvplaySessionPair {
           callbackCurrentTimeMs: runtime.callbackCurrentTimeMs,
           callbackAgeMs,
           buffering: runtime.buffering,
+          audioMuted: runtime.audioMuted,
           lastPlayAt: runtime.lastPlayAt,
           lastPrepareCompletedAt: runtime.lastPrepareCompletedAt,
           lastBufferingStartAt: runtime.lastBufferingStartAt,
@@ -507,16 +510,36 @@ export class AvplaySessionPair {
     }
   }
 
-  private configureLaneForItem(laneIndex: number, item: SeamlessContentItem, sourceUrl: string): void {
+  private configureLaneForItem(laneIndex: number, item: SeamlessContentItem, sourceUrl: string, audioMuted: boolean): void {
     const lane = this.lanes[laneIndex];
     this.laneRuntimeStates[laneIndex] = this.createLaneRuntimeState(item.name);
     this.callLane(laneIndex, 'open', () => {
       lane.player.open(sourceUrl);
     }, `${item.name} ${sourceUrl}`);
+    this.applyLaneAudioState(laneIndex, audioMuted, 'configure.audio', item.name);
     this.useVideoMixer(laneIndex, item.name);
     this.callLaneSafe(laneIndex, 'setListener', () => {
       lane.player.setListener(this.createLaneListener(laneIndex));
     }, item.name);
+  }
+
+  private applyLaneAudioState(laneIndex: number, audioMuted: boolean, operation: string, itemName: string): void {
+    const lane = this.lanes[laneIndex];
+    this.callLane(laneIndex, operation, () => {
+      if (audioMuted) {
+        if (typeof lane.player.disableAudioStream !== 'function') {
+          throw new Error('AVPlay disableAudioStream API를 찾지 못했습니다.');
+        }
+        lane.player.disableAudioStream();
+        return;
+      }
+
+      if (typeof lane.player.enableAudioStream !== 'function') {
+        throw new Error('AVPlay enableAudioStream API를 찾지 못했습니다.');
+      }
+      lane.player.enableAudioStream();
+    }, `${itemName} muted=${audioMuted}`);
+    this.laneRuntimeStates[laneIndex].audioMuted = audioMuted;
   }
 
   private useVideoMixer(laneIndex: number, itemName: string): void {
@@ -583,6 +606,10 @@ export class AvplaySessionPair {
       return;
     }
 
+    this.callLaneSafe(laneIndex, 'disableAudioStream.stop', () => {
+      lane.player.disableAudioStream?.();
+    });
+    this.laneRuntimeStates[laneIndex].audioMuted = true;
     this.callLaneSafe(laneIndex, 'stop', () => {
       lane.player.stop();
     });
@@ -868,6 +895,7 @@ export class AvplaySessionPair {
   private createLaneRuntimeState(itemName: string | null = null): AvplayLaneRuntimeState {
     return {
       itemName,
+      audioMuted: null,
       callbackCurrentTimeMs: null,
       callbackCurrentTimeAtMs: null,
       buffering: false,
