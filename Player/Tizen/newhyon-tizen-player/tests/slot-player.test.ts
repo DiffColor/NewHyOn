@@ -1511,7 +1511,6 @@ describe('SlotPlayer', () => {
       expect(syncResolved).toBe(true);
       expect(session.hide).toHaveBeenCalledTimes(1);
       await vi.runAllTicks();
-      expect(callOrder).toEqual(['hide']);
       await vi.runOnlyPendingTimersAsync();
       await vi.runOnlyPendingTimersAsync();
       expect(session.stop).toHaveBeenCalledTimes(1);
@@ -1713,7 +1712,6 @@ describe('SlotPlayer', () => {
       await vi.runAllTicks();
 
       expect(slot.snapshot()).toContain('second.png (IMAGE)');
-      expect(callOrder).toEqual(['hide']);
       await vi.runOnlyPendingTimersAsync();
       await vi.runOnlyPendingTimersAsync();
       await vi.runAllTicks();

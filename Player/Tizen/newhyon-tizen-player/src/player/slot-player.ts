@@ -539,8 +539,8 @@ export class SlotPlayer {
         };
         await this.showImage(item, {
           promoteSlotLayer: hasActiveVideoSurface,
-          onPromotedPaint: hideActiveVideoSurface,
           onVisibleApplied: () => {
+            hideActiveVideoSurface();
             if (!hasActiveVideoSurface) {
               this.element.classList.remove('slot--video-active');
             }
@@ -738,7 +738,6 @@ export class SlotPlayer {
     image.classList.remove('slot-image--under-video');
     image.classList.add('slot-image--visible');
     this.logImageTiming(item, 'visible promoted', visibleStartedAt, `total=${this.elapsed(showStartedAt)}ms`);
-    options.onVisibleApplied?.();
     const normalizeLayer = () => {
       previousImage.classList.remove('slot-image--visible');
       previousImage.classList.remove('slot-image--prepared');
@@ -756,6 +755,7 @@ export class SlotPlayer {
     this.logImageTiming(item, 'visible class applied', visibleStartedAt, `total=${this.elapsed(showStartedAt)}ms`);
     image.getBoundingClientRect();
     this.element.getBoundingClientRect();
+    options.onVisibleApplied?.();
     const visiblePaintPromise = (async () => {
       await this.waitForPaint();
       this.logImageTiming(item, 'promoted paint', visibleStartedAt, `total=${this.elapsed(showStartedAt)}ms`);
@@ -824,7 +824,7 @@ export class SlotPlayer {
       await this.yieldImagePreparationFrame(item, `after decode ${reason}`, prepareStartedAt);
     }
     const preparedClassStartedAt = performance.now();
-    image.style.zIndex = IMAGE_LAYER_BOTTOM;
+    image.style.zIndex = options.underVideo === true ? IMAGE_LAYER_PROMOTED : IMAGE_LAYER_BOTTOM;
     image.classList.add('slot-image--prepared');
     if (options.underVideo === true) {
       image.classList.add('slot-image--under-video');
