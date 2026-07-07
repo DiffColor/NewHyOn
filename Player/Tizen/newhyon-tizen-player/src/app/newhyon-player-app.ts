@@ -9,7 +9,7 @@ import {
   type RemoteControlAction,
 } from '../input/remote-control';
 import { type AvplayPreparedRole, type AvplaySessionPair, createAvplaySessionPair } from '../player/avplay-session';
-import { shouldMutePageAudio, TizenAudioPolicy } from '../player/audio-policy';
+import { TizenAudioPolicy } from '../player/audio-policy';
 import { SlotPlayer, type SlotPlayerTimelineSnapshot } from '../player/slot-player';
 import { RuntimeHealthReporter } from './runtime-health-reporter';
 import { collectRuntimeDiagnostics, formatRuntimeDiagnostics } from './runtime-diagnostics';
@@ -294,15 +294,15 @@ export class NewHyOnPlayerApp {
       this.settingsOverlay = new SettingsOverlay({
         onApply: (settings) => {
           this.stopVolumeTest();
-          this.applyPlayerSettings(settings);
+          this.applyPlayerSettings(settings, { applyTvVolume: true });
+          this.settingsVolumePreviewed = false;
           this.resumeSlotsAfterSettingsKey('settings-apply-resume', { allowOverlayOpen: true });
         },
         onClose: (reason) => {
-          const shouldReapplyAudio = this.settingsVolumePreviewed || this.isVolumeTestPlaying();
+          const shouldRestoreVolume = this.settingsVolumePreviewed || this.isVolumeTestPlaying();
           this.stopVolumeTest();
-          if (shouldReapplyAudio && !this.destroyed) {
-            this.audioPolicy.forgetLastApplied();
-            this.applyCurrentPageAudioPolicy('settings-close');
+          if (shouldRestoreVolume && !this.destroyed) {
+            this.applyConfiguredTvVolume('settings-close');
           }
           this.settingsVolumePreviewed = false;
           if (reason === 'return-key' || reason === 'button') {
@@ -326,6 +326,7 @@ export class NewHyOnPlayerApp {
       this.setHudVisible(this.config.hudInitiallyVisible);
       this.logRuntimeDiagnostics();
       this.configureSsspSignageControl();
+      this.applyConfiguredTvVolume('settings-startup');
       this.writeRuntimeHealth('app-started');
       await this.bootstrapCommunication();
       await this.syncContentPeriodsForManifests([this.currentContentManifest], 'startup', false);
@@ -409,12 +410,6 @@ export class NewHyOnPlayerApp {
     this.avplaySessionPairs.forEach((session) => session?.stop());
   }
 
-  private applyVolumeTestLevel(volume: number, source: string): void {
-    const normalizedVolume = normalizeVolume(volume);
-    this.volumeTestAudio.volume = normalizedVolume / 100;
-    this.logger.info('audio', `volume test level=${normalizedVolume} (${source})`);
-  }
-
   private applyTvVolume(volume: number, source: string): void {
     const normalizedVolume = normalizeVolume(volume);
     const audioControl = window.tizen?.tvaudiocontrol;
@@ -434,8 +429,12 @@ export class NewHyOnPlayerApp {
     }
   }
 
+  private applyConfiguredTvVolume(source: string): void {
+    this.applyTvVolume(this.config.settings.defaultVolume, source);
+  }
+
   private playVolumeTest(volume: number): void {
-    this.applyVolumeTestLevel(volume, 'settings-volume-test');
+    this.applyTvVolume(volume, 'settings-volume-test');
     if (!this.volumeTestAudio.paused) {
       this.stopVolumeTest();
       return;
@@ -444,6 +443,7 @@ export class NewHyOnPlayerApp {
     const audio = this.volumeTestAudio;
     audio.currentTime = 0;
     audio.loop = true;
+    audio.volume = 1;
     void audio.play().catch((error) => {
       this.logger.warn('audio', `볼륨 테스트 음악 재생 실패: ${formatError(error)}`);
     });
@@ -485,7 +485,7 @@ export class NewHyOnPlayerApp {
     });
   }
 
-  private applyPlayerSettings(settings: PlayerSettings): void {
+  private applyPlayerSettings(settings: PlayerSettings, options: { readonly applyTvVolume?: boolean } = {}): void {
     const preserveChanged = this.config.settings.preserveAspectRatio !== settings.preserveAspectRatio;
     const switchOnEndChanged = this.config.settings.switchOnContentEnd !== settings.switchOnContentEnd;
     const defaultVolumeChanged = this.config.settings.defaultVolume !== settings.defaultVolume;
@@ -503,14 +503,16 @@ export class NewHyOnPlayerApp {
       ...this.currentContentManifest,
       preserveAspectRatio: settings.preserveAspectRatio,
     };
-    if (preserveChanged || switchOnEndChanged || defaultVolumeChanged) {
+    if (options.applyTvVolume === true) {
+      this.applyConfiguredTvVolume('settings-save');
+    } else if (defaultVolumeChanged) {
+      this.applyConfiguredTvVolume('settings-apply');
+    }
+    if (preserveChanged || switchOnEndChanged || defaultVolumeChanged || options.applyTvVolume === true) {
       if (preserveChanged || switchOnEndChanged) {
         this.slotPlayers.forEach((slotPlayer) => {
           slotPlayer.updatePlaybackSettings(settings.preserveAspectRatio, settings.switchOnContentEnd);
         });
-      }
-      if (defaultVolumeChanged) {
-        this.applyDefaultVolumeChangeToCurrentPage();
       }
       this.logger.info(
         'settings',
@@ -1438,23 +1440,8 @@ export class NewHyOnPlayerApp {
   }
 
   private applyDefaultVolumePreviewToCurrentPage(volume: number): boolean {
-    const page = this.pagePlans[this.pageIndex];
-    if (!page || shouldMutePageAudio(page)) {
-      return false;
-    }
-
     this.applyTvVolume(volume, 'settings-preview');
     return true;
-  }
-
-  private applyDefaultVolumeChangeToCurrentPage(): void {
-    const page = this.pagePlans[this.pageIndex];
-    if (!page) {
-      return;
-    }
-
-    this.audioPolicy.forgetLastApplied();
-    this.applyPageAudioPolicy(page, 'settings-apply');
   }
 
   private applyPageAudioPolicy(page: SeamlessPagePlan, _source: string): void {
@@ -1463,7 +1450,7 @@ export class NewHyOnPlayerApp {
       return;
     }
 
-    this.audioPolicy.applyForPage(page, this.config.settings.defaultVolume);
+    this.audioPolicy.applyForPage(page);
   }
 
   private applyPanelMute(muted: boolean, source: string): void {

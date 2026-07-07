@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NewHyOnPlayerApp } from '../src/app/newhyon-player-app';
 import { hasContentPeriod, saveContentPeriodsFromSchedule } from '../src/app/content-period';
-import { DEFAULT_PLAYER_SETTINGS } from '../src/app/player-settings';
+import { DEFAULT_PLAYER_SETTINGS, savePlayerSettings } from '../src/app/player-settings';
 import { loadRemoteManifest, type UpdatePayload } from '../src/app/update-payload';
 import { loadRemoteSchedule, saveRemoteScheduleFromUpdatePayload } from '../src/app/remote-schedule';
 import { getDefaultWeeklySchedule, saveWeeklySchedule } from '../src/app/weekly-schedule';
@@ -1435,7 +1435,8 @@ describe('NewHyOnPlayerApp', () => {
 
     expect(play).toHaveBeenCalledTimes(1);
     expect(setPanelMute).toHaveBeenLastCalledWith('OFF');
-    expect(setVolume).toHaveBeenCalledWith(0);
+    expect(setVolume).toHaveBeenCalledWith(DEFAULT_PLAYER_SETTINGS.defaultVolume);
+    expect(setVolume).not.toHaveBeenCalledWith(0);
     expect(document.querySelector('#status-state')?.textContent).toBe('playing');
     expect(document.querySelector('#broadcast-standby')?.classList.contains('broadcast-standby--hidden')).toBe(true);
     app.destroy();
@@ -1502,7 +1503,7 @@ describe('NewHyOnPlayerApp', () => {
     app.destroy();
   });
 
-  it('음소거 페이지만 재생 중이면 기본 볼륨 저장 시 TV 전역 볼륨을 0으로 유지한다', async () => {
+  it('음소거 페이지만 재생 중이어도 설정 볼륨은 TV 전역 볼륨으로 적용한다', async () => {
     const play = vi.fn();
     const player = createPlayer(play);
     const setVolume = vi.fn();
@@ -1530,13 +1531,14 @@ describe('NewHyOnPlayerApp', () => {
     });
 
     await app.start();
-    expect(setVolume).toHaveBeenCalledWith(0);
+    expect(setVolume).toHaveBeenCalledWith(20);
     setVolume.mockClear();
 
     expect(
       (app as unknown as { applyDefaultVolumePreviewToCurrentPage(volume: number): boolean }).applyDefaultVolumePreviewToCurrentPage(42),
-    ).toBe(false);
-    expect(setVolume).not.toHaveBeenCalled();
+    ).toBe(true);
+    expect(setVolume).toHaveBeenCalledWith(42);
+    setVolume.mockClear();
 
     (app as unknown as { applyPlayerSettings(settings: typeof DEFAULT_PLAYER_SETTINGS): void }).applyPlayerSettings({
       ...DEFAULT_PLAYER_SETTINGS,
@@ -1549,11 +1551,11 @@ describe('NewHyOnPlayerApp', () => {
       hudInitiallyVisible: false,
     });
 
-    expect(setVolume).toHaveBeenCalledWith(0);
+    expect(setVolume).toHaveBeenCalledWith(42);
     app.destroy();
   });
 
-  it('기본 볼륨 테스트는 테스트 음원 볼륨만 조절한다', async () => {
+  it('기본 볼륨 테스트는 TV 전역 볼륨을 조절하고 테스트 음원은 원본 볼륨으로 재생한다', async () => {
     const play = vi.fn();
     const setVolume = vi.fn();
     window.webapis = createWebApis(createPlayer(play));
@@ -1582,9 +1584,109 @@ describe('NewHyOnPlayerApp', () => {
     (app as unknown as { playVolumeTest(volume: number): void }).playVolumeTest(42);
 
     const audio = (app as unknown as { volumeTestAudio: HTMLAudioElement }).volumeTestAudio;
-    expect(audio.volume).toBe(0.42);
+    expect(audio.volume).toBe(1);
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
-    expect(setVolume).not.toHaveBeenCalled();
+    expect(setVolume).toHaveBeenCalledWith(42);
+    app.destroy();
+  });
+
+  it('설정창에서 미리 조절한 볼륨은 닫으면 저장된 기본 볼륨으로 복원한다', async () => {
+    const play = vi.fn();
+    let tvVolume = 67;
+    const setVolume = vi.fn((volume: number) => {
+      tvVolume = volume;
+    });
+    window.webapis = createWebApis(createPlayer(play));
+    window.tizen = {
+      tvaudiocontrol: {
+        getVolume: vi.fn(() => tvVolume),
+        setVolume,
+        setMute: vi.fn(),
+      },
+    };
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        defaultVolume: 20,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+    expect(tvVolume).toBe(20);
+    tvVolume = 67;
+    setVolume.mockClear();
+
+    const overlay = (app as unknown as {
+      settingsOverlay: { open(): void; close(reason: 'button'): void } | null;
+    }).settingsOverlay;
+    overlay?.open();
+    const slider = document.querySelector<HTMLInputElement>('[data-setting-name="defaultVolume"]');
+    if (!slider) {
+      throw new Error('기본 볼륨 슬라이더를 찾지 못했습니다.');
+    }
+    slider.value = '42';
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(setVolume).toHaveBeenCalledWith(42);
+    expect(tvVolume).toBe(42);
+    setVolume.mockClear();
+
+    overlay?.close('button');
+
+    expect(setVolume).toHaveBeenCalledWith(20);
+    expect(tvVolume).toBe(20);
+    app.destroy();
+  });
+
+  it('설정을 저장하면 기본 볼륨 값이 같아도 TV 전역 볼륨을 1회 적용한다', async () => {
+    const play = vi.fn();
+    const setVolume = vi.fn();
+    savePlayerSettings({
+      ...DEFAULT_PLAYER_SETTINGS,
+      playerId: '',
+      managerAddress: '',
+      manifestUrl: '',
+      defaultVolume: 20,
+      hudInitiallyVisible: false,
+    });
+    window.webapis = createWebApis(createPlayer(play));
+    window.tizen = {
+      tvaudiocontrol: {
+        getVolume: vi.fn(() => 20),
+        setVolume,
+        setMute: vi.fn(),
+      },
+    };
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        defaultVolume: 20,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    await app.start();
+    setVolume.mockClear();
+
+    const overlay = (app as unknown as {
+      settingsOverlay: { open(): void; handleKeyDown(event: KeyboardEvent): boolean } | null;
+    }).settingsOverlay;
+    overlay?.open();
+    document.querySelector<HTMLButtonElement>('[data-setting-action="apply"]')?.focus();
+    overlay?.handleKeyDown(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+
+    expect(setVolume).toHaveBeenCalledWith(20);
+    expect(document.querySelector('.settings-save-status')?.textContent).toBe('설정이 저장되었습니다.');
     app.destroy();
   });
 
