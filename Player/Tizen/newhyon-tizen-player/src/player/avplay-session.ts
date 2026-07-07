@@ -118,13 +118,22 @@ export class AvplaySessionPair {
       : this.lastPlaybackLaneIndex === 0 ? 1 : 0;
     const lane = this.lanes[nextLaneIndex];
     void options;
+    let stillLaneToRelease: number | null = null;
     try {
+      const previousCurrentLaneIndex = this.currentLaneIndex;
+      const previousPlaybackMode = previousCurrentLaneIndex !== null
+        ? this.laneRuntimeStates[previousCurrentLaneIndex]?.playbackMode ?? null
+        : null;
       const usePreparedLane = preparedLane?.laneIndex === nextLaneIndex;
       const laneToStopBeforeOpen = usePreparedLane
         ? null
-        : this.currentLaneIndex;
+        : previousCurrentLaneIndex;
       const laneToStopAfterPlay = usePreparedLane ? this.currentLaneIndex : null;
       if (laneToStopBeforeOpen !== null && laneToStopBeforeOpen !== nextLaneIndex) {
+        if (previousPlaybackMode === 'direct') {
+          stillLaneToRelease = laneToStopBeforeOpen;
+          this.setLaneStillMode(laneToStopBeforeOpen, true, `direct-switch ${item.name}`);
+        }
         this.stopLane(laneToStopBeforeOpen);
         if (laneToStopBeforeOpen === this.currentLaneIndex) {
           this.currentLaneIndex = null;
@@ -139,7 +148,7 @@ export class AvplaySessionPair {
         this.prepareLaneWithDirectRetry(nextLaneIndex, item, sourceUrl, {
           offscreenBeforeMixedPrepare: false,
           offscreenAfterDirectPrepare: false,
-          retryDirect: true,
+          retryDirect: previousPlaybackMode !== 'direct',
         });
         this.assertOperationCurrent(operationId, nextLaneIndex, 'play.prepare', item.name);
       }
@@ -152,6 +161,10 @@ export class AvplaySessionPair {
       }, item.name);
       this.laneRuntimeStates[nextLaneIndex].lastPlayAt = new Date().toISOString();
       this.applyLaneAudioState(nextLaneIndex, slot.isMuted, 'play.audio.afterPlay', item.name);
+      if (stillLaneToRelease !== null) {
+        this.setLaneStillMode(stillLaneToRelease, false, `direct-switch complete ${item.name}`);
+        stillLaneToRelease = null;
+      }
 
       this.currentItem = item;
       this.currentEndedHandler = onStreamEnded;
@@ -168,6 +181,9 @@ export class AvplaySessionPair {
       this.updateObjectVisibility();
       return { durationMs: null };
     } catch (error) {
+      if (stillLaneToRelease !== null) {
+        this.setLaneStillMode(stillLaneToRelease, false, `direct-switch failed ${item.name}`);
+      }
       this.resetFailedLane(nextLaneIndex, `play ${item.name}`, error);
       throw error;
     }
@@ -676,6 +692,16 @@ export class AvplaySessionPair {
     });
     this.laneRuntimeStates[laneIndex].audioMuted = null;
     this.laneRuntimeStates[laneIndex].playbackMode = null;
+  }
+
+  private setLaneStillMode(laneIndex: number, enabled: boolean, reason: string): void {
+    const lane = this.lanes[laneIndex];
+    this.callLaneSafe(laneIndex, `setVideoStillMode.${enabled ? 'on' : 'off'}`, () => {
+      if (typeof lane.player.setVideoStillMode !== 'function') {
+        throw new Error('AVPlay setVideoStillMode API를 찾지 못했습니다.');
+      }
+      lane.player.setVideoStillMode(enabled ? 'true' : 'false');
+    }, reason);
   }
 
   private closeLane(laneIndex: number): void {

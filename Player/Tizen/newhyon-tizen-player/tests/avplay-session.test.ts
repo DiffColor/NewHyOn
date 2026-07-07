@@ -592,37 +592,57 @@ describe('AvplaySession', () => {
     });
   });
 
-  it('direct 모드 current 재생 중에는 다음 영상 사전 준비로 mixer를 건드리지 않는다', async () => {
+  it('direct 모드 current 재생 중에는 다음 영상을 사전 준비하지 않고 전환 시 stop 후 mixedframe으로 재생한다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
+    const callOrder: string[] = [];
     let playerAState = 'IDLE';
     let playerBState = 'IDLE';
     playerA.getState = vi.fn(() => playerAState);
     playerB.getState = vi.fn(() => playerBState);
+    playerA.open = vi.fn(() => {
+      callOrder.push('a.open');
+      playerAState = 'IDLE';
+    });
     playerA.prepare = vi.fn(() => {
+      callOrder.push('a.prepare');
       playerAState = 'READY';
     });
     playerA.play = vi.fn(() => {
+      callOrder.push('a.play');
       playerAState = 'PLAYING';
     });
     playerA.stop = vi.fn(() => {
+      callOrder.push('a.stop');
       playerAState = 'IDLE';
     });
     playerB.open = vi.fn(() => {
+      callOrder.push('b.open');
       playerBState = 'IDLE';
     });
     playerB.prepare = vi.fn()
       .mockImplementationOnce(() => {
+        callOrder.push('b.prepare');
         throw new Error('mixedframe prepare failed');
       })
       .mockImplementationOnce(() => {
+        callOrder.push('b.prepare');
         playerBState = 'READY';
       });
     playerB.close = vi.fn(() => {
+      callOrder.push('b.close');
       playerBState = 'NONE';
     });
     playerB.play = vi.fn(() => {
+      callOrder.push('b.play');
       playerBState = 'PLAYING';
+    });
+    playerB.stop = vi.fn(() => {
+      callOrder.push('b.stop');
+      playerBState = 'IDLE';
+    });
+    playerB.setVideoStillMode = vi.fn((mode) => {
+      callOrder.push(`b.still.${mode}`);
     });
     const session = new AvplaySession(0, [
       { player: playerA, objectElement: document.createElement('object') },
@@ -637,12 +657,14 @@ describe('AvplaySession', () => {
     await session.play(createVideoItem('current.mp4'), slot, slotElement, false, vi.fn());
     await session.play(createVideoItem('direct-current.mp4'), slot, slotElement, false, vi.fn());
     vi.clearAllMocks();
+    callOrder.length = 0;
 
     session.prepareNextVideo(createVideoItem('next-after-direct.mp4'), slot);
 
     expect(playerA.open).not.toHaveBeenCalled();
     expect(playerA.prepare).not.toHaveBeenCalled();
     expect(playerA.setStreamingProperty).not.toHaveBeenCalledWith('USE_VIDEOMIXER');
+    expect(callOrder).toEqual([]);
     expect(session.debugSnapshot().lanes[0]?.role).toBe('idle');
     expect(session.debugSnapshot().lanes[1]).toMatchObject({
       role: 'current',
@@ -650,6 +672,26 @@ describe('AvplaySession', () => {
       playbackMode: 'direct',
       state: 'PLAYING',
     });
+
+    await session.play(createVideoItem('next-after-direct.mp4'), slot, slotElement, false, vi.fn());
+
+    expect(callOrder).toEqual(['b.still.true', 'b.stop', 'a.open', 'a.prepare', 'a.play', 'b.still.false']);
+    expect(playerA.open).toHaveBeenCalledTimes(1);
+    expect(playerA.prepare).toHaveBeenCalledTimes(1);
+    expect(playerA.play).toHaveBeenCalledTimes(1);
+    expect(playerA.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');
+    expect(playerA.setStreamingProperty).toHaveBeenCalledWith('SET_MIXEDFRAME');
+    expect(playerB.close).not.toHaveBeenCalled();
+    expect(playerB.stop).toHaveBeenCalledTimes(1);
+    expect(playerB.setVideoStillMode).toHaveBeenNthCalledWith(1, 'true');
+    expect(playerB.setVideoStillMode).toHaveBeenNthCalledWith(2, 'false');
+    expect(session.debugSnapshot().lanes[0]).toMatchObject({
+      role: 'current',
+      itemName: 'next-after-direct.mp4',
+      playbackMode: 'mixedframe',
+      state: 'PLAYING',
+    });
+    expect(session.debugSnapshot().lanes[1]?.role).toBe('idle');
   });
 
   it('전환 재생 시 mixedframe과 direct prepare가 모두 실패하면 lane을 초기화하고 오류를 전달한다', async () => {
