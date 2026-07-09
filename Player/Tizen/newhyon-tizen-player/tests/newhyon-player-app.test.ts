@@ -436,6 +436,37 @@ describe('NewHyOnPlayerApp', () => {
     app.destroy();
   });
 
+  it('원격 스트리밍 reboot 명령은 응답 이후 SSSP 재부팅을 실행한다', async () => {
+    vi.useFakeTimers();
+    const rebootDevice = vi.fn();
+    window.webapis = createWebApis(createPlayer(() => undefined));
+    window.webapis.systemcontrol!.rebootDevice = rebootDevice;
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        playerId: '',
+        managerAddress: '',
+        manifestUrl: '',
+        preserveAspectRatio: false,
+        switchOnContentEnd: false,
+        hudInitiallyVisible: false,
+      },
+      hudInitiallyVisible: false,
+    });
+
+    const result = (app as unknown as {
+      handleRemoteStreamingCommand(command: string, payload: unknown): Promise<boolean> | boolean;
+    }).handleRemoteStreamingCommand('reboot', { command: 'reboot' });
+
+    await expect(Promise.resolve(result)).resolves.toBe(true);
+    expect(rebootDevice).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(rebootDevice).toHaveBeenCalledTimes(1);
+  });
+
   it('콘텐츠 데이터는 있지만 현재 콘텐츠 기간 밖이면 인트로가 아니라 검은 화면을 유지한다', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 22, 9, 1, 0));

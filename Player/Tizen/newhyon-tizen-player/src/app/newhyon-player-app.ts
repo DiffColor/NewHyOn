@@ -763,11 +763,13 @@ export class NewHyOnPlayerApp {
     };
   }
 
-  private handleRemoteStreamingCommand(command: string, _payload: RemoteCommandPayload): boolean {
+  private handleRemoteStreamingCommand(command: string, _payload: RemoteCommandPayload): Promise<boolean> | boolean {
     switch (command) {
       case 'toggle-hud':
         this.toggleHud();
         return true;
+      case 'reboot':
+        return this.handleRemoteStreamingReboot();
       case 'play-pause':
       case 'media-play':
       case 'media-pause':
@@ -778,17 +780,42 @@ export class NewHyOnPlayerApp {
         this.stopPlayback('원격 스트리밍 명령: 재생 정지');
         return true;
       case 'media-next':
-        void this.playPage(this.pageIndex + 1, { preservePreviousUntilReady: true })
-          .catch((error) => this.handleAsyncPagePlaybackError('원격 다음 페이지 전환', error));
-        return true;
+        return this.handleRemoteContentStep('next');
       case 'media-previous':
-        void this.playPage(this.pageIndex - 1, { preservePreviousUntilReady: true })
-          .catch((error) => this.handleAsyncPagePlaybackError('원격 이전 페이지 전환', error));
-        return true;
+        return this.handleRemoteContentStep('previous');
       default:
         this.logger.warn('remote-streaming', `지원하지 않는 원격 명령: ${command}`);
         return false;
     }
+  }
+
+  private async handleRemoteStreamingReboot(): Promise<boolean> {
+    const command = prepareSsspReboot();
+    await this.sendStoppedHeartbeatForDevicePowerCommand();
+    this.setMessage('원격 리모콘 재부팅 명령을 적용합니다.');
+    window.setTimeout(() => {
+      command.afterAck();
+    }, 250);
+    return true;
+  }
+
+  private handleRemoteContentStep(direction: 'next' | 'previous'): boolean {
+    if (this.slotPlayers.length === 0) {
+      this.logger.warn('remote-streaming', `원격 ${direction === 'next' ? '다음' : '이전'} 컨텐츠 전환 실패: 활성 슬롯 없음`);
+      return false;
+    }
+
+    const label = direction === 'next' ? '다음' : '이전';
+    void Promise.all(this.slotPlayers.map((slotPlayer) => (
+      direction === 'next'
+        ? slotPlayer.showNextContent()
+        : slotPlayer.showPreviousContent()
+    ))).then((results) => {
+      if (!results.some(Boolean)) {
+        this.logger.warn('remote-streaming', `원격 ${label} 컨텐츠 전환 대상 없음`);
+      }
+    }).catch((error) => this.handleAsyncPagePlaybackError(`원격 ${label} 컨텐츠 전환`, error));
+    return true;
   }
 
   private async applyUpdateListCommand(

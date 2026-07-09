@@ -445,6 +445,29 @@ describe('SlotPlayer', () => {
     expect(play.mock.calls[1]?.[5]).toMatchObject({ waitForFirstFrame: false });
   });
 
+  it('원격 컨텐츠 이동 API는 현재 슬롯에서 바로 다음/이전 컨텐츠를 한 칸씩 재생한다', async () => {
+    const play = vi.fn(async (..._args: unknown[]) => undefined);
+    const session = {
+      play,
+      pause: vi.fn(),
+      resume: vi.fn(),
+      stop: vi.fn(),
+      state: vi.fn(() => 'PLAYING'),
+      applyDisplayRect: vi.fn(),
+      clearPrepared: vi.fn(),
+    } as unknown as AvplaySession;
+    const slot = new SlotPlayer(0, document.createElement('section'), createTwoVideoSlot(), false, false, () => session, new RingLogger(5));
+
+    await slot.start();
+    expect((play.mock.calls[0]?.[0] as SeamlessContentItem).name).toBe('first.mp4');
+
+    await expect(slot.showNextContent()).resolves.toBe(true);
+    expect((play.mock.calls[1]?.[0] as SeamlessContentItem).name).toBe('second.mp4');
+
+    await expect(slot.showPreviousContent()).resolves.toBe(true);
+    expect((play.mock.calls[2]?.[0] as SeamlessContentItem).name).toBe('first.mp4');
+  });
+
   it('현재 영상 재생 중에는 일반 다음 영상을 AVPlay로 사전 prepare한다', async () => {
     vi.useFakeTimers();
     const play = vi.fn(async (..._args: unknown[]) => undefined);

@@ -439,6 +439,14 @@ export class SlotPlayer {
     return this.videoSession?.debugSnapshot() ?? null;
   }
 
+  async showNextContent(): Promise<boolean> {
+    return this.showAdjacentContent('next');
+  }
+
+  async showPreviousContent(): Promise<boolean> {
+    return this.showAdjacentContent('previous');
+  }
+
   private currentItem(): SeamlessContentItem | null {
     return this.slot.items[this.itemIndex] ?? null;
   }
@@ -914,18 +922,24 @@ export class SlotPlayer {
   }
 
   private async advance(): Promise<void> {
-    if (!this.active || !this.canAdvanceContent()) {
-      return;
+    await this.showNextContent();
+  }
+
+  private async showAdjacentContent(direction: 'next' | 'previous'): Promise<boolean> {
+    if (!this.active || this.switchingItem || !this.canAdvanceContent()) {
+      return false;
     }
 
-    const nextIndex = this.findNextPlayableIndex(this.itemIndex);
-    if (nextIndex === null) {
-      return;
+    const targetIndex = direction === 'next'
+      ? this.findNextPlayableIndex(this.itemIndex)
+      : this.findPreviousPlayableIndex(this.itemIndex);
+    if (targetIndex === null || targetIndex === this.itemIndex) {
+      return false;
     }
 
-    this.itemIndex = nextIndex;
+    this.itemIndex = targetIndex;
     this.resetItemClock();
-    await this.showCurrentItemAtElapsed(0);
+    return this.showCurrentItemAtElapsed(0);
   }
 
   private async prepareNextContent(generation = this.contentGeneration): Promise<void> {
@@ -1527,6 +1541,22 @@ export class SlotPlayer {
 
     for (let offset = 1; offset <= slot.items.length; offset += 1) {
       const index = (currentIndex + offset) % slot.items.length;
+      const item = slot.items[index];
+      if (item && this.isItemPlayable(item)) {
+        return index;
+      }
+    }
+
+    return null;
+  }
+
+  private findPreviousPlayableIndex(currentIndex: number, slot: SeamlessSlotPlan = this.slot): number | null {
+    if (slot.items.length === 0) {
+      return null;
+    }
+
+    for (let offset = 1; offset <= slot.items.length; offset += 1) {
+      const index = (currentIndex - offset + slot.items.length) % slot.items.length;
       const item = slot.items[index];
       if (item && this.isItemPlayable(item)) {
         return index;
