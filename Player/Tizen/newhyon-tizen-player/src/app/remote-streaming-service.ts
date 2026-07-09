@@ -5,6 +5,11 @@ import {
   type RemoteStreamingPlaybackSnapshot,
   type RemoteStreamRequestPayload,
 } from './remote-streaming-protocol';
+import {
+  DEFAULT_PLAYER_SETTINGS,
+  DEFAULT_REMOTE_STREAMING_GATEWAY_URL,
+  type PlayerSettings,
+} from './player-settings';
 import { SignalingClient } from './signaling-client';
 import { StreamingCoordinator } from './streaming-coordinator';
 
@@ -158,4 +163,23 @@ export class RemoteStreamingService {
 
 export function buildRemoteStreamingGatewayUrl(managerAddress: string): string {
   return buildGatewayUrl(managerAddress);
+}
+
+export function resolveRemoteStreamingGatewayUrl(
+  settings: Pick<PlayerSettings, 'managerAddress' | 'remoteStreamingGatewayUrl'>,
+): string {
+  const configuredGatewayUrl = settings.remoteStreamingGatewayUrl.trim();
+  if (configuredGatewayUrl) {
+    return buildGatewayUrl(configuredGatewayUrl);
+  }
+
+  const managerAddress = settings.managerAddress.trim();
+  if (
+    DEFAULT_REMOTE_STREAMING_GATEWAY_URL
+    && (!managerAddress || managerAddress === DEFAULT_PLAYER_SETTINGS.managerAddress)
+  ) {
+    return buildGatewayUrl(DEFAULT_REMOTE_STREAMING_GATEWAY_URL);
+  }
+
+  return buildRemoteStreamingGatewayUrl(settings.managerAddress);
 }

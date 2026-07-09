@@ -29,6 +29,7 @@ describe('SettingsOverlay', () => {
 
     overlay.open();
     expect(activeSettingName()).toBe('playerId');
+    expect(document.querySelector<HTMLInputElement>('[data-setting-name="remoteStreamingGatewayUrl"]')).toBeNull();
     expect(document.activeElement).not.toBe(activeSettingControl());
 
     const playerIdInput = document.querySelector<HTMLInputElement>('[data-setting-name="playerId"]');
@@ -44,14 +45,6 @@ describe('SettingsOverlay', () => {
       throw new Error('데이터서버 입력 필드를 찾지 못했습니다.');
     }
     managerInput.value = '10.0.0.10';
-
-    overlay.handleKeyDown(keyEvent('ArrowDown'));
-    expect(activeSettingName()).toBe('remoteStreamingGatewayUrl');
-    const remoteStreamingInput = document.querySelector<HTMLInputElement>('[data-setting-name="remoteStreamingGatewayUrl"]');
-    if (!remoteStreamingInput) {
-      throw new Error('원격화면 서버 입력 필드를 찾지 못했습니다.');
-    }
-    remoteStreamingInput.value = 'https://newhyon-web.local';
 
     overlay.handleKeyDown(keyEvent('ArrowDown'));
     expect(activeSettingName()).toBe('preserveAspectRatio');
@@ -98,7 +91,6 @@ describe('SettingsOverlay', () => {
       ...DEFAULT_PLAYER_SETTINGS,
       playerId: 'player-01',
       managerAddress: '10.0.0.10',
-      remoteStreamingGatewayUrl: 'https://newhyon-web.local',
       preserveAspectRatio: true,
       switchOnContentEnd: true,
       defaultVolume: 99,
@@ -107,7 +99,6 @@ describe('SettingsOverlay', () => {
       ...DEFAULT_PLAYER_SETTINGS,
       playerId: 'player-01',
       managerAddress: '10.0.0.10',
-      remoteStreamingGatewayUrl: 'https://newhyon-web.local',
       preserveAspectRatio: true,
       switchOnContentEnd: true,
       defaultVolume: 99,
@@ -136,7 +127,6 @@ describe('SettingsOverlay', () => {
     expect(slider?.value).toBe('62');
     expect(document.querySelector('[data-volume-value="true"]')?.textContent).toBe('62');
 
-    overlay.handleKeyDown(keyEvent('ArrowDown'));
     overlay.handleKeyDown(keyEvent('ArrowDown'));
     overlay.handleKeyDown(keyEvent('ArrowDown'));
     overlay.handleKeyDown(keyEvent('ArrowDown'));
@@ -186,10 +176,7 @@ describe('SettingsOverlay', () => {
     expect(managerInput?.readOnly).toBe(true);
 
     overlay.handleKeyDown(keyEvent('ArrowDown'));
-    expect(activeSettingName()).toBe('remoteStreamingGatewayUrl');
-    const remoteStreamingInput = document.querySelector<HTMLInputElement>('[data-setting-name="remoteStreamingGatewayUrl"]');
-    expect(document.activeElement).not.toBe(remoteStreamingInput);
-    expect(remoteStreamingInput?.readOnly).toBe(true);
+    expect(activeSettingName()).toBe('preserveAspectRatio');
 
     overlay.handleKeyDown(keyEvent('ArrowUp'));
     expect(activeSettingName()).toBe('managerAddress');
@@ -219,6 +206,7 @@ describe('SettingsOverlay', () => {
 
     overlay.open();
 
+    expect(document.querySelector('.settings-header .settings-title')?.textContent).toBe('기기 설정');
     expect(document.querySelector('.settings-status')?.textContent).toBe('인증 상태 : authenticated (ONLINE server-valid)');
     const firstDay = document.querySelector<HTMLButtonElement>('.weekly-settings__day');
     const mondayDay = document.querySelector<HTMLButtonElement>('[data-schedule-day="MON"][data-schedule-field="isOnAir"]');

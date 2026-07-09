@@ -1,5 +1,5 @@
 import type { RuntimeConfig } from './runtime-config';
-import { DEFAULT_REMOTE_STREAMING_GATEWAY_URL, normalizeVolume, type PlayerSettings } from './player-settings';
+import { normalizeVolume, type PlayerSettings } from './player-settings';
 import { RingLogger } from '../core/logger';
 import type { PageInfoClass, PlayerManifest } from '../domain/models';
 import { buildPagePlan, type BuildPagePlanOptions, type SeamlessContentItem, type SeamlessPagePlan, type SeamlessSlotPlan } from '../domain/page-plan';
@@ -13,7 +13,7 @@ import { TizenAudioPolicy } from '../player/audio-policy';
 import { SlotPlayer, type SlotPlayerTimelineSnapshot } from '../player/slot-player';
 import { RuntimeHealthReporter } from './runtime-health-reporter';
 import { collectRuntimeDiagnostics, formatRuntimeDiagnostics } from './runtime-diagnostics';
-import { RemoteStreamingService } from './remote-streaming-service';
+import { RemoteStreamingService, resolveRemoteStreamingGatewayUrl } from './remote-streaming-service';
 import type { RemoteCommandPayload, RemoteStreamingPlaybackSnapshot } from './remote-streaming-protocol';
 import { SettingsOverlay } from './settings-overlay';
 import {
@@ -726,9 +726,9 @@ export class NewHyOnPlayerApp {
   }
 
   private configureRemoteStreaming(): void {
-    const gatewayUrl = (this.config.settings.remoteStreamingGatewayUrl || DEFAULT_REMOTE_STREAMING_GATEWAY_URL).trim();
+    const gatewayUrl = resolveRemoteStreamingGatewayUrl(this.config.settings);
     if (!gatewayUrl) {
-      this.logger.warn('remote-streaming', '원격 스트리밍 게이트웨이 주소가 없어 원격 스트리밍을 시작하지 않습니다.');
+      this.logger.warn('remote-streaming', '데이터서버 주소가 없어 원격 스트리밍을 시작하지 않습니다.');
       return;
     }
 

@@ -65,6 +65,18 @@ function createRow(label: string, control: HTMLElement): HTMLLabelElement {
   return row;
 }
 
+function createHeader(titleText: string, status: HTMLElement): HTMLElement {
+  const header = document.createElement('div');
+  header.className = 'settings-header';
+
+  const title = document.createElement('h2');
+  title.className = 'settings-title';
+  title.textContent = titleText;
+
+  header.append(title, status);
+  return header;
+}
+
 function createInput(name: keyof PlayerSettings, value: string, placeholder: string): HTMLInputElement {
   const input = document.createElement('input');
   input.className = 'settings-input';
@@ -323,13 +335,8 @@ export class SettingsOverlay {
     const panel = document.createElement('section');
     panel.className = 'settings-panel';
 
-    const title = document.createElement('h2');
-    title.className = 'settings-title';
-    title.textContent = '기기 설정';
-
     const playerIdInput = createInput('playerId', settings.playerId, 'PLAYER-01');
     const managerInput = createInput('managerAddress', settings.managerAddress, '10.0.0.10 또는 10.0.0.10:8181');
-    const remoteStreamingGatewayInput = createInput('remoteStreamingGatewayUrl', settings.remoteStreamingGatewayUrl, 'https://newhyon-web.example 또는 10.0.0.10:5183');
     const aspectToggle = createToggle('preserveAspectRatio', settings.preserveAspectRatio);
     const switchOnEndToggle = createToggle('switchOnContentEnd', settings.switchOnContentEnd);
     const volumeRow = createVolumeSlider(settings.defaultVolume);
@@ -351,12 +358,10 @@ export class SettingsOverlay {
     }
 
     panel.append(
-      title,
-      authStatus,
+      createHeader('기기 설정', authStatus),
       saveStatus,
       createRow('기기 이름', playerIdInput),
       createRow('데이터서버', managerInput),
-      createRow('원격화면 서버', remoteStreamingGatewayInput),
       createPlaybackOptionsRow(aspectToggle, switchOnEndToggle),
       volumeRow,
       actionBar,
@@ -694,7 +699,6 @@ export class SettingsOverlay {
     const current = loadPlayerSettings();
     const playerId = this.root.querySelector<HTMLInputElement>('[data-setting-name="playerId"]')?.value.trim() ?? '';
     const managerAddress = this.root.querySelector<HTMLInputElement>('[data-setting-name="managerAddress"]')?.value.trim() ?? '';
-    const remoteStreamingGatewayUrl = this.root.querySelector<HTMLInputElement>('[data-setting-name="remoteStreamingGatewayUrl"]')?.value.trim() ?? '';
     const preserveAspectRatio =
       this.root.querySelector<HTMLButtonElement>('[data-setting-name="preserveAspectRatio"]')?.getAttribute('aria-pressed') === 'true';
     const switchOnContentEnd =
@@ -705,7 +709,6 @@ export class SettingsOverlay {
       ...current,
       playerId,
       managerAddress,
-      remoteStreamingGatewayUrl,
       preserveAspectRatio,
       switchOnContentEnd,
       defaultVolume,

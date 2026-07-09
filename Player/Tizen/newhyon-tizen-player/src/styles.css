@@ -577,7 +577,7 @@ body {
 .settings-panel {
   width: min(720px, calc(100vw - 96px));
   max-height: calc(100vh - 72px);
-  padding: 28px;
+  padding: 24px 28px 28px;
   overflow: auto;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 8px;
@@ -585,31 +585,45 @@ body {
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.58);
 }
 
+.settings-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  margin: 0 0 10px;
+}
+
 .settings-title {
-  margin: 0 0 22px;
+  margin: 0;
   font-size: 28px;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .settings-status {
-  margin: -8px 0 18px;
-  padding: 12px 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 8px 12px;
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.08);
   color: #b7f2d1;
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .settings-save-status {
-  min-height: 32px;
-  margin: -8px 0 10px;
+  min-height: 0;
+  margin: 0 0 6px;
   color: #f3c84b;
   font-size: 18px;
   line-height: 1.35;
 }
 
 .settings-save-status--visible {
+  min-height: 28px;
   font-weight: 700;
 }
 
