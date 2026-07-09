@@ -1129,25 +1129,198 @@ namespace AndoW_Manager
                 Point pt = leadCtrl.TranslatePoint(new Point(0, 0), PlayerListBox);
                 if (Point.Equals(org_pt, pt) == false)
                 {
-                    List<PlayerInfoClass> datalist = new List<PlayerInfoClass>();
-
-                    int idx = 1;
-                    foreach (PlayerInfoElement pie in PlayerListBox.Items)
-                    {
-                        pie.TextBlockOrderingNumber.Text = string.Format("{0:D2}", idx);
-                        pie.g_PlayerInfoClass.PIF_Order = idx;
-                        idx++;
-
-                        PlayerInfoClass orderedInfo = new PlayerInfoClass();
-                        orderedInfo.CopyData(pie.g_PlayerInfoClass);
-                        datalist.Add(orderedInfo);
-                    }
+                    List<PlayerInfoClass> orderedPlayers = BuildMergedPlayerOrderFromCurrentListBox();
                     org_pt = pt;
+                    leadCtrl = null;
 
-                    DataShop.Instance.g_PlayerInfoManager.UpdatePlayerInfoList(datalist);
+                    ApplyPlayerOrderToCurrentElements(orderedPlayers);
+                    DataShop.Instance.g_PlayerInfoManager.UpdatePlayerOrderOnly(orderedPlayers);
+                    return;
                 }
                 leadCtrl = null;
             }
+        }
+
+        private List<PlayerInfoClass> BuildMergedPlayerOrderFromCurrentListBox()
+        {
+            List<PlayerInfoElement> visibleOrderedElements = PlayerListBox.Items
+                .OfType<PlayerInfoElement>()
+                .Where(x => x != null && x.g_PlayerInfoClass != null)
+                .ToList();
+
+            if (g_CurrentSelectedPlayerGroupClass == null)
+            {
+                return CreatePlayerInfoSnapshotList(visibleOrderedElements);
+            }
+
+            HashSet<string> visibleKeys = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+            foreach (PlayerInfoElement element in visibleOrderedElements)
+            {
+                string key = GetPlayerIdentityKey(element.g_PlayerInfoClass);
+                if (string.IsNullOrWhiteSpace(key) == false)
+                {
+                    visibleKeys.Add(key);
+                }
+            }
+
+            Queue<PlayerInfoElement> reorderedGroupElements = new Queue<PlayerInfoElement>(visibleOrderedElements);
+            List<PlayerInfoClass> mergedPlayers = new List<PlayerInfoClass>();
+            foreach (PlayerInfoElement element in g_PlayerInfoElementList)
+            {
+                if (element == null || element.g_PlayerInfoClass == null)
+                {
+                    continue;
+                }
+
+                string key = GetPlayerIdentityKey(element.g_PlayerInfoClass);
+                if (string.IsNullOrWhiteSpace(key) == false &&
+                    visibleKeys.Contains(key) &&
+                    reorderedGroupElements.Count > 0)
+                {
+                    mergedPlayers.Add(ClonePlayerInfo(reorderedGroupElements.Dequeue().g_PlayerInfoClass));
+                }
+                else
+                {
+                    mergedPlayers.Add(ClonePlayerInfo(element.g_PlayerInfoClass));
+                }
+            }
+
+            return mergedPlayers;
+        }
+
+        private void ApplyPlayerOrderToCurrentElements(List<PlayerInfoClass> orderedPlayers)
+        {
+            if (orderedPlayers == null || orderedPlayers.Count == 0)
+            {
+                return;
+            }
+
+            Dictionary<string, PlayerInfoElement> elementByKey =
+                new Dictionary<string, PlayerInfoElement>(StringComparer.CurrentCultureIgnoreCase);
+            foreach (PlayerInfoElement element in g_PlayerInfoElementList)
+            {
+                if (element == null || element.g_PlayerInfoClass == null)
+                {
+                    continue;
+                }
+
+                string key = GetPlayerIdentityKey(element.g_PlayerInfoClass);
+                if (string.IsNullOrWhiteSpace(key) == false)
+                {
+                    elementByKey[key] = element;
+                }
+            }
+
+            List<PlayerInfoElement> orderedElements = new List<PlayerInfoElement>();
+            HashSet<string> usedKeys = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+            int order = 1;
+            foreach (PlayerInfoClass player in orderedPlayers)
+            {
+                string key = GetPlayerIdentityKey(player);
+                if (string.IsNullOrWhiteSpace(key) || usedKeys.Contains(key))
+                {
+                    continue;
+                }
+
+                PlayerInfoElement element;
+                if (elementByKey.TryGetValue(key, out element) == false)
+                {
+                    continue;
+                }
+
+                player.PIF_Order = order;
+                element.g_PlayerInfoClass.PIF_Order = order;
+                element.TextBlockOrderingNumber.Text = string.Format("{0:D2}", order);
+                orderedElements.Add(element);
+                usedKeys.Add(key);
+                order++;
+            }
+
+            foreach (PlayerInfoElement element in g_PlayerInfoElementList)
+            {
+                if (element == null || element.g_PlayerInfoClass == null)
+                {
+                    continue;
+                }
+
+                string key = GetPlayerIdentityKey(element.g_PlayerInfoClass);
+                if (string.IsNullOrWhiteSpace(key) == false && usedKeys.Contains(key))
+                {
+                    continue;
+                }
+
+                element.g_PlayerInfoClass.PIF_Order = order;
+                element.TextBlockOrderingNumber.Text = string.Format("{0:D2}", order);
+                orderedElements.Add(element);
+                order++;
+            }
+
+            g_PlayerInfoElementList = orderedElements;
+            RefreshPlayerElementLookup();
+
+            if (g_CurrentSelectedPlayerGroupClass == null)
+            {
+                ShowAllPlayers();
+            }
+            else
+            {
+                FilterPlayersByGroup(g_CurrentSelectedPlayerGroupClass);
+                UpdateSelectionVisuals();
+            }
+
+            UpdateGroupButtonState();
+        }
+
+        private static List<PlayerInfoClass> CreatePlayerInfoSnapshotList(IEnumerable<PlayerInfoElement> elements)
+        {
+            List<PlayerInfoClass> result = new List<PlayerInfoClass>();
+            if (elements == null)
+            {
+                return result;
+            }
+
+            foreach (PlayerInfoElement element in elements)
+            {
+                if (element == null || element.g_PlayerInfoClass == null)
+                {
+                    continue;
+                }
+
+                result.Add(ClonePlayerInfo(element.g_PlayerInfoClass));
+            }
+
+            return result;
+        }
+
+        private static PlayerInfoClass ClonePlayerInfo(PlayerInfoClass source)
+        {
+            PlayerInfoClass clone = new PlayerInfoClass();
+            if (source != null)
+            {
+                clone.CopyData(source);
+            }
+
+            return clone;
+        }
+
+        private static string GetPlayerIdentityKey(PlayerInfoClass player)
+        {
+            if (player == null)
+            {
+                return string.Empty;
+            }
+
+            if (string.IsNullOrWhiteSpace(player.PIF_GUID) == false)
+            {
+                return "id:" + player.PIF_GUID.Trim();
+            }
+
+            if (string.IsNullOrWhiteSpace(player.PIF_PlayerName) == false)
+            {
+                return "name:" + player.PIF_PlayerName.Trim();
+            }
+
+            return string.Empty;
         }
 
         Point org_pt;

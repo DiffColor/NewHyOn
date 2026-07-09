@@ -255,6 +255,50 @@ namespace AndoW_Manager
             g_PlayerInfoClassList = SortPlayers(g_PlayerInfoClassList);
         }
 
+        public void UpdatePlayerOrderOnly(IEnumerable<PlayerInfoClass> orderedPlayers)
+        {
+            if (orderedPlayers == null)
+            {
+                return;
+            }
+
+            int order = 1;
+            HashSet<string> updatedKeys = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+            foreach (PlayerInfoClass item in orderedPlayers.Where(x => x != null))
+            {
+                PlayerInfoClass target = null;
+                string targetKey = string.Empty;
+                if (string.IsNullOrWhiteSpace(item.PIF_GUID) == false)
+                {
+                    target = g_PlayerInfoClassList.FirstOrDefault(x => x.PIF_GUID == item.PIF_GUID);
+                    targetKey = "id:" + item.PIF_GUID.Trim();
+                }
+
+                if (target == null && string.IsNullOrWhiteSpace(item.PIF_PlayerName) == false)
+                {
+                    target = g_PlayerInfoClassList.FirstOrDefault(x => IsSamePlayerName(x.PIF_PlayerName, item.PIF_PlayerName));
+                    targetKey = "name:" + item.PIF_PlayerName.Trim();
+                }
+
+                if (target == null || string.IsNullOrWhiteSpace(targetKey) || updatedKeys.Contains(targetKey))
+                {
+                    continue;
+                }
+
+                if (target.PIF_Order != order)
+                {
+                    target.PIF_Order = order;
+                    Upsert(target);
+                }
+
+                item.PIF_Order = order;
+                updatedKeys.Add(targetKey);
+                order++;
+            }
+
+            g_PlayerInfoClassList = SortPlayers(g_PlayerInfoClassList);
+        }
+
 
         public void EditPlayerCurrentPlayList(PlayerInfoClass paramCls)
         {
