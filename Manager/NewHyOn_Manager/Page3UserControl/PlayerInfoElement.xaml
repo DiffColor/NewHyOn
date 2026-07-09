@@ -85,7 +85,7 @@
         <Grid.ContextMenu>
             <ContextMenu x:Name="DisplayCotextMenu">
                 <MenuItem Header="원격접속" ToolTip="Remote Control"  x:Name="MC_RemoteCotrol"/>
-                <Separator/>
+                <Separator x:Name="MC_PowerOnSeparator"/>
                 <MenuItem Header="플레이어 깨우기" ToolTip="Power On" x:Name="MC_PowerOn"/>
                 <!--<MenuItem Header="플레이어 전원종료" ToolTip="Power Off" x:Name="MC_PowerOff"/>-->
                 <!--<MenuItem Header="플레이어 시작" ToolTip="Player Restart" x:Name="MC_Launcher_Enable"/>-->

@@ -113,9 +113,12 @@ namespace AndoW_Manager
         private void DisplayCotextMenu_Opened(object sender, RoutedEventArgs e)
         {
             SyncPlayerInfoFromManager();
+            bool showPowerOn = IsWakeOnLanPlayer(g_PlayerInfoClass);
             bool showLegacyDeviceAuth = DataShop.Instance?.g_PlayerInfoManager
                 ?.IsLegacyDeviceAuthenticationCandidate(g_PlayerInfoClass) == true;
 
+            MC_PowerOn.Visibility = showPowerOn ? Visibility.Visible : Visibility.Collapsed;
+            MC_PowerOnSeparator.Visibility = showPowerOn ? Visibility.Visible : Visibility.Collapsed;
             MC_DeviceAuth.Visibility = showLegacyDeviceAuth ? Visibility.Visible : Visibility.Collapsed;
             MC_DeviceAuthSeparator.Visibility = showLegacyDeviceAuth ? Visibility.Visible : Visibility.Collapsed;
         }
@@ -352,18 +355,29 @@ namespace AndoW_Manager
             //    return;
             //}
 
+            string wakeOnLanMacAddress = AuthTools.NormalizeMacAddress(this.g_PlayerInfoClass.PIF_MacAddress);
+            if (IsWakeOnLanMacAddress(wakeOnLanMacAddress) == false)
+            {
+                MessageTools.ShowMessageBox("기기식별키는 WOL MAC 주소가 아니므로 원격 전원 켜기를 사용할 수 없습니다.", "확인");
+                return;
+            }
+
             if (MessageTools.ShowMessageBox("플레이어를 깨우시겠습니까?"))
             {
                 MainWindow.Instance.EnqueueCommandForPlayer(g_PlayerInfoClass, RP_ORDER.updateschedule.ToString(), pushSignalR: true);
-                string wakeOnLanMacAddress = AuthTools.NormalizeMacAddress(this.g_PlayerInfoClass.PIF_MacAddress);
-                if (IsWakeOnLanMacAddress(wakeOnLanMacAddress) == false)
-                {
-                    MessageTools.ShowMessageBox("기기식별키는 WOL MAC 주소가 아니므로 원격 전원 켜기를 사용할 수 없습니다.", "확인");
-                    return;
-                }
-
                 WOL_Sender.SendWOLPacket(wakeOnLanMacAddress);
             }
+        }
+
+        private static bool IsWakeOnLanPlayer(PlayerInfoClass player)
+        {
+            if (player == null)
+            {
+                return false;
+            }
+
+            string wakeOnLanMacAddress = AuthTools.NormalizeMacAddress(player.PIF_MacAddress);
+            return IsWakeOnLanMacAddress(wakeOnLanMacAddress);
         }
 
         private static bool IsWakeOnLanMacAddress(string value)
