@@ -17,6 +17,7 @@ describe('player settings', () => {
       ...DEFAULT_PLAYER_SETTINGS,
       playerId: ' player-01 ',
       managerAddress: ' http://manager.local ',
+      remoteStreamingGatewayUrl: ' https://remote.local/ws ',
       dataServerAddress: ' 10.0.0.10 ',
       messageServerAddress: ' 10.0.0.11 ',
       signalrPort: 5001,
@@ -37,6 +38,7 @@ describe('player settings', () => {
     expect(loadPlayerSettings()).toEqual({
       playerId: 'player-01',
       managerAddress: 'http://manager.local',
+      remoteStreamingGatewayUrl: 'https://remote.local/ws',
       dataServerAddress: '10.0.0.10',
       messageServerAddress: '10.0.0.11',
       signalrPort: 5001,

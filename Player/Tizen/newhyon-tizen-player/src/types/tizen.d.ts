@@ -305,7 +305,7 @@ declare global {
   interface SystemControlManager {
     getVersion?(): string;
     rebootDevice?(): void;
-    captureScreen?(): void;
+    captureScreen?(location?: 'wgt-private-data' | 'wgt-private-tmp'): void;
     getFirmwareVersion?(): string;
     getSerialNumber?(): string;
     setPanelMute?(state: 'ON' | 'OFF'): void;

@@ -11,6 +11,7 @@ describe('config.xml', () => {
     expect(config).toContain('http://tizen.org/privilege/internet');
     expect(config).toContain('http://tizen.org/privilege/appmanager.launch');
     expect(config).toContain('http://tizen.org/privilege/download');
+    expect(config).toContain('http://tizen.org/privilege/mediacapture');
     expect(config).toContain('http://tizen.org/privilege/filesystem.read');
     expect(config).toContain('http://tizen.org/privilege/filesystem.write');
     expect(config).toContain('http://tizen.org/privilege/tv.inputdevice');

@@ -46,6 +46,14 @@ describe('SettingsOverlay', () => {
     managerInput.value = '10.0.0.10';
 
     overlay.handleKeyDown(keyEvent('ArrowDown'));
+    expect(activeSettingName()).toBe('remoteStreamingGatewayUrl');
+    const remoteStreamingInput = document.querySelector<HTMLInputElement>('[data-setting-name="remoteStreamingGatewayUrl"]');
+    if (!remoteStreamingInput) {
+      throw new Error('원격화면 서버 입력 필드를 찾지 못했습니다.');
+    }
+    remoteStreamingInput.value = 'https://newhyon-web.local';
+
+    overlay.handleKeyDown(keyEvent('ArrowDown'));
     expect(activeSettingName()).toBe('preserveAspectRatio');
     overlay.handleKeyDown(keyEvent('Enter'));
 
@@ -90,6 +98,7 @@ describe('SettingsOverlay', () => {
       ...DEFAULT_PLAYER_SETTINGS,
       playerId: 'player-01',
       managerAddress: '10.0.0.10',
+      remoteStreamingGatewayUrl: 'https://newhyon-web.local',
       preserveAspectRatio: true,
       switchOnContentEnd: true,
       defaultVolume: 99,
@@ -98,6 +107,7 @@ describe('SettingsOverlay', () => {
       ...DEFAULT_PLAYER_SETTINGS,
       playerId: 'player-01',
       managerAddress: '10.0.0.10',
+      remoteStreamingGatewayUrl: 'https://newhyon-web.local',
       preserveAspectRatio: true,
       switchOnContentEnd: true,
       defaultVolume: 99,
@@ -126,6 +136,7 @@ describe('SettingsOverlay', () => {
     expect(slider?.value).toBe('62');
     expect(document.querySelector('[data-volume-value="true"]')?.textContent).toBe('62');
 
+    overlay.handleKeyDown(keyEvent('ArrowDown'));
     overlay.handleKeyDown(keyEvent('ArrowDown'));
     overlay.handleKeyDown(keyEvent('ArrowDown'));
     overlay.handleKeyDown(keyEvent('ArrowDown'));
@@ -174,6 +185,14 @@ describe('SettingsOverlay', () => {
     expect(document.activeElement).not.toBe(managerInput);
     expect(managerInput?.readOnly).toBe(true);
 
+    overlay.handleKeyDown(keyEvent('ArrowDown'));
+    expect(activeSettingName()).toBe('remoteStreamingGatewayUrl');
+    const remoteStreamingInput = document.querySelector<HTMLInputElement>('[data-setting-name="remoteStreamingGatewayUrl"]');
+    expect(document.activeElement).not.toBe(remoteStreamingInput);
+    expect(remoteStreamingInput?.readOnly).toBe(true);
+
+    overlay.handleKeyDown(keyEvent('ArrowUp'));
+    expect(activeSettingName()).toBe('managerAddress');
     overlay.handleKeyDown(keyEvent('ArrowUp'));
     expect(activeSettingName()).toBe('playerId');
 

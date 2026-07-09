@@ -1,5 +1,5 @@
 import type { RuntimeConfig } from './runtime-config';
-import { normalizeVolume, type PlayerSettings } from './player-settings';
+import { DEFAULT_REMOTE_STREAMING_GATEWAY_URL, normalizeVolume, type PlayerSettings } from './player-settings';
 import { RingLogger } from '../core/logger';
 import type { PageInfoClass, PlayerManifest } from '../domain/models';
 import { buildPagePlan, type BuildPagePlanOptions, type SeamlessContentItem, type SeamlessPagePlan, type SeamlessSlotPlan } from '../domain/page-plan';
@@ -13,6 +13,8 @@ import { TizenAudioPolicy } from '../player/audio-policy';
 import { SlotPlayer, type SlotPlayerTimelineSnapshot } from '../player/slot-player';
 import { RuntimeHealthReporter } from './runtime-health-reporter';
 import { collectRuntimeDiagnostics, formatRuntimeDiagnostics } from './runtime-diagnostics';
+import { RemoteStreamingService } from './remote-streaming-service';
+import type { RemoteCommandPayload, RemoteStreamingPlaybackSnapshot } from './remote-streaming-protocol';
 import { SettingsOverlay } from './settings-overlay';
 import {
   bootstrapCommunicationSettings,
@@ -220,6 +222,7 @@ export class NewHyOnPlayerApp {
   private heartbeatStatusDetail = '-';
   private heartbeatReporter: HeartbeatReporter | null = null;
   private remoteCommandService: RemoteCommandService | null = null;
+  private remoteStreamingService: RemoteStreamingService | null = null;
   private authStatus = 'not-started';
   private authStatusDetail = '-';
   private authService: LicenseHubAuthService | null = null;
@@ -339,6 +342,7 @@ export class NewHyOnPlayerApp {
       this.configureRemoteCommands();
       this.startHeartbeat();
       this.remoteCommandService?.start();
+      this.configureRemoteStreaming();
       await this.applyBroadcastSchedule('startup');
       this.startMasterTimer();
       this.hideLoading();
@@ -357,6 +361,8 @@ export class NewHyOnPlayerApp {
     this.stopSlots();
     this.requestOfflineHeartbeat();
     this.heartbeatReporter = null;
+    this.remoteStreamingService?.stop();
+    this.remoteStreamingService = null;
     this.remoteCommandService?.dispose();
     this.remoteCommandService = null;
     this.stopAvplaySessionPairs();
@@ -717,6 +723,72 @@ export class NewHyOnPlayerApp {
         return command;
       },
     });
+  }
+
+  private configureRemoteStreaming(): void {
+    const gatewayUrl = (this.config.settings.remoteStreamingGatewayUrl || DEFAULT_REMOTE_STREAMING_GATEWAY_URL).trim();
+    if (!gatewayUrl) {
+      this.logger.warn('remote-streaming', '원격 스트리밍 게이트웨이 주소가 없어 원격 스트리밍을 시작하지 않습니다.');
+      return;
+    }
+
+    this.remoteStreamingService?.stop();
+    const deviceId = (this.communication?.playerGuid || this.config.settings.playerId || 'tizen').trim();
+    const displayName = (this.communication?.playerName || this.config.settings.playerId || deviceId).trim();
+    this.remoteStreamingService = new RemoteStreamingService({
+      gatewayUrl,
+      deviceId,
+      displayName,
+      getPlaybackSnapshot: () => this.createRemotePlaybackSnapshot(),
+      onCommand: (command, payload) => this.handleRemoteStreamingCommand(command, payload),
+      onStatus: (status, detail) => {
+        this.logger.info('remote-streaming', `${status}: ${detail}`);
+      },
+    });
+    this.remoteStreamingService.start();
+  }
+
+  private createRemotePlaybackSnapshot(): RemoteStreamingPlaybackSnapshot {
+    const page = this.pagePlans[this.pageIndex];
+    const width = Math.max(1, Number(page?.canvasWidth ?? 1920) || 1920);
+    const height = Math.max(1, Number(page?.canvasHeight ?? 1080) || 1080);
+    return {
+      state: this.broadcastOnAir ? this.playing ? 'playing' : 'idle' : 'idle',
+      playlistName: page?.playlistName ?? this.currentContentManifest.playlistName ?? '-',
+      pageName: page?.pageName ?? '-',
+      pageIndex: this.pageIndex,
+      pageCount: this.pagePlans.length,
+      width,
+      height,
+    };
+  }
+
+  private handleRemoteStreamingCommand(command: string, _payload: RemoteCommandPayload): boolean {
+    switch (command) {
+      case 'toggle-hud':
+        this.toggleHud();
+        return true;
+      case 'play-pause':
+      case 'media-play':
+      case 'media-pause':
+        this.togglePlayback();
+        return true;
+      case 'stop':
+      case 'media-stop':
+        this.stopPlayback('원격 스트리밍 명령: 재생 정지');
+        return true;
+      case 'media-next':
+        void this.playPage(this.pageIndex + 1, { preservePreviousUntilReady: true })
+          .catch((error) => this.handleAsyncPagePlaybackError('원격 다음 페이지 전환', error));
+        return true;
+      case 'media-previous':
+        void this.playPage(this.pageIndex - 1, { preservePreviousUntilReady: true })
+          .catch((error) => this.handleAsyncPagePlaybackError('원격 이전 페이지 전환', error));
+        return true;
+      default:
+        this.logger.warn('remote-streaming', `지원하지 않는 원격 명령: ${command}`);
+        return false;
+    }
   }
 
   private async applyUpdateListCommand(

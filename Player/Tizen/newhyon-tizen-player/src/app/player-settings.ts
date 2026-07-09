@@ -1,6 +1,7 @@
 export interface PlayerSettings {
   readonly playerId: string;
   readonly managerAddress: string;
+  readonly remoteStreamingGatewayUrl: string;
   readonly dataServerAddress: string;
   readonly messageServerAddress: string;
   readonly signalrPort: number;
@@ -17,10 +18,12 @@ export interface PlayerSettings {
 }
 
 const STORAGE_KEY = 'newhyon-tizen-player.settings.v1';
+export const DEFAULT_REMOTE_STREAMING_GATEWAY_URL = 'https://newhyon-remote.turtlelab.app';
 
 export const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   playerId: 'tizen',
   managerAddress: 'turtlesrv.ddns.net',
+  remoteStreamingGatewayUrl: DEFAULT_REMOTE_STREAMING_GATEWAY_URL,
   dataServerAddress: '',
   messageServerAddress: '',
   signalrPort: 5000,
@@ -84,6 +87,7 @@ export function loadPlayerSettings(storage: Storage = window.localStorage): Play
   return {
     playerId: sanitizeString(parsed.playerId),
     managerAddress: sanitizeString(parsed.managerAddress),
+    remoteStreamingGatewayUrl: sanitizeString(parsed.remoteStreamingGatewayUrl),
     dataServerAddress: sanitizeString(parsed.dataServerAddress),
     messageServerAddress: sanitizeString(parsed.messageServerAddress),
     signalrPort: sanitizeInteger(parsed.signalrPort, DEFAULT_PLAYER_SETTINGS.signalrPort),
