@@ -106,7 +106,7 @@ describe('AvplaySession', () => {
     expect(playerB.setDisplayMethod).toHaveBeenCalledWith('PLAYER_DISPLAY_MODE_FULL_SCREEN');
   });
 
-  it('SSSP DISPLAY와 페이지 캔버스 좌표로 AVPlay 영역을 계산한다', async () => {
+  it('실제 SSSP 렌더링 좌표와 앱 뷰포트로 AVPlay 영역을 계산한다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
     const displayMetrics: SsspDisplayMetrics = {
@@ -123,7 +123,7 @@ describe('AvplaySession', () => {
     stage.style.setProperty('--canvas-width', '3840');
     stage.style.setProperty('--canvas-height', '2160');
     const slotElement = document.createElement('section');
-    slotElement.getBoundingClientRect = vi.fn(() => new DOMRect(1, 1, 1, 1));
+    slotElement.getBoundingClientRect = vi.fn(() => new DOMRect(480, 270, 960, 540));
     stage.appendChild(slotElement);
     document.body.appendChild(stage);
     const session = new AvplaySession(0, [

@@ -589,7 +589,7 @@ describe('cacheRemoteManifestContent', () => {
 
     const launch = vi.mocked(window.tizen!.application!.launchAppControl!);
     const request = launch.mock.calls[0]?.[0];
-    expect(launch.mock.calls[0]?.[1]).toBe('NewHyOnT01.NewHyOnFtpDownloader');
+    expect(launch.mock.calls[0]?.[1]).toBe('NewHyOnFtpD01.Downloader');
     expect(request?.data?.find((item) => item.key === 'remotePath')?.value[0])
       .toBe('/NewHyOn/Campaign/video.mp4');
   });

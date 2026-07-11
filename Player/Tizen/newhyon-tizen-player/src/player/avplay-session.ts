@@ -817,6 +817,8 @@ export class AvplaySessionPair {
     }
 
     const display = this.getDisplayMetrics();
+    const renderedSlot = slotElement.getBoundingClientRect();
+    const hasRenderedSlot = renderedSlot.width > 0 && renderedSlot.height > 0;
     const stage = slotElement.parentElement as HTMLElement | null;
     const canvasWidth = this.readStageCanvasSize(stage, '--canvas-width', Math.max(slot.left + slot.width, 1));
     const canvasHeight = this.readStageCanvasSize(stage, '--canvas-height', Math.max(slot.top + slot.height, 1));
@@ -824,23 +826,27 @@ export class AvplaySessionPair {
     const topPercent = (slot.top / canvasHeight) * 100;
     const widthPercent = (slot.width / canvasWidth) * 100;
     const heightPercent = (slot.height / canvasHeight) * 100;
-    const nativeLeft = (slot.left / canvasWidth) * display.outputWidth;
-    const nativeTop = (slot.top / canvasHeight) * display.outputHeight;
-    const nativeWidth = (slot.width / canvasWidth) * display.outputWidth;
-    const nativeHeight = (slot.height / canvasHeight) * display.outputHeight;
-    const left = Math.round((nativeLeft / display.outputWidth) * AVPLAY_COORDINATE_WIDTH);
-    const top = Math.round((nativeTop / display.outputHeight) * AVPLAY_COORDINATE_HEIGHT);
-    const width = Math.max(1, Math.round((nativeWidth / display.outputWidth) * AVPLAY_COORDINATE_WIDTH));
-    const height = Math.max(1, Math.round((nativeHeight / display.outputHeight) * AVPLAY_COORDINATE_HEIGHT));
 
     lane.objectElement.style.left = `${leftPercent}%`;
     lane.objectElement.style.top = `${topPercent}%`;
     lane.objectElement.style.width = `${widthPercent}%`;
     lane.objectElement.style.height = `${heightPercent}%`;
+    const left = hasRenderedSlot
+      ? Math.round((renderedSlot.left / display.viewportWidth) * AVPLAY_COORDINATE_WIDTH)
+      : Math.round((slot.left / canvasWidth) * AVPLAY_COORDINATE_WIDTH);
+    const top = hasRenderedSlot
+      ? Math.round((renderedSlot.top / display.viewportHeight) * AVPLAY_COORDINATE_HEIGHT)
+      : Math.round((slot.top / canvasHeight) * AVPLAY_COORDINATE_HEIGHT);
+    const width = hasRenderedSlot
+      ? Math.max(1, Math.round((renderedSlot.width / display.viewportWidth) * AVPLAY_COORDINATE_WIDTH))
+      : Math.max(1, Math.round((slot.width / canvasWidth) * AVPLAY_COORDINATE_WIDTH));
+    const height = hasRenderedSlot
+      ? Math.max(1, Math.round((renderedSlot.height / display.viewportHeight) * AVPLAY_COORDINATE_HEIGHT))
+      : Math.max(1, Math.round((slot.height / canvasHeight) * AVPLAY_COORDINATE_HEIGHT));
     this.callLaneSafe(laneIndex, 'setDisplayRect', () => {
       lane.player.setDisplayRect(left, top, width, height);
     }, `${left},${top},${width}x${height}`);
-    this.logger.debug('avplay', `slot ${this.index} lane ${laneIndex + 1} rect ${slot.left},${slot.top},${slot.width}x${slot.height}`);
+    this.logger.debug('avplay', `slot ${this.index} lane ${laneIndex + 1} rect ${slot.left},${slot.top},${slot.width}x${slot.height} rendered=${hasRenderedSlot ? `${renderedSlot.left},${renderedSlot.top},${renderedSlot.width}x${renderedSlot.height}` : 'unavailable'} viewport=${display.viewportWidth}x${display.viewportHeight}`);
   }
 
   private readStageCanvasSize(stage: HTMLElement | null, propertyName: '--canvas-width' | '--canvas-height', fallback: number): number {

@@ -24,9 +24,11 @@ interface SystemInfoDeviceOrientation {
 }
 
 function readViewportSize(): { readonly width: number; readonly height: number } {
+  const readDimension = (...values: readonly number[]): number => values.find((value) => Number.isFinite(value) && value > 0) ?? 1;
+
   return {
-    width: Math.max(window.visualViewport?.width ?? 0, document.documentElement.clientWidth, window.innerWidth, 1),
-    height: Math.max(window.visualViewport?.height ?? 0, document.documentElement.clientHeight, window.innerHeight, 1),
+    width: readDimension(document.documentElement.clientWidth, window.innerWidth, window.visualViewport?.width ?? 0),
+    height: readDimension(document.documentElement.clientHeight, window.innerHeight, window.visualViewport?.height ?? 0),
   };
 }
 
