@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AvplaySession, createAvplaySessionPair } from '../src/player/avplay-session';
 import { RingLogger } from '../src/core/logger';
+import type { SsspDisplayMetrics } from '../src/app/sssp-display-metrics';
 import type { SeamlessContentItem, SeamlessSlotPlan } from '../src/domain/page-plan';
 
 function createPlayer(): AVPlayApi {
@@ -103,6 +104,50 @@ describe('AvplaySession', () => {
     expect(playerB.prepare).toHaveBeenCalledTimes(1);
     expect(playerB.prepareAsync).not.toHaveBeenCalled();
     expect(playerB.setDisplayMethod).toHaveBeenCalledWith('PLAYER_DISPLAY_MODE_FULL_SCREEN');
+  });
+
+  it('SSSP DISPLAY와 페이지 캔버스 좌표로 AVPlay 영역을 계산한다', async () => {
+    const playerA = createPlayer();
+    const playerB = createPlayer();
+    const displayMetrics: SsspDisplayMetrics = {
+      source: 'sssp',
+      outputWidth: 3840,
+      outputHeight: 2160,
+      panelWidth: 3840,
+      panelHeight: 2160,
+      orientation: 'LANDSCAPE_PRIMARY',
+      viewportWidth: 1920,
+      viewportHeight: 1080,
+    };
+    const stage = document.createElement('main');
+    stage.style.setProperty('--canvas-width', '3840');
+    stage.style.setProperty('--canvas-height', '2160');
+    const slotElement = document.createElement('section');
+    slotElement.getBoundingClientRect = vi.fn(() => new DOMRect(1, 1, 1, 1));
+    stage.appendChild(slotElement);
+    document.body.appendChild(stage);
+    const session = new AvplaySession(0, [
+      { player: playerA, objectElement: document.createElement('object') },
+      { player: playerB, objectElement: document.createElement('object') },
+    ], stage, new RingLogger(1), {
+      onEnded: vi.fn(),
+      onError: vi.fn(),
+    }, () => displayMetrics);
+    const slot = {
+      ...createSlotPlan(),
+      left: 960,
+      top: 540,
+      width: 1920,
+      height: 1080,
+    };
+
+    await session.play(createVideoItem(), slot, slotElement, false, vi.fn());
+
+    expect(playerA.setDisplayRect).toHaveBeenLastCalledWith(480, 270, 960, 540);
+    expect(stage.querySelector('object')?.style.left).toBe('25%');
+    expect(stage.querySelector('object')?.style.top).toBe('25%');
+    expect(stage.querySelector('object')?.style.width).toBe('50%');
+    expect(stage.querySelector('object')?.style.height).toBe('50%');
   });
 
   it('런타임 화면 비율 유지 OFF는 IDLE 상태 응답이어도 FULL_SCREEN을 재적용한다', async () => {

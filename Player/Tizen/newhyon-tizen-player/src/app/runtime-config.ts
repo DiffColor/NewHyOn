@@ -63,7 +63,11 @@ export async function resolveRuntimeConfig(location: Pick<Location, 'search'> = 
 
   const manifestUrl = params.get('manifest')?.trim() || settings.manifestUrl;
   if (manifestUrl) {
-    manifest = await loadManifestFromUrl(manifestUrl);
+    try {
+      manifest = await loadManifestFromUrl(manifestUrl);
+    } catch {
+      // USB 설치 뒤 네트워크가 없어도 이전에 저장한 콘텐츠 계획으로 기동한다.
+    }
   }
 
   return {

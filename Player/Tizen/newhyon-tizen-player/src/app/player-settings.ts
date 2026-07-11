@@ -19,12 +19,13 @@ export interface PlayerSettings {
 
 const STORAGE_KEY = 'newhyon-tizen-player.settings.v1';
 export const DEFAULT_REMOTE_STREAMING_GATEWAY_URL = 'https://newhyon-remote.turtlelab.app';
+export const DEFAULT_SERVER_ADDRESS = 'turtlesrv.ddns.net';
 
 export const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   playerId: 'tizen',
-  managerAddress: 'turtlesrv.ddns.net',
+  managerAddress: DEFAULT_SERVER_ADDRESS,
   remoteStreamingGatewayUrl: DEFAULT_REMOTE_STREAMING_GATEWAY_URL,
-  dataServerAddress: '',
+  dataServerAddress: DEFAULT_SERVER_ADDRESS,
   messageServerAddress: '',
   signalrPort: 5000,
   signalrHubPath: '/Data',

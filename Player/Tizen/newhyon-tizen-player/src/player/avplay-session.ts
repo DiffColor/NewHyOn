@@ -1,9 +1,12 @@
 import type { RingLogger } from '../core/logger';
 import type { SeamlessContentItem, SeamlessSlotPlan } from '../domain/page-plan';
+import { readBrowserDisplayMetrics, type SsspDisplayMetrics } from '../app/sssp-display-metrics';
 import { resolveAvplaySourceUrl } from './source-resolver';
 
 const DISPLAY_METHOD_FILL = 'PLAYER_DISPLAY_MODE_FULL_SCREEN';
 const DISPLAY_METHOD_CONTAIN = 'PLAYER_DISPLAY_MODE_LETTER_BOX';
+const AVPLAY_COORDINATE_WIDTH = 1920;
+const AVPLAY_COORDINATE_HEIGHT = 1080;
 const STREAMING_PROPERTY_USE_VIDEOMIXER = 'USE_VIDEOMIXER';
 const STREAMING_PROPERTY_SET_MIXEDFRAME = 'SET_MIXEDFRAME';
 const STOPPABLE_STATES = new Set(['READY', 'PLAYING', 'PAUSED']);
@@ -89,6 +92,7 @@ export class AvplaySessionPair {
     host: HTMLElement,
     private readonly logger: RingLogger,
     private readonly events: VideoSessionEvents,
+    private readonly getDisplayMetrics: () => SsspDisplayMetrics = readBrowserDisplayMetrics,
   ) {
     this.lanes.forEach((lane, laneIndex) => {
       this.laneRuntimeStates[laneIndex] = this.createLaneRuntimeState();
@@ -729,15 +733,11 @@ export class AvplaySessionPair {
 
   private applyOffscreenRectToLane(laneIndex: number, itemName: string): void {
     const lane = this.lanes[laneIndex];
-    const viewportWidth = Math.max(window.visualViewport?.width ?? 0, document.documentElement.clientWidth, window.innerWidth, 1);
-    const viewportHeight = Math.max(window.visualViewport?.height ?? 0, document.documentElement.clientHeight, window.innerHeight, 1);
-    const targetWidth = Math.max(window.screen?.width ?? 0, Math.round(viewportWidth * (window.devicePixelRatio || 1)), viewportWidth);
-    const targetHeight = Math.max(window.screen?.height ?? 0, Math.round(viewportHeight * (window.devicePixelRatio || 1)), viewportHeight);
-    const left = Math.max(1, Math.round(targetWidth + 1));
-    const top = Math.max(1, Math.round(targetHeight + 1));
+    const left = AVPLAY_COORDINATE_WIDTH - 1;
+    const top = AVPLAY_COORDINATE_HEIGHT - 1;
 
-    lane.objectElement.style.left = `${Math.round(viewportWidth + 1)}px`;
-    lane.objectElement.style.top = `${Math.round(viewportHeight + 1)}px`;
+    lane.objectElement.style.left = 'calc(100% - 1px)';
+    lane.objectElement.style.top = 'calc(100% - 1px)';
     lane.objectElement.style.width = '1px';
     lane.objectElement.style.height = '1px';
     this.callLaneSafe(laneIndex, 'setDisplayRect.offscreen', () => {
@@ -816,52 +816,31 @@ export class AvplaySessionPair {
       return;
     }
 
-    const viewportWidth = Math.max(window.visualViewport?.width ?? 0, document.documentElement.clientWidth, window.innerWidth, 1);
-    const viewportHeight = Math.max(window.visualViewport?.height ?? 0, document.documentElement.clientHeight, window.innerHeight, 1);
-    const rect = this.resolveSlotViewportRect(slot, slotElement, viewportWidth, viewportHeight);
-    const targetWidth = Math.max(window.screen?.width ?? 0, Math.round(viewportWidth * (window.devicePixelRatio || 1)), viewportWidth);
-    const targetHeight = Math.max(window.screen?.height ?? 0, Math.round(viewportHeight * (window.devicePixelRatio || 1)), viewportHeight);
-    const left = Math.round((rect.left / viewportWidth) * targetWidth);
-    const top = Math.round((rect.top / viewportHeight) * targetHeight);
-    const width = Math.max(1, Math.round((rect.width / viewportWidth) * targetWidth));
-    const height = Math.max(1, Math.round((rect.height / viewportHeight) * targetHeight));
+    const display = this.getDisplayMetrics();
+    const stage = slotElement.parentElement as HTMLElement | null;
+    const canvasWidth = this.readStageCanvasSize(stage, '--canvas-width', Math.max(slot.left + slot.width, 1));
+    const canvasHeight = this.readStageCanvasSize(stage, '--canvas-height', Math.max(slot.top + slot.height, 1));
+    const leftPercent = (slot.left / canvasWidth) * 100;
+    const topPercent = (slot.top / canvasHeight) * 100;
+    const widthPercent = (slot.width / canvasWidth) * 100;
+    const heightPercent = (slot.height / canvasHeight) * 100;
+    const nativeLeft = (slot.left / canvasWidth) * display.outputWidth;
+    const nativeTop = (slot.top / canvasHeight) * display.outputHeight;
+    const nativeWidth = (slot.width / canvasWidth) * display.outputWidth;
+    const nativeHeight = (slot.height / canvasHeight) * display.outputHeight;
+    const left = Math.round((nativeLeft / display.outputWidth) * AVPLAY_COORDINATE_WIDTH);
+    const top = Math.round((nativeTop / display.outputHeight) * AVPLAY_COORDINATE_HEIGHT);
+    const width = Math.max(1, Math.round((nativeWidth / display.outputWidth) * AVPLAY_COORDINATE_WIDTH));
+    const height = Math.max(1, Math.round((nativeHeight / display.outputHeight) * AVPLAY_COORDINATE_HEIGHT));
 
-    lane.objectElement.style.left = `${rect.left}px`;
-    lane.objectElement.style.top = `${rect.top}px`;
-    lane.objectElement.style.width = `${rect.width}px`;
-    lane.objectElement.style.height = `${rect.height}px`;
+    lane.objectElement.style.left = `${leftPercent}%`;
+    lane.objectElement.style.top = `${topPercent}%`;
+    lane.objectElement.style.width = `${widthPercent}%`;
+    lane.objectElement.style.height = `${heightPercent}%`;
     this.callLaneSafe(laneIndex, 'setDisplayRect', () => {
       lane.player.setDisplayRect(left, top, width, height);
     }, `${left},${top},${width}x${height}`);
     this.logger.debug('avplay', `slot ${this.index} lane ${laneIndex + 1} rect ${slot.left},${slot.top},${slot.width}x${slot.height}`);
-  }
-
-  private resolveSlotViewportRect(
-    slot: SeamlessSlotPlan,
-    slotElement: HTMLElement,
-    viewportWidth: number,
-    viewportHeight: number,
-  ): { readonly left: number; readonly top: number; readonly width: number; readonly height: number } {
-    const rect = slotElement.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-      return rect;
-    }
-
-    const stage = slotElement.parentElement as HTMLElement | null;
-    const stageRect = stage?.getBoundingClientRect();
-    const stageWidth = stageRect && stageRect.width > 0 ? stageRect.width : viewportWidth;
-    const stageHeight = stageRect && stageRect.height > 0 ? stageRect.height : viewportHeight;
-    const stageLeft = stageRect && stageRect.width > 0 ? stageRect.left : 0;
-    const stageTop = stageRect && stageRect.height > 0 ? stageRect.top : 0;
-    const canvasWidth = this.readStageCanvasSize(stage, '--canvas-width', Math.max(slot.left + slot.width, 1));
-    const canvasHeight = this.readStageCanvasSize(stage, '--canvas-height', Math.max(slot.top + slot.height, 1));
-
-    return {
-      left: stageLeft + (slot.left / canvasWidth) * stageWidth,
-      top: stageTop + (slot.top / canvasHeight) * stageHeight,
-      width: (slot.width / canvasWidth) * stageWidth,
-      height: (slot.height / canvasHeight) * stageHeight,
-    };
   }
 
   private readStageCanvasSize(stage: HTMLElement | null, propertyName: '--canvas-width' | '--canvas-height', fallback: number): number {
@@ -1128,6 +1107,7 @@ export function createAvplaySessionPair(
   host: HTMLElement,
   logger: RingLogger,
   events: VideoSessionEvents,
+  getDisplayMetrics: () => SsspDisplayMetrics = readBrowserDisplayMetrics,
 ): AvplaySessionPair {
   const store = window.webapis?.avplaystore;
   if (!store) {
@@ -1157,6 +1137,7 @@ export function createAvplaySessionPair(
     host,
     logger,
     events,
+    getDisplayMetrics,
   );
 }
 

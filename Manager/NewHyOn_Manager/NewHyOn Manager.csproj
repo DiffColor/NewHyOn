@@ -335,6 +335,7 @@
     <Reference Include="System.Drawing" />
     <Reference Include="System.Management" />
     <Reference Include="System.Net" />
+    <Reference Include="System.Net.Http" />
     <Reference Include="System.Runtime.Serialization" />
     <Reference Include="System.ServiceModel" />
     <Reference Include="System.Threading.Tasks.Extensions, Version=4.2.0.1, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
@@ -396,6 +397,11 @@
     </Compile>
     <Compile Include="SubWindow\PlayerGroupEditWindow.xaml.cs">
       <DependentUpon>PlayerGroupEditWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="SubWindow\TizenRemoteGatewayClient.cs" />
+    <Compile Include="SubWindow\TizenRemoteModels.cs" />
+    <Compile Include="SubWindow\TizenRemoteWindow.xaml.cs">
+      <DependentUpon>TizenRemoteWindow.xaml</DependentUpon>
     </Compile>
     <Compile Include="TurtleTools\ComboBoxProperties.cs" />
     <Compile Include="TurtleTools\GuidelineGrid.cs" />
@@ -793,6 +799,10 @@
       <SubType>Designer</SubType>
     </Page>
     <Page Include="SubWindow\PlayerGroupEditWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="SubWindow\TizenRemoteWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>

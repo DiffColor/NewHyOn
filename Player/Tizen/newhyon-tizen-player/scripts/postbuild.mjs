@@ -8,6 +8,11 @@ const distDir = path.join(sampleRoot, 'dist');
 const outputName = 'NewHyOnTizenPlayer';
 const extensionProjectDir = path.join(sampleRoot, outputName);
 const legacyExtensionProjectDir = path.join(sampleRoot, 'Player');
+const buildType = process.env.NEWHYON_TIZEN_BUILD_TYPE ?? 'Debug';
+
+if (!['Debug', 'Release', 'Test'].includes(buildType)) {
+  throw new Error(`지원하지 않는 Tizen build type입니다: ${buildType}`);
+}
 
 const tizenProjectYaml = `# Project type [web_app, test_runner]
 project_type: web_app
@@ -17,7 +22,7 @@ profile: tv-samsung
 api_version: "7.0"
 
 # Build type [Debug/ Release/ Test]
-build_type: Debug
+build_type: ${buildType}
 
 # Output name for application
 output_name: ${outputName}

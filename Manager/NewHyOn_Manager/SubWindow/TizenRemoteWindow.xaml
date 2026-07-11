@@ -1,0 +1,213 @@
+<Window x:Class="AndoW_Manager.TizenRemoteWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Tizen 원격 화면"
+        Width="1360"
+        Height="820"
+        MinWidth="980"
+        MinHeight="620"
+        WindowStartupLocation="CenterOwner"
+        Background="#10131A"
+        Foreground="#EEF3FB"
+        Loaded="Window_Loaded"
+        Closing="Window_Closing">
+    <Window.Resources>
+        <Style x:Key="RemoteButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="38" />
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="Foreground" Value="#EEF3FB" />
+            <Setter Property="Background" Value="#202733" />
+            <Setter Property="BorderBrush" Value="#3D4858" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style x:Key="RoundRemoteButtonStyle" TargetType="Button" BasedOn="{StaticResource RemoteButtonStyle}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="19">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="320" />
+        </Grid.ColumnDefinitions>
+
+        <DockPanel Grid.ColumnSpan="2" Margin="0,0,0,10" LastChildFill="True">
+            <StackPanel DockPanel.Dock="Left" Orientation="Vertical">
+                <TextBlock x:Name="TitleTextBlock"
+                           Text="Tizen 원격 화면"
+                           FontSize="20"
+                           FontWeight="SemiBold" />
+                <TextBlock x:Name="SubtitleTextBlock"
+                           Text="스트림 준비 중"
+                           Margin="0,4,0,0"
+                           Foreground="#AEB7C8"
+                           FontSize="12"
+                           FontWeight="Bold" />
+            </StackPanel>
+            <TextBlock x:Name="ReadinessTextBlock"
+                       DockPanel.Dock="Right"
+                       MinWidth="260"
+                       Margin="12,0,0,0"
+                       HorizontalAlignment="Right"
+                       VerticalAlignment="Center"
+                       TextAlignment="Right"
+                       Foreground="#AEB7C8"
+                       FontSize="12"
+                       FontWeight="Bold"
+                       Text="readiness 확인 중" />
+        </DockPanel>
+
+        <Border Grid.Row="1"
+                Grid.Column="0"
+                Background="#05070D"
+                BorderBrush="#2C3442"
+                BorderThickness="1"
+                CornerRadius="7"
+                ClipToBounds="True">
+            <Grid>
+                <Image x:Name="PreviewImage"
+                       Stretch="Uniform"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center" />
+                <Border x:Name="PreviewStatusOverlay"
+                        Background="#F205070D">
+                    <StackPanel HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Margin="24">
+                        <TextBlock x:Name="PreviewStatusTextBlock"
+                                   Text="스트림 준비 중입니다."
+                                   Foreground="#E5EDFF"
+                                   FontSize="15"
+                                   FontWeight="Bold"
+                                   TextAlignment="Center"
+                                   TextWrapping="NoWrap" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1"
+                Grid.Column="1"
+                Margin="10,0,0,0"
+                Background="#1B2029"
+                BorderBrush="#303947"
+                BorderThickness="1"
+                CornerRadius="8">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="14">
+                    <Border Background="#12161D"
+                            BorderBrush="#303947"
+                            BorderThickness="1"
+                            CornerRadius="28"
+                            Padding="14">
+                        <StackPanel>
+                            <UniformGrid Columns="2" Margin="0,0,0,8">
+                                <Button Content="⏻" Tag="KEY_POWER" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" Foreground="#FF9D9D" />
+                                <Button Content="Reboot" Tag="reboot" Style="{StaticResource RoundRemoteButtonStyle}" Click="PlayerCommand_Click" />
+                            </UniformGrid>
+
+                            <Grid Margin="0,0,0,8">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Row="0" Grid.Column="1" Content="▲" Tag="KEY_UP" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                <Button Grid.Row="1" Grid.Column="0" Content="◀" Tag="KEY_LEFT" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                <Button Grid.Row="1" Grid.Column="1" Height="58" Content="OK" Tag="KEY_ENTER" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" Background="#303A4A" />
+                                <Button Grid.Row="1" Grid.Column="2" Content="▶" Tag="KEY_RIGHT" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                <Button Grid.Row="2" Grid.Column="1" Content="▼" Tag="KEY_DOWN" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                            </Grid>
+
+                            <UniformGrid Columns="2" Margin="0,0,0,8">
+                                <Button Content="Back" Tag="KEY_RETURN" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                <Button Content="Home" Tag="KEY_HOME" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                            </UniformGrid>
+
+                            <UniformGrid Columns="4" Margin="0,0,0,8">
+                                <Button Content="A" Tag="KEY_RED" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" Background="#4A2029" BorderBrush="#8B3B49" />
+                                <Button Content="B" Tag="KEY_GREEN" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" Background="#1F3D2E" BorderBrush="#3F7F58" />
+                                <Button Content="C" Tag="KEY_YELLOW" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" Background="#493C1D" BorderBrush="#8A7330" />
+                                <Button Content="D" Tag="KEY_BLUE" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" Background="#1D344D" BorderBrush="#3D6F9D" />
+                            </UniformGrid>
+
+                            <UniformGrid Columns="5" Margin="0,0,0,8">
+                                <Button Content="Prev" Tag="media-previous" Style="{StaticResource RoundRemoteButtonStyle}" Click="PlayerCommand_Click" />
+                                <Button Content="Play" Tag="KEY_PLAY" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                <Button Content="Pause" Tag="KEY_PAUSE" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                <Button Content="Stop" Tag="KEY_STOP" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                <Button Content="Next" Tag="media-next" Style="{StaticResource RoundRemoteButtonStyle}" Click="PlayerCommand_Click" />
+                            </UniformGrid>
+
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <UniformGrid Grid.Column="0" Columns="1">
+                                    <Button Content="VOL +" Tag="KEY_VOLUP" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                    <Button Content="Mute" Tag="KEY_MUTE" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                    <Button Content="VOL -" Tag="KEY_VOLDOWN" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                </UniformGrid>
+                                <UniformGrid Grid.Column="1" Columns="1">
+                                    <Button Content="CH +" Tag="KEY_CHUP" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                    <Button Content="Info" Tag="KEY_INFO" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                    <Button Content="CH -" Tag="KEY_CHDOWN" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                </UniformGrid>
+                            </Grid>
+
+                            <UniformGrid Columns="3">
+                                <Button Content="1" Tag="KEY_1" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                <Button Content="2" Tag="KEY_2" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                <Button Content="3" Tag="KEY_3" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                <Button Content="4" Tag="KEY_4" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                <Button Content="5" Tag="KEY_5" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                <Button Content="6" Tag="KEY_6" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                <Button Content="7" Tag="KEY_7" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                <Button Content="8" Tag="KEY_8" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                <Button Content="9" Tag="KEY_9" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                <Button Content="Tools" Tag="KEY_TOOLS" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                <Button Content="0" Tag="KEY_0" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                                <Button Content="Exit" Tag="KEY_EXIT" Style="{StaticResource RoundRemoteButtonStyle}" Click="TvKey_Click" />
+                            </UniformGrid>
+
+                            <TextBlock x:Name="RemoteResultTextBlock"
+                                       Text="remote ready"
+                                       Margin="0,12,0,0"
+                                       HorizontalAlignment="Center"
+                                       TextAlignment="Center"
+                                       Foreground="#AEB7C8"
+                                       FontSize="12"
+                                       FontWeight="Bold" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</Window>

@@ -55,7 +55,7 @@ declare global {
     ApplicationControlData?: TizenApplicationControlDataConstructor;
     systeminfo?: {
       getPropertyValue?(
-        property: string,
+        property: 'DISPLAY' | 'PANEL' | 'DEVICE_ORIENTATION' | string,
         onsuccess: (info: unknown) => void,
         onerror?: (error: unknown) => void,
       ): void;
@@ -115,6 +115,16 @@ declare global {
     lastKey: string;
     lastAction: string;
     platform: string;
+    displayMetrics?: {
+      readonly source: 'sssp' | 'browser';
+      readonly outputWidth: number;
+      readonly outputHeight: number;
+      readonly panelWidth: number | null;
+      readonly panelHeight: number | null;
+      readonly orientation: 'LANDSCAPE_PRIMARY' | 'LANDSCAPE_SECONDARY' | 'PORTRAIT_PRIMARY' | 'PORTRAIT_SECONDARY' | null;
+      readonly viewportWidth: number;
+      readonly viewportHeight: number;
+    };
     slots: string[];
     avplaySessions?: RuntimeAvplaySessionSnapshot[];
     message: string;

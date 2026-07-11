@@ -13,7 +13,11 @@ import { TizenAudioPolicy } from '../player/audio-policy';
 import { SlotPlayer, type SlotPlayerTimelineSnapshot } from '../player/slot-player';
 import { RuntimeHealthReporter } from './runtime-health-reporter';
 import { collectRuntimeDiagnostics, formatRuntimeDiagnostics } from './runtime-diagnostics';
-import { RemoteStreamingService, resolveRemoteStreamingGatewayUrl } from './remote-streaming-service';
+import {
+  RemoteStreamingService,
+  resolveRemoteStreamingDeviceId,
+  resolveRemoteStreamingGatewayUrl,
+} from './remote-streaming-service';
 import type { RemoteCommandPayload, RemoteStreamingPlaybackSnapshot } from './remote-streaming-protocol';
 import { SettingsOverlay } from './settings-overlay';
 import {
@@ -58,6 +62,12 @@ import { ContentPeriodSyncClient } from './content-period-sync';
 import { buildManifestFromUpdatePayload, saveRemoteManifest, type UpdatePayload } from './update-payload';
 import { evaluateWeeklySchedule, loadWeeklySchedule, saveWeeklyScheduleFromUpdatePayload } from './weekly-schedule';
 import { TIZEN_INTRO_VIDEO_FILE, createTizenIntroManifest } from './default-manifest';
+import {
+  formatSsspDisplayMetrics,
+  readBrowserDisplayMetrics,
+  resolveSsspDisplayMetrics,
+  type SsspDisplayMetrics,
+} from './sssp-display-metrics';
 
 interface ViewRefs {
   readonly stage: HTMLElement;
@@ -183,6 +193,7 @@ export class NewHyOnPlayerApp {
   private readonly audioPolicy = new TizenAudioPolicy(this.logger);
   private readonly healthReporter = new RuntimeHealthReporter();
   private readonly volumeTestAudio = new Audio(VOLUME_TEST_AUDIO_URL);
+  private displayMetrics: SsspDisplayMetrics = readBrowserDisplayMetrics();
   private pageIndex = 0;
   private pageStartedAt = 0;
   private pagePausedElapsedMs = 0;
@@ -293,6 +304,7 @@ export class NewHyOnPlayerApp {
 
     try {
       this.bindUi();
+      await this.resolveDisplayMetrics();
       this.registerInputKeys();
       this.settingsOverlay = new SettingsOverlay({
         onApply: (settings) => {
@@ -393,7 +405,7 @@ export class NewHyOnPlayerApp {
           this.setMessage(message);
           this.logger.error('avplay', message);
         },
-      });
+      }, () => this.displayMetrics);
     }
   }
 
@@ -547,6 +559,13 @@ export class NewHyOnPlayerApp {
     document.addEventListener('visibilitychange', this.handleVisibilityChange);
   }
 
+  private async resolveDisplayMetrics(): Promise<void> {
+    this.displayMetrics = await resolveSsspDisplayMetrics();
+    this.view.stage.style.setProperty('--sssp-output-width', String(this.displayMetrics.outputWidth));
+    this.view.stage.style.setProperty('--sssp-output-height', String(this.displayMetrics.outputHeight));
+    this.logger.info('display', formatSsspDisplayMetrics(this.displayMetrics));
+  }
+
   private registerInputKeys(): void {
     const inputDevice = window.tizen?.tvinputdevice;
     if (!inputDevice) {
@@ -630,11 +649,15 @@ export class NewHyOnPlayerApp {
         return;
       }
     } catch (error) {
-      this.communicationStatus = 'failed';
-      this.markCheckingConnectionsFailed(formatError(error));
+      const detail = formatError(error);
+      this.communication = null;
+      this.communicationStatus = 'offline';
+      this.markCheckingConnectionsFailed(detail);
+      this.setMessage(`서버 통신 없이 저장된 콘텐츠를 재생합니다. (${detail})`);
+      this.logger.warn('communication', `서버 통신 초기화 실패, 로컬 재생 계속: ${detail}`);
       this.render();
-      this.writeRuntimeHealth('communication-failed');
-      throw error;
+      this.writeRuntimeHealth('communication-offline');
+      return;
     }
 
     this.communicationStatus = 'connected';
@@ -733,7 +756,11 @@ export class NewHyOnPlayerApp {
     }
 
     this.remoteStreamingService?.stop();
-    const deviceId = (this.communication?.playerGuid || this.config.settings.playerId || 'tizen').trim();
+    const deviceId = resolveRemoteStreamingDeviceId(
+      this.config.settings,
+      this.communication?.playerGuid,
+      this.readSsspDuid(),
+    );
     const displayName = (this.communication?.playerName || this.config.settings.playerId || deviceId).trim();
     this.remoteStreamingService = new RemoteStreamingService({
       gatewayUrl,
@@ -746,6 +773,15 @@ export class NewHyOnPlayerApp {
       },
     });
     this.remoteStreamingService.start();
+  }
+
+  private readSsspDuid(): string {
+    try {
+      return window.webapis?.productinfo?.getDuid?.().trim() ?? '';
+    } catch (error) {
+      this.logger.warn('remote-streaming', `SSSP DUID 조회 실패: ${formatError(error)}`);
+      return '';
+    }
   }
 
   private createRemotePlaybackSnapshot(): RemoteStreamingPlaybackSnapshot {
@@ -3209,6 +3245,7 @@ export class NewHyOnPlayerApp {
       lastKey: this.lastRemoteKey,
       lastAction: this.lastRemoteAction,
       platform,
+      displayMetrics: this.displayMetrics,
       slots: slotSnapshots,
       avplaySessions,
       message: this.view.message.textContent ?? '',
@@ -3402,7 +3439,15 @@ export class NewHyOnPlayerApp {
   }
 
   private handleResize = (): void => {
-    this.slotPlayers.forEach((slotPlayer) => slotPlayer.applyDisplayRect());
+    void this.resolveDisplayMetrics()
+      .then(() => {
+        this.slotPlayers.forEach((slotPlayer) => slotPlayer.applyDisplayRect());
+      })
+      .catch((error) => {
+        const message = `SSSP 화면 해상도 갱신 실패: ${formatError(error)}`;
+        this.setMessage(message);
+        this.logger.error('display', message);
+      });
   };
 
   private handlePageHide = (): void => {

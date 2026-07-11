@@ -25,10 +25,13 @@ describe('runtime diagnostics', () => {
       filesystem: {
         toURI: (path) => `file:///opt/${path}`,
       },
+      systeminfo: {
+        getPropertyValue: () => undefined,
+      },
     };
 
     expect(formatRuntimeDiagnostics(collectRuntimeDiagnostics())).toBe(
-      'webapis=OK avplay=OK avplaystore=MISS network=MISS productinfo=OK systemcontrol=OK remotepower=MISS tizen=OK download=MISS filesystem=OK app=OK appctrl=OK input=OK audio=MISS',
+      'webapis=OK avplay=OK avplaystore=MISS network=MISS productinfo=OK systemcontrol=OK remotepower=MISS tizen=OK systeminfo=OK download=MISS filesystem=OK app=OK appctrl=OK input=OK audio=MISS',
     );
   });
 });

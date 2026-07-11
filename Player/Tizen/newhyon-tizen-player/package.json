@@ -7,7 +7,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "build": "vite build && node scripts/postbuild.mjs",
-    "package:wgt": "npm run build && bash scripts/package-clean.sh",
+    "package:wgt": "NEWHYON_TIZEN_BUILD_TYPE=Release npm run build && bash scripts/package-clean.sh",
+    "publish:usb": "bash scripts/publish-usb.sh",
     "verify": "npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {

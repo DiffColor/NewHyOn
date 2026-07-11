@@ -1,4 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const bootstrapCommunicationSettingsMock = vi.hoisted(() => vi.fn());
+
+vi.mock('../src/app/communication-bootstrap', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../src/app/communication-bootstrap')>();
+  return {
+    ...original,
+    bootstrapCommunicationSettings: bootstrapCommunicationSettingsMock,
+  };
+});
+
 import { NewHyOnPlayerApp } from '../src/app/newhyon-player-app';
 import { hasContentPeriod, saveContentPeriodsFromSchedule } from '../src/app/content-period';
 import { DEFAULT_PLAYER_SETTINGS, savePlayerSettings } from '../src/app/player-settings';
@@ -387,6 +398,7 @@ describe('NewHyOnPlayerApp', () => {
   });
 
   beforeEach(() => {
+    bootstrapCommunicationSettingsMock.mockReset();
     renderAppShell();
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
     vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
@@ -394,6 +406,42 @@ describe('NewHyOnPlayerApp', () => {
     window.webapis = createWebApis(createPlayer(() => undefined));
     window.tizen = undefined;
     window.NEWHYON_PLAYER_HEALTH = undefined;
+  });
+
+  it('서버 통신이 실패해도 저장된 Tizen 콘텐츠를 재생한다', async () => {
+    const avplayPlay = vi.fn();
+    const avplay = createPlayer(avplayPlay);
+    window.webapis = createWebApis(avplay);
+    window.tizen = {
+      filesystem: {
+        toURI: (path) => `file:///opt/usr/home/owner/content/${path}`,
+        pathExists: () => true,
+      },
+    };
+    bootstrapCommunicationSettingsMock.mockRejectedValue(new Error('server unavailable'));
+
+    const localManifest = createManifest();
+    localManifest.pages[0]!.PIC_Elements![0]!.EIF_ContentsInfoClassList![0]!.CIF_FileFullPath = 'downloads/video.mp4';
+    const app = new NewHyOnPlayerApp({
+      manifest: localManifest,
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        managerAddress: 'turtlesrv.ddns.net',
+        remoteStreamingGatewayUrl: '',
+        manifestUrl: '',
+      },
+      hudInitiallyVisible: false,
+    });
+
+    try {
+      await expect(app.start()).resolves.toBeUndefined();
+
+      expect(avplay.open).toHaveBeenCalledWith('/opt/usr/home/owner/content/downloads/video.mp4');
+      expect(avplayPlay).toHaveBeenCalled();
+      expect(document.querySelector('#status-communication')?.textContent).toContain('DB: 실패');
+    } finally {
+      app.destroy();
+    }
   });
 
   it('재생 가능한 콘텐츠가 없으면 Tizen 인트로 영상을 재생한다', async () => {
@@ -1040,9 +1088,7 @@ describe('NewHyOnPlayerApp', () => {
     });
 
     await app.start();
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    expect(players[0]?.setDisplayRect).toHaveBeenLastCalledWith(0, 0, width, height);
+    expect(players[0]?.setDisplayRect).toHaveBeenLastCalledWith(0, 0, 1920, 1080);
     expect(players[0]?.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');
     expect(players[0]?.setStreamingProperty).toHaveBeenCalledWith('SET_MIXEDFRAME');
     expect(players[1]?.setDisplayRect).toHaveBeenCalledTimes(1);
@@ -1060,7 +1106,7 @@ describe('NewHyOnPlayerApp', () => {
     expect(players[1]?.prepare).not.toHaveBeenCalled();
     expect(players[1]?.prepareAsync).toHaveBeenCalledTimes(1);
     expect(players[1]?.setDisplayRect).toHaveBeenCalledTimes(2);
-    expect(players[1]?.setDisplayRect).toHaveBeenLastCalledWith(0, 0, width, height);
+    expect(players[1]?.setDisplayRect).toHaveBeenLastCalledWith(0, 0, 1920, 1080);
     expect(players[1]?.setStreamingProperty).toHaveBeenCalledWith('USE_VIDEOMIXER');
     expect(players[1]?.setStreamingProperty).toHaveBeenCalledWith('SET_MIXEDFRAME');
 
@@ -1075,7 +1121,7 @@ describe('NewHyOnPlayerApp', () => {
       (player.setDisplayRect as unknown as { mock: { calls: number[][] } }).mock.calls
     ));
     const visibleRectCalls = rectCalls.filter(([x, y, callWidth, callHeight]) => (
-      x === 0 && y === 0 && callWidth === width && callHeight === height
+      x === 0 && y === 0 && callWidth === 1920 && callHeight === 1080
     ));
     expect(visibleRectCalls.length).toBeGreaterThan(0);
     app.destroy();

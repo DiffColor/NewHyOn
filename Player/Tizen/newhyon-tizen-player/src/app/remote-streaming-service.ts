@@ -183,3 +183,22 @@ export function resolveRemoteStreamingGatewayUrl(
 
   return buildRemoteStreamingGatewayUrl(settings.managerAddress);
 }
+
+export function resolveRemoteStreamingDeviceId(
+  settings: Pick<PlayerSettings, 'playerId'>,
+  playerGuid: string | null | undefined,
+  duid: string | null | undefined,
+): string {
+  const serverGuid = playerGuid?.trim() ?? '';
+  if (serverGuid) {
+    return serverGuid;
+  }
+
+  const configuredPlayerId = settings.playerId.trim();
+  if (configuredPlayerId && configuredPlayerId !== DEFAULT_PLAYER_SETTINGS.playerId) {
+    return configuredPlayerId;
+  }
+
+  const deviceDuid = duid?.trim() ?? '';
+  return deviceDuid || configuredPlayerId || DEFAULT_PLAYER_SETTINGS.playerId;
+}

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveRuntimeConfig } from '../src/app/runtime-config';
 import { DEFAULT_PLAYER_SETTINGS, savePlayerSettings } from '../src/app/player-settings';
+import { saveRemoteManifest } from '../src/app/update-payload';
 
 describe('resolveRuntimeConfig', () => {
   beforeEach(() => {
@@ -55,5 +56,25 @@ describe('resolveRuntimeConfig', () => {
     expect(fetch).toHaveBeenCalledWith('https://example.com/manifest.json', { cache: 'no-store' });
     expect(config.manifest.playlistName).toBe('remote');
     expect(config.manifest.preserveAspectRatio).toBe(false);
+  });
+
+  it('네트워크 매니페스트를 읽지 못해도 저장된 매니페스트로 기동한다', async () => {
+    savePlayerSettings({
+      ...DEFAULT_PLAYER_SETTINGS,
+      manifestUrl: 'https://example.com/manifest.json',
+      preserveAspectRatio: false,
+    });
+    saveRemoteManifest({
+      playlistName: 'cached-local',
+      preserveAspectRatio: false,
+      pages: [],
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new Error('network unavailable');
+    }));
+
+    const config = await resolveRuntimeConfig({ search: '' });
+
+    expect(config.manifest.playlistName).toBe('cached-local');
   });
 });

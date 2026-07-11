@@ -7,6 +7,7 @@ export interface RuntimeDiagnostics {
   readonly systemcontrol: boolean;
   readonly remotepower: boolean;
   readonly tizen: boolean;
+  readonly systeminfo: boolean;
   readonly download: boolean;
   readonly filesystem: boolean;
   readonly application: boolean;
@@ -29,6 +30,7 @@ export function collectRuntimeDiagnostics(): RuntimeDiagnostics {
     systemcontrol: Boolean(window.webapis?.systemcontrol),
     remotepower: Boolean(window.webapis?.remotepower),
     tizen: Boolean(window.tizen),
+    systeminfo: Boolean(window.tizen?.systeminfo?.getPropertyValue),
     download: Boolean(window.tizen?.download),
     filesystem: Boolean(window.tizen?.filesystem),
     application: Boolean(window.tizen?.application?.launchAppControl),
@@ -48,6 +50,7 @@ export function formatRuntimeDiagnostics(diagnostics: RuntimeDiagnostics): strin
     `systemcontrol=${mark(diagnostics.systemcontrol)}`,
     `remotepower=${mark(diagnostics.remotepower)}`,
     `tizen=${mark(diagnostics.tizen)}`,
+    `systeminfo=${mark(diagnostics.systeminfo)}`,
     `download=${mark(diagnostics.download)}`,
     `filesystem=${mark(diagnostics.filesystem)}`,
     `app=${mark(diagnostics.application)}`,

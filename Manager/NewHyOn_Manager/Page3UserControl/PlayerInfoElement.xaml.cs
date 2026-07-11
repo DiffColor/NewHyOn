@@ -130,6 +130,13 @@ namespace AndoW_Manager
 
         public void LaunchingRemoteControl()
         {
+            SyncPlayerInfoFromManager();
+            if (TizenPlaylistUpdatePolicy.IsTizenPlayer(this.g_PlayerInfoClass))
+            {
+                LaunchingTizenRemoteControl();
+                return;
+            }
+
             string ipAddress = (this.g_PlayerInfoClass.PIF_IPAddress ?? string.Empty).Trim();
             string rustDeskId = (this.g_PlayerInfoClass.PIF_RemoteID ?? string.Empty).Trim().Replace(" ", "");
 
@@ -150,6 +157,30 @@ namespace AndoW_Manager
             }
 
             ProcessTools.LaunchProcess(rustDeskExePath, false, $"--connect {target} --password 123qwe");
+        }
+
+        private void LaunchingTizenRemoteControl()
+        {
+            string deviceId = (this.g_PlayerInfoClass.PIF_GUID ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(deviceId))
+            {
+                deviceId = (this.g_PlayerInfoClass.PIF_PlayerName ?? string.Empty).Trim();
+            }
+
+            if (string.IsNullOrWhiteSpace(deviceId))
+            {
+                MessageTools.ShowMessageBox("Tizen 원격화면 대상 식별자가 없습니다.", "확인");
+                return;
+            }
+
+            TizenRemoteWindow remoteWindow = new TizenRemoteWindow(
+                deviceId,
+                this.g_PlayerInfoClass.PIF_PlayerName,
+                this.g_PlayerInfoClass.PIF_IsLandScape)
+            {
+                Owner = Window.GetWindow(this)
+            };
+            remoteWindow.Show();
         }
 
         void MC_Auth_Click(object sender, RoutedEventArgs e)

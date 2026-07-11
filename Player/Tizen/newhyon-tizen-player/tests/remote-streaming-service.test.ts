@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildRemoteStreamingGatewayUrl, resolveRemoteStreamingGatewayUrl } from '../src/app/remote-streaming-service';
+import {
+  buildRemoteStreamingGatewayUrl,
+  resolveRemoteStreamingDeviceId,
+  resolveRemoteStreamingGatewayUrl,
+} from '../src/app/remote-streaming-service';
 
 describe('remote streaming service', () => {
   it('관리자 HTTP 주소를 WebSocket /ws 주소로 변환한다', () => {
@@ -29,5 +33,11 @@ describe('remote streaming service', () => {
       managerAddress: 'turtlesrv.ddns.net',
       remoteStreamingGatewayUrl: '',
     })).toBe('wss://newhyon-remote.turtlelab.app/ws');
+  });
+
+  it('서버 GUID가 없을 때 SSSP DUID로 원격 장비를 식별한다', () => {
+    expect(resolveRemoteStreamingDeviceId({ playerId: 'tizen' }, 'player-guid-1', 'duid-1')).toBe('player-guid-1');
+    expect(resolveRemoteStreamingDeviceId({ playerId: 'tizen' }, null, 'duid-1')).toBe('duid-1');
+    expect(resolveRemoteStreamingDeviceId({ playerId: 'configured-player' }, null, 'duid-1')).toBe('configured-player');
   });
 });
