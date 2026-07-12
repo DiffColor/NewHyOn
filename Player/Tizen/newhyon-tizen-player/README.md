@@ -52,22 +52,6 @@ npm run build
 
 루트 `.vscode/settings.json`에는 `tizen.v2.working.project`가 위 경로로 고정되어 있습니다. 이 설정이 있어야 Tizen Actions 메뉴의 `Build Project`, `Run Project`, `Debug Project` 버튼이 `Working project is not set` 없이 동작합니다.
 
-## SSSP USB 배포
-
-QM32C의 Custom App Launcher용 USB 산출물은 서명된 WGT와 `sssp_config.xml`입니다.
-
-```bash
-cd Player/Tizen/newhyon-tizen-player
-TIZEN_CLI=/path/to/tizen NEWHYON_TIZEN_PROFILE=your-signing-profile npm run publish:usb
-```
-
-생성 경로는 `publish/SSSP/`이며, 이 폴더에는 다음 두 파일만 있어야 합니다.
-
-- `NewHyOnTizenPlayer.wgt`
-- `sssp_config.xml`
-
-WGT의 시작 문서는 루트 `index.html`이어야 하며, 배포 스크립트가 이를 검사합니다. SSSP USB 설치 패키지에는 TPK를 합치지 않습니다. Samsung Signage의 USB Custom App Launcher는 WGT를 설치하며, Tizen Download API는 HTTP 요청으로 원격 데이터를 받습니다. 따라서 FTP 기반 콘텐츠 동기화는 별도 TPK가 아니라 HTTP 콘텐츠 경로 또는 Samsung WebAssembly Sockets Extension 기반의 WGT 구현으로 전환해야 합니다.
-
 ## QM32C 배포 절차
 
 현재 실장비 배포는 Tizen SDK의 `tz`와 `sdb`를 직접 사용합니다. 같은 시행착오를 반복하지 않도록 아래 순서를 기준으로 합니다.

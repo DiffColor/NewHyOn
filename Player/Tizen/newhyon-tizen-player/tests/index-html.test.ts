@@ -18,6 +18,7 @@ describe('index.html', () => {
   it('로딩 화면은 민감한 endpoint 대신 카드형 stepper를 제공한다', () => {
     const html = readFileSync(resolve(projectRoot, 'index.html'), 'utf8');
 
+    expect(html).toContain('id="loading-overlay" class="loading-overlay loading-overlay--hidden"');
     expect(html).toContain('class="loading-stepper"');
     expect(html).toContain('서버 확인');
     expect(html).toContain('실시간 연결');

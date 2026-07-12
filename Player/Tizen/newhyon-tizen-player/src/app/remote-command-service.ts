@@ -77,32 +77,36 @@ export class RemoteCommandService {
       return;
     }
 
-    await this.enqueue(async () => {
-      const playerGuid = this.options.playerGuid.trim();
-      if (!playerGuid) {
-        return;
-      }
+    try {
+      await this.enqueue(async () => {
+        const playerGuid = this.options.playerGuid.trim();
+        if (!playerGuid) {
+          return;
+        }
 
-      const entry = await this.commandQueueClient.fetchNextPending(playerGuid);
-      if (!entry?.id) {
-        return;
-      }
+        const entry = await this.commandQueueClient.fetchNextPending(playerGuid);
+        if (!entry?.id) {
+          return;
+        }
 
-      this.options.onStatus?.('received', `${entry.id}:${readCommand(entry)}`);
-      await this.commandQueueClient.markAttempt(entry.id);
-      const result = await this.handleCommandEntry(entry, false);
-      if (result.handled) {
-        await this.commandQueueClient.markAck(entry.id, playerGuid);
-        this.options.onStatus?.('ack', entry.id);
-        runAfterAck(result.afterAck, this.options.onStatus);
-      } else if (shouldRetryCommand(readCommand(entry), result)) {
-        await this.commandQueueClient.markRetry(entry.id, playerGuid);
-        this.options.onStatus?.('retry', `${entry.id}:${result.errorCode ?? 'COMMAND_FAILED'}`);
-      } else {
-        await this.commandQueueClient.markFailed(entry.id, playerGuid);
-        this.options.onStatus?.('failed', `${entry.id}:${result.errorCode ?? 'COMMAND_FAILED'}`);
-      }
-    });
+        this.options.onStatus?.('received', `${entry.id}:${readCommand(entry)}`);
+        await this.commandQueueClient.markAttempt(entry.id);
+        const result = await this.handleCommandEntry(entry, false);
+        if (result.handled) {
+          await this.commandQueueClient.markAck(entry.id, playerGuid);
+          this.options.onStatus?.('ack', entry.id);
+          runAfterAck(result.afterAck, this.options.onStatus);
+        } else if (shouldRetryCommand(readCommand(entry), result)) {
+          await this.commandQueueClient.markRetry(entry.id, playerGuid);
+          this.options.onStatus?.('retry', `${entry.id}:${result.errorCode ?? 'COMMAND_FAILED'}`);
+        } else {
+          await this.commandQueueClient.markFailed(entry.id, playerGuid);
+          this.options.onStatus?.('failed', `${entry.id}:${result.errorCode ?? 'COMMAND_FAILED'}`);
+        }
+      });
+    } catch (error) {
+      this.options.onStatus?.('connection-failed', formatError(error));
+    }
   }
 
   handleSignalRMessage(message: SignalRMessage): void {

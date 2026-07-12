@@ -32,21 +32,7 @@ function isManifest(value: unknown): value is PlayerManifest {
     && Array.isArray(candidate.pages);
 }
 
-async function loadManifestFromUrl(url: string): Promise<PlayerManifest> {
-  const response = await fetch(url, { cache: 'no-store' });
-  if (!response.ok) {
-    throw new Error(`매니페스트를 가져오지 못했습니다: ${response.status} ${response.statusText}`);
-  }
-
-  const json = (await response.json()) as unknown;
-  if (!isManifest(json)) {
-    throw new Error('매니페스트 형식이 PlayerManifest와 일치하지 않습니다.');
-  }
-
-  return json;
-}
-
-export async function resolveRuntimeConfig(location: Pick<Location, 'search'> = window.location): Promise<RuntimeConfig> {
+export function resolveRuntimeConfig(location: Pick<Location, 'search'> = window.location): RuntimeConfig {
   const params = new URLSearchParams(location.search);
   const settings = loadPlayerSettings();
   const injectedManifest = window.NEWHYON_PLAYER_MANIFEST;
@@ -59,15 +45,6 @@ export async function resolveRuntimeConfig(location: Pick<Location, 'search'> = 
 
   if (isManifest(injectedManifest)) {
     manifest = injectedManifest;
-  }
-
-  const manifestUrl = params.get('manifest')?.trim() || settings.manifestUrl;
-  if (manifestUrl) {
-    try {
-      manifest = await loadManifestFromUrl(manifestUrl);
-    } catch {
-      // USB 설치 뒤 네트워크가 없어도 이전에 저장한 콘텐츠 계획으로 기동한다.
-    }
   }
 
   return {

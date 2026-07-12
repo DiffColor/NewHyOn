@@ -162,6 +162,9 @@ const SCHEDULE_PREPARE_LEAD_MS = 5000;
 const SCHEDULE_PREPARE_LOOKAHEAD_MS = SCHEDULE_PREPARE_LEAD_MS + SCHEDULE_CHECK_INTERVAL_MS;
 const RUNTIME_HEALTH_RECENT_LOG_LIMIT = 200;
 const RUNTIME_HEALTH_LOG_FLUSH_DELAY_MS = 250;
+const ONLINE_CONNECTION_RETRY_MS = 5000;
+const NETWORK_MONITOR_INTERVAL_MS = 5000;
+const AUTHENTICATION_RETRY_MS = 30000;
 const VOLUME_TEST_AUDIO_URL = 'media/volume_sample.mp3';
 
 function getRequiredElement<T extends HTMLElement>(selector: string): T {
@@ -205,6 +208,12 @@ export class NewHyOnPlayerApp {
   private lastRenderAt = 0;
   private lastRenderIntervalMs = 0;
   private runtimeHealthLogFlushTimerId: number | null = null;
+  private onlineBootstrapTimerId: number | null = null;
+  private networkMonitorTimerId: number | null = null;
+  private authenticationRetryTimerId: number | null = null;
+  private onlineBootstrapInProgress = false;
+  private onlineBootstrapGeneration = 0;
+  private onlineServicesStarted = false;
   private pageTransitionInProgress = false;
   private slotTimelineSyncInProgress = false;
   private scheduleCheckInProgress = false;
@@ -296,10 +305,9 @@ export class NewHyOnPlayerApp {
   }
 
   async start(): Promise<void> {
-    this.showLoading('플레이어 준비 중', '시스템을 초기화합니다.');
     if (this.pagePlans.length === 0) {
-      this.showLoading('플레이어 오류', '재생할 페이지가 없습니다.', true);
-      throw new Error('재생할 페이지가 없습니다.');
+      await this.recoverStartupPlayback('재생할 페이지가 없습니다.');
+      return;
     }
 
     try {
@@ -343,32 +351,59 @@ export class NewHyOnPlayerApp {
       this.configureSsspSignageControl();
       this.applyConfiguredTvVolume('settings-startup');
       this.writeRuntimeHealth('app-started');
-      await this.bootstrapCommunication();
       await this.repairStoredManifestCache('startup');
       await this.syncContentPeriodsForManifests([this.currentContentManifest], 'startup', false);
       const startupResolution = this.createStartupPagePlans(this.currentContentManifest);
       this.commitPlaybackPlan(startupResolution.pagePlans, startupResolution.mode, 0);
       this.ensureFixedAvplaySessionPairs();
-      await this.ensureAuthentication();
-      this.showLoading('플레이어 준비 중', '콘텐츠 재생을 준비합니다.');
-      this.configureRemoteCommands();
-      this.startHeartbeat();
-      this.remoteCommandService?.start();
-      this.configureRemoteStreaming();
       await this.applyBroadcastSchedule('startup');
       this.startMasterTimer();
       this.hideLoading();
+      void this.startOnlineConnectivity();
     } catch (error) {
       const message = formatError(error);
-      this.setHudVisible(true);
-      this.setMessage(message);
-      this.showLoading('플레이어 오류', message, true);
-      throw error;
+      await this.recoverStartupPlayback(message);
+    }
+  }
+
+  private async recoverStartupPlayback(detail: string): Promise<void> {
+    this.logger.error('startup', `초기 재생 준비 실패, 로컬 재생 복구 시작: ${detail}`);
+    this.setMessage(`초기 재생 복구 진행: ${detail}`);
+
+    try {
+      const resolution = this.createStartupPagePlans(this.currentContentManifest);
+      this.commitPlaybackPlan(resolution.pagePlans, resolution.mode, 0);
+      this.ensureFixedAvplaySessionPairs();
+      await this.applyBroadcastSchedule('startup-recovery');
+      this.startMasterTimer();
+      this.logger.info('startup', '초기 재생 복구 완료');
+    } catch (recoveryError) {
+      const recoveryDetail = formatError(recoveryError);
+      this.logger.error('startup', `저장 콘텐츠 재생 복구 실패: ${recoveryDetail}`);
+      this.setMessage(`저장 콘텐츠 재생 복구 실패: ${recoveryDetail}`);
+
+      try {
+        const intro = this.createEmptyIntroPagePlans(this.currentContentManifest);
+        this.commitPlaybackPlan(intro.pagePlans, intro.mode, 0);
+        await this.applyBroadcastSchedule('startup-recovery-intro');
+        this.startMasterTimer();
+      } catch (introError) {
+        const introDetail = formatError(introError);
+        this.logger.error('startup', `내장 인트로 재생 복구 실패: ${introDetail}`);
+        this.setMessage(`내장 인트로 재생 복구 실패: ${introDetail}`);
+      }
+    } finally {
+      this.hideLoading();
+      void this.startOnlineConnectivity();
+      this.writeRuntimeHealth('startup-recovery');
     }
   }
 
   destroy(): void {
     this.destroyed = true;
+    this.clearOnlineBootstrapTimer();
+    this.clearNetworkMonitor();
+    this.clearAuthenticationRetry();
     this.stopMasterTimer();
     this.stopSlots();
     this.requestOfflineHeartbeat();
@@ -612,20 +647,201 @@ export class NewHyOnPlayerApp {
     );
   }
 
-  private async bootstrapCommunication(): Promise<void> {
+  private async startOnlineConnectivity(): Promise<void> {
     if (!this.config.settings.managerAddress.trim()) {
       this.communicationStatus = 'not-configured';
       this.setConnectionStatus('db', 'not-configured', '데이터서버 IP 미설정');
       this.setConnectionStatus('signalr', 'not-configured', '데이터서버 IP 미설정');
       this.setConnectionStatus('ftp', 'not-configured', '데이터서버 IP 미설정');
-      this.logger.warn('communication', '데이터서버 주소가 비어 있어 통신 설정 부트스트랩을 건너뜁니다.');
       this.writeRuntimeHealth('communication-not-configured');
-      this.render();
       return;
     }
 
+    if (!window.webapis?.network?.isConnectedToGateway) {
+      this.logger.warn('communication', 'SSSP Network API가 없어 온라인 연결을 시작하지 않습니다.');
+      return;
+    }
+
+    this.startNetworkMonitor();
+    if (!this.isSsspGatewayConnected()) {
+      this.suspendOnlineServices('SSSP 네트워크 연결이 준비되지 않았습니다.');
+      return;
+    }
+
+    await this.bootstrapOnlineWhenNetworkReady();
+  }
+
+  private scheduleOnlineBootstrap(delayMs: number): void {
+    if (this.destroyed || this.onlineServicesStarted) {
+      return;
+    }
+
+    this.clearOnlineBootstrapTimer();
+    this.onlineBootstrapTimerId = window.setTimeout(() => {
+      this.onlineBootstrapTimerId = null;
+      void this.bootstrapOnlineWhenNetworkReady();
+    }, delayMs);
+  }
+
+  private clearOnlineBootstrapTimer(): void {
+    if (this.onlineBootstrapTimerId !== null) {
+      window.clearTimeout(this.onlineBootstrapTimerId);
+      this.onlineBootstrapTimerId = null;
+    }
+  }
+
+  private startNetworkMonitor(): void {
+    if (this.networkMonitorTimerId !== null) {
+      return;
+    }
+
+    this.networkMonitorTimerId = window.setInterval(() => {
+      this.monitorNetworkConnection();
+    }, NETWORK_MONITOR_INTERVAL_MS);
+  }
+
+  private clearNetworkMonitor(): void {
+    if (this.networkMonitorTimerId !== null) {
+      window.clearInterval(this.networkMonitorTimerId);
+      this.networkMonitorTimerId = null;
+    }
+  }
+
+  private scheduleAuthenticationRetry(): void {
+    this.clearAuthenticationRetry();
+    if (this.destroyed || !this.communication) {
+      return;
+    }
+
+    this.authenticationRetryTimerId = window.setTimeout(() => {
+      this.authenticationRetryTimerId = null;
+      void this.ensureAuthentication();
+    }, AUTHENTICATION_RETRY_MS);
+  }
+
+  private clearAuthenticationRetry(): void {
+    if (this.authenticationRetryTimerId !== null) {
+      window.clearTimeout(this.authenticationRetryTimerId);
+      this.authenticationRetryTimerId = null;
+    }
+  }
+
+  private isSsspGatewayConnected(): boolean {
+    try {
+      return window.webapis?.network?.isConnectedToGateway?.() === true;
+    } catch (error) {
+      this.logger.warn('communication', `SSSP 네트워크 상태 확인 실패: ${formatError(error)}`);
+      return false;
+    }
+  }
+
+  private monitorNetworkConnection(): void {
+    if (this.destroyed || this.onlineServicesStarted && this.isSsspGatewayConnected()) {
+      return;
+    }
+
+    if (!this.isSsspGatewayConnected()) {
+      this.suspendOnlineServices('SSSP 네트워크 연결이 끊어졌습니다.');
+      return;
+    }
+
+    if (!this.onlineBootstrapInProgress) {
+      void this.bootstrapOnlineWhenNetworkReady();
+    }
+  }
+
+  private suspendOnlineServices(reason: string): void {
+    const wasOnline = this.onlineServicesStarted || this.communication !== null || this.onlineBootstrapInProgress;
+    if (!wasOnline && this.communicationStatus === 'waiting-network') {
+      return;
+    }
+
+    this.onlineBootstrapGeneration += 1;
+    this.onlineBootstrapInProgress = false;
+    this.onlineServicesStarted = false;
+    this.communication = null;
+    this.clearOnlineBootstrapTimer();
+    this.heartbeatReporter?.dispose();
+    this.heartbeatReporter = null;
+    this.remoteCommandService?.dispose();
+    this.remoteCommandService = null;
+    this.remoteStreamingService?.stop();
+    this.remoteStreamingService = null;
+    this.communicationStatus = 'waiting-network';
+    this.setConnectionStatus('db', 'checking', 'SSSP 네트워크 연결 대기');
+    this.setConnectionStatus('signalr', 'checking', 'SSSP 네트워크 연결 대기');
+    this.setConnectionStatus('ftp', 'checking', 'SSSP 네트워크 연결 대기');
+    this.heartbeatStatus = 'waiting-network';
+    this.heartbeatStatusDetail = reason;
+    this.logger.warn('communication', `온라인 통신 일시 중지: ${reason}`);
+    this.render();
+    this.writeRuntimeHealth('communication-waiting-network');
+  }
+
+  private handleOnlineServiceFailure(detail: string): void {
+    if (this.destroyed) {
+      return;
+    }
+
+    this.suspendOnlineServices(detail);
+    if (this.isSsspGatewayConnected()) {
+      this.scheduleOnlineBootstrap(ONLINE_CONNECTION_RETRY_MS);
+    }
+  }
+
+  private async bootstrapOnlineWhenNetworkReady(): Promise<void> {
+    if (this.destroyed || this.onlineServicesStarted || this.onlineBootstrapInProgress) {
+      return;
+    }
+
+    if (!this.isSsspGatewayConnected()) {
+      this.suspendOnlineServices('SSSP 네트워크 연결이 준비되지 않았습니다.');
+      return;
+    }
+
+    const generation = this.onlineBootstrapGeneration;
+    this.onlineBootstrapInProgress = true;
+    try {
+      await this.bootstrapCommunication();
+      if (!this.isOnlineBootstrapCurrent(generation) || !this.communication) {
+        return;
+      }
+
+      await this.ensureAuthentication();
+      if (!this.isOnlineBootstrapCurrent(generation) || !this.contentPlaybackAllowed) {
+        return;
+      }
+
+      this.configureRemoteCommands();
+      this.startHeartbeat();
+      this.remoteCommandService?.start();
+      this.configureRemoteStreaming();
+      this.onlineServicesStarted = true;
+      this.logger.info('communication', '온라인 통신 서비스를 시작했습니다.');
+      this.writeRuntimeHealth('communication-services-started');
+    } catch (error) {
+      const detail = formatError(error);
+      this.logger.warn('communication', `온라인 통신 시작 실패: ${detail}`);
+      this.writeRuntimeHealth('communication-online-start-failed');
+    } finally {
+      if (generation !== this.onlineBootstrapGeneration) {
+        return;
+      }
+      this.onlineBootstrapInProgress = false;
+      if (!this.destroyed && !this.onlineServicesStarted && this.isSsspGatewayConnected()) {
+        this.scheduleOnlineBootstrap(ONLINE_CONNECTION_RETRY_MS);
+      }
+    }
+  }
+
+  private isOnlineBootstrapCurrent(generation: number): boolean {
+    return !this.destroyed
+      && generation === this.onlineBootstrapGeneration
+      && this.isSsspGatewayConnected();
+  }
+
+  private async bootstrapCommunication(): Promise<void> {
     this.communicationStatus = 'connecting';
-    this.showLoading('통신 연결 확인 중', 'DB 설정을 확인합니다.');
     this.setConnectionStatus('db', 'checking', this.config.settings.managerAddress);
     this.setConnectionStatus('signalr', 'checking', '-');
     this.setConnectionStatus('ftp', 'checking', '-');
@@ -634,11 +850,6 @@ export class NewHyOnPlayerApp {
       this.communication = await bootstrapCommunicationSettings(this.config.settings, {
         onStatus: ({ target, status, detail }) => {
           this.setConnectionStatus(target, status, detail);
-          if (target === 'db' && status === 'connected') {
-            this.showLoading('통신 연결 확인 중', 'SignalR 연결을 확인합니다.');
-          } else if (target === 'signalr' && status === 'connected') {
-            this.showLoading('통신 연결 확인 중', 'FTP 연결을 확인합니다.');
-          }
           this.render();
           this.writeRuntimeHealth(`communication-${target}-${status}`);
         },
@@ -653,7 +864,6 @@ export class NewHyOnPlayerApp {
       this.communication = null;
       this.communicationStatus = 'offline';
       this.markCheckingConnectionsFailed(detail);
-      this.setMessage(`서버 통신 없이 저장된 콘텐츠를 재생합니다. (${detail})`);
       this.logger.warn('communication', `서버 통신 초기화 실패, 로컬 재생 계속: ${detail}`);
       this.render();
       this.writeRuntimeHealth('communication-offline');
@@ -661,7 +871,6 @@ export class NewHyOnPlayerApp {
     }
 
     this.communicationStatus = 'connected';
-    await this.syncPlayerInfo(null);
     this.logger.info(
       'communication',
       `데이터서버/DB/SignalR/FTP 설정 완료: db=${this.communication.dbHost}, signalr=${this.communication.signalrUrl}, ftp=${this.communication.ftpHost}:${this.communication.ftpPort}${this.communication.ftpRootPath}`,
@@ -696,6 +905,9 @@ export class NewHyOnPlayerApp {
         this.logger.info('heartbeat', `${status}: ${detail}`);
         this.render();
         this.writeRuntimeHealth(`heartbeat-${status}`);
+        if (status === 'failed') {
+          this.handleOnlineServiceFailure(`SignalR 하트비트 연결 실패: ${detail}`);
+        }
       },
       onMessage: (message) => {
         this.remoteCommandService?.handleSignalRMessage(message);
@@ -716,6 +928,10 @@ export class NewHyOnPlayerApp {
       playerName: this.communication.playerName,
       onStatus: (status, detail) => {
         this.logger.info('command', `${status}: ${detail}`);
+        if (status === 'connection-failed') {
+          this.handleOnlineServiceFailure(`원격 명령 연결 실패: ${detail}`);
+          return;
+        }
         this.setMessage(`원격 명령 ${status}: ${detail}`);
       },
       onUpdateList: async (payload, urgent, commandId) => this.applyUpdateListCommand(payload, urgent, commandId),
@@ -1659,17 +1875,10 @@ export class NewHyOnPlayerApp {
     }
 
     this.setAuthStatus('checking', 'LicenseHub 인증 확인 중');
-    this.contentPlaybackAllowed = false;
     this.authService = new LicenseHubAuthService({
       playerGuid: this.communication.playerGuid,
       playerName: this.communication.playerName,
       appVersion: this.getHeartbeatVersion(),
-    });
-    this.authOverlay = new LicenseAuthOverlay({
-      service: this.authService,
-      onStatus: (status, detail) => {
-        this.setAuthStatus(status, detail);
-      },
     });
 
     let state: LicenseAuthState;
@@ -1691,23 +1900,22 @@ export class NewHyOnPlayerApp {
 
     if (state.isValid) {
       this.contentPlaybackAllowed = true;
+      this.clearAuthenticationRetry();
       this.setAuthStatus('authenticated', `${state.mode} ${state.status}`);
       this.lastAuthState = state;
-      await this.syncPlayerInfo(state);
-      return;
-    }
-
-    this.showLoading('LicenseHub 인증 필요', state.reason || '인증을 완료해야 플레이어를 시작할 수 있습니다.');
-    const resolved = await this.authOverlay.open(state.reason || 'LicenseHub 인증을 진행해 주세요.');
-    if (!resolved.isValid) {
-      await this.handleAuthenticationCancellation(resolved.reason || 'LicenseHub 인증이 완료되지 않았습니다.', false);
+      try {
+        await this.syncPlayerInfo(state, { showLoading: false });
+      } catch (error) {
+        this.logger.warn('communication', `인증 후 기기 정보 동기화 실패: ${formatError(error)}`);
+      }
       return;
     }
 
     this.contentPlaybackAllowed = true;
-    this.setAuthStatus('authenticated', `${resolved.mode} ${resolved.status}`);
-    this.lastAuthState = resolved;
-    await this.syncPlayerInfo(resolved);
+    this.lastAuthState = null;
+    this.setAuthStatus('unavailable', state.reason || '기기 인증 확인을 다시 시도합니다.');
+    this.logger.warn('auth', `기기 인증 확인 실패, 콘텐츠 재생 유지: ${state.reason || state.status}`);
+    this.scheduleAuthenticationRetry();
   }
 
   private async openAuthenticationOverlay(message: string): Promise<void> {
@@ -1744,11 +1952,11 @@ export class NewHyOnPlayerApp {
       } catch (error) {
         this.hideLoading();
         syncError = formatError(error);
-        this.logger.warn('communication', `인증 후 PlayerInfoManager 동기화 실패: ${syncError}`);
+        this.logger.warn('communication', `인증 후 기기 정보 동기화 실패: ${syncError}`);
       }
       await this.enterAuthenticatedContentPlayback();
       this.setMessage(syncError
-        ? `LicenseHub 인증 완료, PlayerInfo 동기화 실패: ${syncError}`
+        ? `기기 인증 완료, 기기 정보 동기화 실패: ${syncError}`
         : 'LicenseHub 인증이 완료되었습니다.');
       return;
     }
@@ -1763,7 +1971,7 @@ export class NewHyOnPlayerApp {
 
     const showLoading = uiOptions.showLoading ?? true;
     if (showLoading) {
-      this.showLoading('플레이어 정보 동기화 중', 'PlayerInfoManager 정보를 갱신합니다.');
+      this.showLoading('기기 정보 확인 중', '기기 등록 정보를 갱신합니다.');
     }
 
     try {
@@ -1774,7 +1982,7 @@ export class NewHyOnPlayerApp {
         appVersion: this.getHeartbeatVersion(),
         authState,
       });
-      this.logger.info('communication', `PlayerInfoManager 동기화 완료: ${this.communication.playerName}/${this.communication.playerGuid}`);
+      this.logger.info('communication', `기기 정보 동기화 완료: ${this.communication.playerName}/${this.communication.playerGuid}`);
     } finally {
       if (uiOptions.hideLoadingWhenDone) {
         this.hideLoading();
@@ -2660,9 +2868,7 @@ export class NewHyOnPlayerApp {
 
   private reportEmptyIntroVideoError(message: string): void {
     this.logger.error('intro', message);
-    this.setHudVisible(true);
     this.setMessage(message);
-    this.showLoading('플레이어 오류', message, true);
     this.writeRuntimeHealth('empty-intro-error');
   }
 
@@ -2850,17 +3056,13 @@ export class NewHyOnPlayerApp {
   }
 
   private showLoading(title: string, message: string, error = false): void {
-    if (!this.startupLoadingActive && !error) {
-      this.logger.info('loading', `런타임 로딩 오버레이 생략: ${title} - ${message}`);
-      return;
-    }
-
     this.view.loadingTitle.textContent = title;
     this.view.loadingMessage.textContent = message;
-    this.view.loadingOverlay.classList.remove('loading-overlay--hidden');
-    this.view.loadingOverlay.classList.toggle('loading-overlay--error', error);
-    this.view.loadingOverlay.classList.toggle('loading-overlay--startup', this.startupLoadingActive);
-    this.view.loadingOverlay.classList.toggle('loading-overlay--runtime', !this.startupLoadingActive);
+    this.view.loadingOverlay.classList.add('loading-overlay--hidden');
+    this.view.loadingOverlay.classList.remove('loading-overlay--error');
+    this.view.loadingOverlay.classList.remove('loading-overlay--startup');
+    this.view.loadingOverlay.classList.remove('loading-overlay--runtime');
+    this.logger.warn('loading', `일반 오버레이 차단: ${title} - ${message}${error ? ' (error)' : ''}`);
   }
 
   private hideLoading(): void {
@@ -2918,7 +3120,7 @@ export class NewHyOnPlayerApp {
       try {
         await this.syncPlayerInfo(currentState, { showLoading: false });
       } catch (error) {
-        this.logger.warn('communication', `인증 취소 후 PlayerInfoManager 동기화 실패: ${formatError(error)}`);
+        this.logger.warn('communication', `인증 취소 후 기기 정보 동기화 실패: ${formatError(error)}`);
       }
 
       if (startIfOnAir && this.broadcastOnAir && this.playbackMode !== 'content') {
@@ -2935,7 +3137,7 @@ export class NewHyOnPlayerApp {
       return;
     }
 
-    await this.enterUnauthenticatedIntroPlayback(detail, startIfOnAir);
+    this.retainContentDuringAuthenticationRecovery(detail, startIfOnAir);
   }
 
   private async validateCurrentAuthenticationAfterCancellation(): Promise<LicenseAuthState | null> {
@@ -2951,25 +3153,15 @@ export class NewHyOnPlayerApp {
     }
   }
 
-  private async enterUnauthenticatedIntroPlayback(detail: string, startIfOnAir: boolean): Promise<void> {
-    this.contentPlaybackAllowed = false;
+  private retainContentDuringAuthenticationRecovery(detail: string, _startIfOnAir: boolean): void {
+    this.contentPlaybackAllowed = true;
     this.lastAuthState = null;
-    this.setAuthStatus('unauthenticated', detail);
-    const resolution = this.createEmptyIntroPagePlans(this.currentContentManifest);
-    if (startIfOnAir && this.broadcastOnAir) {
-      await this.playPage(0, {
-        preservePreviousUntilReady: true,
-        pagePlans: resolution.pagePlans,
-        playbackMode: resolution.mode,
-      });
-      this.setMessage('LicenseHub 인증이 취소되어 인트로 영상만 재생합니다.');
-      return;
-    }
-
-    this.commitPlaybackPlan(resolution.pagePlans, resolution.mode, 0);
-    this.setMessage('LicenseHub 미인증 상태라 인트로 영상만 재생합니다.');
+    this.setAuthStatus('unavailable', detail);
+    this.setMessage('기기 인증 확인 재시도 대기');
+    this.logger.warn('auth', `기기 인증 확인 실패, 콘텐츠 재생 유지: ${detail}`);
+    this.scheduleAuthenticationRetry();
     this.render();
-    this.writeRuntimeHealth('auth-unauthenticated-intro');
+    this.writeRuntimeHealth('auth-retry-scheduled');
   }
 
   private async enterAuthenticatedContentPlayback(): Promise<void> {

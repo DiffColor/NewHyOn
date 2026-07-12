@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>NewHyOn Tizen Player</title>
+    <title>NewHyOn Player</title>
     <script type="text/javascript" src="$WEBAPIS/webapis/webapis.js"></script>
   </head>
   <body>
     <div id="app" class="app-shell">
       <main id="stage" class="stage" aria-label="NewHyOn signage playback stage"></main>
       <aside id="broadcast-standby" class="broadcast-standby broadcast-standby--hidden" aria-hidden="true"></aside>
-      <aside id="loading-overlay" class="loading-overlay loading-overlay--startup">
+      <aside id="loading-overlay" class="loading-overlay loading-overlay--hidden">
         <div class="loading-text">
           <strong id="loading-title">플레이어 준비 중</strong>
           <span id="loading-message">시스템을 초기화합니다.</span>
@@ -40,8 +40,8 @@
       </aside>
       <aside id="debug-hud" class="debug-hud debug-hud--hidden">
         <div class="debug-hud__header">
-          <h1>NewHyOn Tizen Player</h1>
-          <p id="hud-subtitle">Windows player model compatible playback</p>
+          <h1>NewHyOn Player</h1>
+          <p id="hud-subtitle">Digital signage playback</p>
         </div>
         <dl class="status-grid">
           <div>

@@ -408,7 +408,7 @@ describe('NewHyOnPlayerApp', () => {
     window.NEWHYON_PLAYER_HEALTH = undefined;
   });
 
-  it('서버 통신이 실패해도 저장된 Tizen 콘텐츠를 재생한다', async () => {
+  it('네트워크가 준비되지 않아도 저장된 Tizen 콘텐츠를 재생한다', async () => {
     const avplayPlay = vi.fn();
     const avplay = createPlayer(avplayPlay);
     window.webapis = createWebApis(avplay);
@@ -418,7 +418,12 @@ describe('NewHyOnPlayerApp', () => {
         pathExists: () => true,
       },
     };
-    bootstrapCommunicationSettingsMock.mockRejectedValue(new Error('server unavailable'));
+    window.webapis = {
+      ...window.webapis,
+      network: {
+        isConnectedToGateway: () => false,
+      },
+    };
 
     const localManifest = createManifest();
     localManifest.pages[0]!.PIC_Elements![0]!.EIF_ContentsInfoClassList![0]!.CIF_FileFullPath = 'downloads/video.mp4';
@@ -438,7 +443,181 @@ describe('NewHyOnPlayerApp', () => {
 
       expect(avplay.open).toHaveBeenCalledWith('/opt/usr/home/owner/content/downloads/video.mp4');
       expect(avplayPlay).toHaveBeenCalled();
-      expect(document.querySelector('#status-communication')?.textContent).toContain('DB: 실패');
+      expect(document.querySelector('#loading-overlay')?.classList.contains('loading-overlay--hidden')).toBe(true);
+      expect(document.querySelector('#loading-overlay')?.classList.contains('loading-overlay--error')).toBe(false);
+    } finally {
+      app.destroy();
+    }
+  });
+
+  it('온라인 통신 초기화 중에도 저장된 콘텐츠를 바로 재생한다', async () => {
+    const avplayPlay = vi.fn();
+    const avplay = createPlayer(avplayPlay);
+    let completeBootstrap: () => void = () => undefined;
+    let markBootstrapStarted: () => void = () => undefined;
+    const bootstrapStarted = new Promise<void>((resolve) => {
+      markBootstrapStarted = resolve;
+    });
+    bootstrapCommunicationSettingsMock.mockImplementation(() => {
+      markBootstrapStarted();
+      return new Promise<void>((resolve) => {
+        completeBootstrap = resolve;
+      });
+    });
+    window.webapis = {
+      ...createWebApis(avplay),
+      network: {
+        isConnectedToGateway: () => true,
+      },
+    };
+
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        managerAddress: 'turtlesrv.ddns.net',
+        remoteStreamingGatewayUrl: '',
+        manifestUrl: '',
+      },
+      hudInitiallyVisible: false,
+    });
+
+    try {
+      const startPromise = app.start();
+      await startPromise;
+      await bootstrapStarted;
+
+      expect(avplayPlay).toHaveBeenCalled();
+      expect(document.querySelector('#loading-overlay')?.classList.contains('loading-overlay--hidden')).toBe(true);
+      expect(document.querySelector('#loading-db-status')?.textContent).toBe('확인중');
+
+      completeBootstrap();
+    } finally {
+      app.destroy();
+    }
+  });
+
+  it('복구 오류를 기록해도 일반 오버레이를 표시하지 않는다', async () => {
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        managerAddress: '',
+        remoteStreamingGatewayUrl: '',
+        manifestUrl: '',
+      },
+      hudInitiallyVisible: false,
+    });
+
+    try {
+      await app.start();
+      (app as unknown as {
+        showLoading(title: string, message: string, error?: boolean): void;
+      }).showLoading('플레이어 오류', '복구 상태 기록', true);
+
+      expect(document.querySelector('#loading-overlay')?.classList.contains('loading-overlay--hidden')).toBe(true);
+      expect(document.querySelector('#loading-overlay')?.classList.contains('loading-overlay--error')).toBe(false);
+      expect(document.querySelector('#debug-hud')?.classList.contains('debug-hud--hidden')).toBe(true);
+    } finally {
+      app.destroy();
+    }
+  });
+
+  it('SSSP 게이트웨이가 연결된 뒤에만 온라인 통신을 시작한다', async () => {
+    vi.useFakeTimers();
+    const avplayPlay = vi.fn();
+    const avplay = createPlayer(avplayPlay);
+    let gatewayConnected = false;
+    window.webapis = {
+      ...createWebApis(avplay),
+      network: {
+        isConnectedToGateway: () => gatewayConnected,
+      },
+    };
+    bootstrapCommunicationSettingsMock.mockRejectedValue(new Error('server unavailable'));
+
+    const localManifest = createManifest();
+    localManifest.pages[0]!.PIC_Elements![0]!.EIF_ContentsInfoClassList![0]!.CIF_FileFullPath = 'downloads/video.mp4';
+    window.tizen = {
+      filesystem: {
+        toURI: (path) => `file:///opt/usr/home/owner/content/${path}`,
+        pathExists: () => true,
+      },
+    };
+    const app = new NewHyOnPlayerApp({
+      manifest: localManifest,
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        managerAddress: 'turtlesrv.ddns.net',
+        remoteStreamingGatewayUrl: '',
+        manifestUrl: '',
+      },
+      hudInitiallyVisible: false,
+    });
+
+    try {
+      await app.start();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(avplayPlay).toHaveBeenCalled();
+      expect(bootstrapCommunicationSettingsMock).not.toHaveBeenCalled();
+
+      gatewayConnected = true;
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(bootstrapCommunicationSettingsMock).toHaveBeenCalledTimes(1);
+      expect(document.querySelector('#loading-overlay')?.classList.contains('loading-overlay--error')).toBe(false);
+    } finally {
+      app.destroy();
+    }
+  });
+
+  it('SSSP 게이트웨이가 끊겨도 로컬 재생을 유지하고 온라인 서비스만 중지한다', async () => {
+    const avplayPlay = vi.fn();
+    const heartbeatDispose = vi.fn();
+    const commandDispose = vi.fn();
+    const streamingStop = vi.fn();
+    window.webapis = {
+      ...createWebApis(createPlayer(avplayPlay)),
+      network: {
+        isConnectedToGateway: () => false,
+      },
+    };
+
+    const app = new NewHyOnPlayerApp({
+      manifest: createManifest(),
+      settings: {
+        ...DEFAULT_PLAYER_SETTINGS,
+        managerAddress: '',
+        remoteStreamingGatewayUrl: '',
+        manifestUrl: '',
+      },
+      hudInitiallyVisible: false,
+    });
+
+    try {
+      await app.start();
+      const internals = app as unknown as {
+        communication: object | null;
+        onlineServicesStarted: boolean;
+        heartbeatReporter: { dispose(): void } | null;
+        remoteCommandService: { dispose(): void } | null;
+        remoteStreamingService: { stop(): void } | null;
+        monitorNetworkConnection(): void;
+      };
+      internals.communication = {};
+      internals.onlineServicesStarted = true;
+      internals.heartbeatReporter = { dispose: heartbeatDispose };
+      internals.remoteCommandService = { dispose: commandDispose };
+      internals.remoteStreamingService = { stop: streamingStop };
+
+      internals.monitorNetworkConnection();
+
+      expect(avplayPlay).toHaveBeenCalled();
+      expect(document.querySelector('.slot')).not.toBeNull();
+      expect(heartbeatDispose).toHaveBeenCalledTimes(1);
+      expect(commandDispose).toHaveBeenCalledTimes(1);
+      expect(streamingStop).toHaveBeenCalledTimes(1);
+      expect(internals.communication).toBeNull();
+      expect(internals.onlineServicesStarted).toBe(false);
     } finally {
       app.destroy();
     }
@@ -715,7 +894,7 @@ describe('NewHyOnPlayerApp', () => {
     app.destroy();
   });
 
-  it('미인증 상태로 전환되면 기존 콘텐츠를 정리하고 Tizen 인트로만 반복 재생한다', async () => {
+  it('인증 확인에 실패해도 기존 콘텐츠를 유지하고 재시도를 예약한다', async () => {
     const play = vi.fn();
     const open = vi.fn();
     window.webapis = createWebApis({
@@ -743,16 +922,14 @@ describe('NewHyOnPlayerApp', () => {
     expect(play).toHaveBeenCalledTimes(1);
 
     await (app as unknown as {
-      enterUnauthenticatedIntroPlayback(detail: string, startIfOnAir: boolean): Promise<void>;
-    }).enterUnauthenticatedIntroPlayback('사용자가 LicenseHub 인증을 취소했습니다.', true);
+      retainContentDuringAuthenticationRecovery(detail: string, startIfOnAir: boolean): void;
+    }).retainContentDuringAuthenticationRecovery('사용자가 LicenseHub 인증을 취소했습니다.', true);
 
-    const introVideo = document.querySelector<HTMLVideoElement>('.empty-intro-video');
-    expect(document.querySelector('#status-playlist')?.textContent).toBe('Tizen Intro');
-    expect(document.querySelector('#status-auth')?.textContent).toContain('unauthenticated');
-    expect(document.querySelector('.slot')).toBeNull();
-    expect(introVideo).not.toBeNull();
-    expect(introVideo?.loop).toBe(true);
-    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('#status-playlist')?.textContent).toBe('playlist');
+    expect(document.querySelector('#status-auth')?.textContent).toContain('unavailable');
+    expect(document.querySelector('.slot')).not.toBeNull();
+    expect(document.querySelector('.empty-intro-video')).toBeNull();
+    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
     expect(open).toHaveBeenCalledTimes(1);
     app.destroy();
   });
@@ -780,12 +957,6 @@ describe('NewHyOnPlayerApp', () => {
     });
 
     await app.start();
-    await (app as unknown as {
-      enterUnauthenticatedIntroPlayback(detail: string, startIfOnAir: boolean): Promise<void>;
-    }).enterUnauthenticatedIntroPlayback('LicenseHub 인증이 완료되지 않았습니다.', true);
-    expect(document.querySelector('#status-playlist')?.textContent).toBe('Tizen Intro');
-    expect(document.querySelector('.empty-intro-video')).not.toBeNull();
-
     const validateStoredOrBootstrap = vi.fn(async () => validAuthState('ONLINE'));
     const appInternals = app as unknown as {
       authService: LicenseHubAuthService;
@@ -802,8 +973,8 @@ describe('NewHyOnPlayerApp', () => {
     expect(document.querySelector('#status-auth')?.textContent).toContain('authenticated');
     expect(document.querySelector('.empty-intro-video')).toBeNull();
     expect(document.querySelector('.slot')).not.toBeNull();
-    expect(open).toHaveBeenCalledTimes(2);
-    expect(play).toHaveBeenCalledTimes(2);
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(play).toHaveBeenCalledTimes(1);
     app.destroy();
   });
 

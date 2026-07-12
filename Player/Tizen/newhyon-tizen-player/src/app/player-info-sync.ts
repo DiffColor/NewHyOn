@@ -52,7 +52,7 @@ interface HorizonClient {
 export async function syncPlayerInfoMessage(options: PlayerInfoSyncOptions): Promise<void> {
   const playerGuid = options.playerGuid.trim();
   if (!playerGuid) {
-    throw new Error('플레이어 GUID가 비어 있어 PlayerInfoManager를 동기화할 수 없습니다.');
+    throw new Error('기기 식별자가 없어 기기 정보를 동기화할 수 없습니다.');
   }
 
   const endpoint = parseRethinkEndpoint(options.managerAddress);
@@ -65,7 +65,7 @@ export async function syncPlayerInfoMessage(options: PlayerInfoSyncOptions): Pro
   try {
     const existing = await fetchPlayerInfo(horizon, playerGuid);
     if (!existing) {
-      throw new Error(`PlayerInfoManager에서 플레이어를 찾지 못했습니다: ${playerGuid}`);
+      throw new Error(`등록된 기기 정보를 찾지 못했습니다: ${playerGuid}`);
     }
 
     const authMarker = buildAuthMarkerForRemote(options.authState);
@@ -85,7 +85,7 @@ export async function syncPlayerInfoMessage(options: PlayerInfoSyncOptions): Pro
     await firstFromObservable(
       horizon(PLAYER_INFO_TABLE).update(payload),
       HORIZON_WRITE_TIMEOUT_MS,
-      'Horizon PlayerInfoManager 업데이트 시간이 초과되었습니다.',
+      '기기 정보 업데이트 시간이 초과되었습니다.',
     );
   } finally {
     horizon.disconnect();
@@ -96,7 +96,7 @@ async function fetchPlayerInfo(horizon: HorizonClient, playerGuid: string): Prom
   const record = await firstFromObservable<unknown>(
     horizon(PLAYER_INFO_TABLE).find(playerGuid).fetch(),
     HORIZON_WRITE_TIMEOUT_MS,
-    'Horizon PlayerInfoManager 조회 시간이 초과되었습니다.',
+    '기기 정보 조회 시간이 초과되었습니다.',
   );
   return record && typeof record === 'object' ? record as PlayerInfoRecord : null;
 }

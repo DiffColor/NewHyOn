@@ -8,7 +8,7 @@ const distDir = path.join(sampleRoot, 'dist');
 const outputName = 'NewHyOnTizenPlayer';
 const extensionProjectDir = path.join(sampleRoot, outputName);
 const legacyExtensionProjectDir = path.join(sampleRoot, 'Player');
-const buildType = process.env.NEWHYON_TIZEN_BUILD_TYPE ?? 'Debug';
+const buildType = process.env.NEWHYON_TIZEN_BUILD_TYPE ?? 'Release';
 
 if (!['Debug', 'Release', 'Test'].includes(buildType)) {
   throw new Error(`지원하지 않는 Tizen build type입니다: ${buildType}`);

@@ -2,7 +2,7 @@ import type { ContentsInfoClass, ElementInfoClass, PageInfoClass, PlayerManifest
 
 const DOWNLOAD_ROOT = 'downloads';
 const TIZEN_IMAGE_REMOTE_DIR = 'Contents/tizen';
-const FTP_DOWNLOADER_APP_ID = 'NewHyOnFtpD01.Downloader';
+const FTP_DOWNLOADER_APP_ID = 'NewHyOnT01.NewHyOnFtpDownloader';
 const FTP_DOWNLOAD_OPERATION = 'http://turtlelab.co.kr/appcontrol/newhyon/ftp-download';
 const FTP_DOWNLOAD_TIMEOUT_MS = 60000;
 const TIZEN_DOWNLOAD_TIMEOUT_MS = 60000;

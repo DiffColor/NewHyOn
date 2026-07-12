@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -31,5 +31,13 @@ describe('config.xml', () => {
     expect(config).not.toContain('nado.local');
     expect(config).toContain('id="NewHyOnT01.Player"');
     expect(config).toContain('package="NewHyOnT01"');
+  });
+
+  it('Tizen 앱 목록에 NewHyOn 아이콘과 표시명을 사용한다', () => {
+    const config = readFileSync(resolve(projectRoot, 'public/config.xml'), 'utf8');
+
+    expect(config).toContain('<icon src="newhyon-logo.png" />');
+    expect(config).toContain('<name>NewHyOn Player</name>');
+    expect(existsSync(resolve(projectRoot, 'public/newhyon-logo.png'))).toBe(true);
   });
 });

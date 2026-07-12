@@ -172,7 +172,7 @@ export async function resolvePlayerIdentityOnce(
   });
   const identity = await synchronizer.ensurePlayerIdentity(true);
   if (!identity?.playerGuid) {
-    throw new Error(`Horizon PlayerInfoManager에서 플레이어 GUID를 동기화하지 못했습니다: ${playerName.trim()}`);
+    throw new Error(`등록된 기기 식별자를 확인하지 못했습니다: ${playerName.trim()}`);
   }
 
   return identity;
@@ -254,7 +254,7 @@ async function fetchPlayerByGuid(horizon: HorizonClient, playerGuid: string): Pr
   const byId = await firstFromObservable<unknown>(
     horizon('PlayerInfoManager').find(playerGuid).fetch(),
     HORIZON_QUERY_TIMEOUT_MS,
-    'Horizon PlayerInfoManager GUID 조회 시간이 초과되었습니다.',
+    '기기 식별자 조회 시간이 초과되었습니다.',
   );
   return byId && typeof byId === 'object' ? byId as PlayerInfoSnapshot : null;
 }
@@ -267,10 +267,10 @@ async function fetchPlayerByName(
   const rows = await firstFromObservable<unknown>(
     horizon('PlayerInfoManager').findAll({ PIF_PlayerName: playerName }).fetch(),
     HORIZON_QUERY_TIMEOUT_MS,
-    'Horizon PlayerInfoManager 이름 조회 시간이 초과되었습니다.',
+    '기기 이름 조회 시간이 초과되었습니다.',
   );
   if (!Array.isArray(rows)) {
-    throw new Error('Horizon PlayerInfoManager 응답 형식이 올바르지 않습니다.');
+    throw new Error('기기 정보 응답 형식이 올바르지 않습니다.');
   }
 
   const candidates = rows

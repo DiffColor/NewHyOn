@@ -7,7 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DIST_DIR="${PROJECT_ROOT}/dist"
 OUTPUT_DIR="${PROJECT_ROOT}/Build"
-OUTPUT_NAME="NewHyOnTizenPlayer.wgt"
+OUTPUT_NAME="${NEWHYON_TIZEN_OUTPUT_NAME:-NewHyOnTizenPlayer.wgt}"
+CONTENT_PATH="${NEWHYON_TIZEN_CONTENT_PATH:-}"
 TMP_DIR="$(mktemp -d)"
 STAGE_DIR="${TMP_DIR}/NewHyOnTizenPlayer"
 TIZEN_PROJECT_FILE="${STAGE_DIR}/.project"
@@ -69,6 +70,20 @@ rsync -a \
   --exclude 'author-signature.xml' \
   --exclude 'signature*.xml' \
   "${DIST_DIR}/" "${STAGE_DIR}/"
+
+if [[ -n "${CONTENT_PATH}" ]]; then
+  if [[ ! "${CONTENT_PATH}" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+    printf '유효하지 않은 Tizen content 경로입니다: %s\n' "${CONTENT_PATH}" >&2
+    exit 1
+  fi
+
+  CONTENT_PATH="${CONTENT_PATH}" perl -0pi -e 's{<content\s+src="[^"]+"\s*(?:/>|></content>)}{<content src="$ENV{CONTENT_PATH}"></content>}' "${STAGE_DIR}/config.xml"
+
+  CONTENT_DIR="${CONTENT_PATH%/*}"
+  if [[ "${CONTENT_DIR}" != "${CONTENT_PATH}" ]]; then
+    CONTENT_DIR="${CONTENT_DIR}" perl -0pi -e 's{(<icon\s+src=")([^"]+)("\s*(?:/>|></icon>))}{$1 . $ENV{CONTENT_DIR} . "/" . $2 . $3}e' "${STAGE_DIR}/config.xml"
+  fi
+fi
 
 cat > "${TIZEN_PROJECT_FILE}" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>

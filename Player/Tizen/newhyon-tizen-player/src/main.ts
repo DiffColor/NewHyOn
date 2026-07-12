@@ -49,16 +49,9 @@ async function bootstrap(): Promise<void> {
     const state = document.querySelector('#status-state');
     const statusMessage = document.querySelector('#status-message');
     const loadingOverlay = document.querySelector('#loading-overlay');
-    const loadingTitle = document.querySelector('#loading-title');
-    const loadingMessage = document.querySelector('#loading-message');
-    const hud = document.querySelector('#debug-hud');
     state && (state.textContent = 'error');
     statusMessage && (statusMessage.textContent = message);
-    loadingTitle && (loadingTitle.textContent = '플레이어 오류');
-    loadingMessage && (loadingMessage.textContent = message);
-    loadingOverlay?.classList.remove('loading-overlay--hidden');
-    loadingOverlay?.classList.add('loading-overlay--error');
-    hud?.classList.remove('debug-hud--hidden');
+    loadingOverlay?.classList.add('loading-overlay--hidden');
     console.error(message);
   }
 }
