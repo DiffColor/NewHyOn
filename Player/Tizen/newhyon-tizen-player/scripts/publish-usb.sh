@@ -93,10 +93,17 @@ cp "${HYBRID_WGT}" "${PUBLISH_WGT}"
 cp "${TPK_PARTNER}" "${PUBLISH_TPK}"
 
 WGT_SIZE_KB="$(du -k "${PUBLISH_WGT}" | awk '{print $1}')"
+WIDGET_VERSION="$(unzip -p "${PUBLISH_WGT}" config.xml | perl -ne 'if (/<widget\b[^>]*\bversion="([0-9]+\.[0-9]+\.[0-9]+)"/) { print $1; exit }')"
+
+[[ -n "${WIDGET_VERSION}" ]] || {
+  printf 'WGT config.xml에서 앱 버전을 읽지 못했습니다.\n' >&2
+  exit 1
+}
+
 cat > "${PUBLISH_DIR}/sssp_config.xml" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <widget>
-    <ver>1.0.6</ver>
+    <ver>${WIDGET_VERSION}</ver>
     <size>${WGT_SIZE_KB}</size>
     <widgetname>NewHyOnTizenPlayer</widgetname>
     <webtype>tizen</webtype>

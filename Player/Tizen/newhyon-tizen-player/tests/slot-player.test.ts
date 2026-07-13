@@ -156,6 +156,24 @@ describe('SlotPlayer', () => {
     expect(element.classList.contains('slot--video-active')).toBe(false);
   });
 
+  it('초기 화면 대기 재생은 영상 첫 프레임 대기를 AVPlay에 전달한다', async () => {
+    const element = document.createElement('section');
+    const play = vi.fn(async (..._args: unknown[]) => undefined);
+    const session = {
+      play,
+      pause: vi.fn(),
+      resume: vi.fn(),
+      stop: vi.fn(),
+      state: vi.fn(() => 'PLAYING'),
+      applyDisplayRect: vi.fn(),
+    } as unknown as AvplaySession;
+    const slot = new SlotPlayer(0, element, createVideoSlot(), false, false, () => session, new RingLogger(5));
+
+    await slot.switchToSlotPlan(createVideoSlot(), 1920, 1080, { waitForContentVisible: true });
+
+    expect(play.mock.calls[0]?.[5]).toMatchObject({ waitForFirstFrame: true });
+  });
+
   it('단일 콘텐츠는 재생 시간이 지나도 같은 콘텐츠를 다시 열지 않는다', async () => {
     vi.useFakeTimers();
     const play = vi.fn(async (..._args: unknown[]) => undefined);

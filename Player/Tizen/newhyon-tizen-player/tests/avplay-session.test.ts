@@ -1194,7 +1194,7 @@ describe('AvplaySession', () => {
     expect(playerB.open).toHaveBeenCalledTimes(1);
   });
 
-  it('첫 프레임 대기 옵션이 들어와도 샘플 흐름처럼 play 직후 완료한다', async () => {
+  it('첫 프레임 대기 옵션은 oncurrentplaytime 이후에만 완료한다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
     const listenerRef: { current: AVPlayListener | null } = { current: null };
@@ -1210,20 +1210,21 @@ describe('AvplaySession', () => {
       onError: vi.fn(),
     });
 
-    await expect(session.play(
+    const playPromise = session.play(
       createVideoItem('ready.mp4'),
       createSlotPlan(),
       document.createElement('section'),
       false,
       vi.fn(),
       { waitForFirstFrame: true },
-    )).resolves.toEqual({ durationMs: null });
+    );
     expect(playerA.play).toHaveBeenCalledTimes(1);
     expect(laneA.style.visibility).toBe('visible');
     listenerRef.current?.oncurrentplaytime?.(0);
+    await expect(playPromise).resolves.toEqual({ durationMs: null });
   });
 
-  it('첫 프레임 이벤트가 없어도 play 직후 영상을 표출한다', async () => {
+  it('첫 프레임 대기 없이 재생하면 play 직후 완료한다', async () => {
     vi.useFakeTimers();
     const playerA = createPlayer();
     const playerB = createPlayer();
@@ -1242,12 +1243,12 @@ describe('AvplaySession', () => {
       document.createElement('section'),
       false,
       vi.fn(),
-      { waitForFirstFrame: true },
+      { waitForFirstFrame: false },
     )).resolves.toEqual({ durationMs: null });
     expect(laneA.style.visibility).toBe('visible');
   });
 
-  it('첫 프레임 대기 중 AVPlay 오류가 와도 재생 중인 영상을 강제로 표출한다', async () => {
+  it('첫 프레임 대기 중 AVPlay 오류가 오면 재생 준비를 실패로 처리한다', async () => {
     const playerA = createPlayer();
     const playerB = createPlayer();
     const laneA = document.createElement('object');
@@ -1275,11 +1276,11 @@ describe('AvplaySession', () => {
     await Promise.resolve();
 
     listenerRef.current?.onerror?.({ message: 'decode delayed' });
-    await expect(playPromise).resolves.toEqual({ durationMs: null });
+    await expect(playPromise).rejects.toThrow('decode delayed');
 
     expect(onError).toHaveBeenCalledTimes(1);
     expect(playerA.play).toHaveBeenCalledTimes(1);
-    expect(laneA.style.visibility).toBe('visible');
+    expect(laneA.style.visibility).toBe('hidden');
   });
 
   it('display rect 적용이 실패해도 AVPlay 재생은 계속 진행한다', async () => {

@@ -23,7 +23,12 @@ if ! unzip -Z1 "${PACKAGE_PATH}" | rg -Fxq "${CONTENT_PATH}"; then
   exit 1
 fi
 
-if [[ -z "${ICON_PATH}" ]] || ! unzip -Z1 "${PACKAGE_PATH}" | rg -Fxq "${ICON_PATH}"; then
+if [[ "${ICON_PATH}" != "newhyon-app-icon.png" ]]; then
+  printf '하이브리드 WGT 런처 아이콘 경로가 올바르지 않습니다: %s\n' "${ICON_PATH:-없음}" >&2
+  exit 1
+fi
+
+if ! unzip -Z1 "${PACKAGE_PATH}" | rg -Fxq "${ICON_PATH}"; then
   printf '하이브리드 WGT 아이콘 파일이 없습니다: %s\n' "${ICON_PATH:-없음}" >&2
   exit 1
 fi

@@ -57,6 +57,12 @@ interface PreparedLaneMetadata {
   readonly playbackMode: AvplayLanePlaybackMode;
 }
 
+interface FirstFrameWaiter {
+  readonly itemName: string;
+  readonly resolve: () => void;
+  readonly reject: (error: Error) => void;
+}
+
 export interface AvplayPlayOptions {
   readonly waitForFirstFrame?: boolean;
   readonly preparedRoles?: readonly AvplayPreparedRole[];
@@ -81,6 +87,7 @@ export class AvplaySessionPair {
   private heldLaneIndex: number | null = null;
   private lastPlaybackLaneIndex: number | null = null;
   private readonly preparedLanes = new Map<AvplayPreparedRole, PreparedLaneMetadata>();
+  private readonly firstFrameWaiters = new Map<number, FirstFrameWaiter>();
   private displayContext: DisplayContext | null = null;
   private traceSeq = 0;
   private operationSeq = 0;
@@ -121,7 +128,6 @@ export class AvplaySessionPair {
       ? this.currentLaneIndex === 0 ? 1 : 0
       : this.lastPlaybackLaneIndex === 0 ? 1 : 0;
     const lane = this.lanes[nextLaneIndex];
-    void options;
     let stillLaneToRelease: number | null = null;
     try {
       const previousCurrentLaneIndex = this.currentLaneIndex;
@@ -160,6 +166,9 @@ export class AvplaySessionPair {
       this.applyDisplayRectToLane(nextLaneIndex, slot, slotElement);
       this.applyLaneAudioState(nextLaneIndex, slot.isMuted, 'play.audio', item.name);
       this.assertOperationCurrent(operationId, nextLaneIndex, 'play.beforePlay', item.name);
+      const firstFrame = options.waitForFirstFrame === true
+        ? this.waitForFirstPlaybackFrame(nextLaneIndex, item.name)
+        : null;
       this.callLane(nextLaneIndex, 'play', () => {
         lane.player.play();
       }, item.name);
@@ -183,6 +192,9 @@ export class AvplaySessionPair {
         this.clearPreparedRole('next-content');
       }
       this.updateObjectVisibility();
+      if (firstFrame) {
+        await firstFrame;
+      }
       return { durationMs: null };
     } catch (error) {
       if (stillLaneToRelease !== null) {
@@ -493,6 +505,7 @@ export class AvplaySessionPair {
         const runtime = this.laneRuntimeStates[laneIndex];
         runtime.callbackCurrentTimeMs = Math.round(currentTime);
         runtime.callbackCurrentTimeAtMs = performance.now();
+        this.resolveFirstFrameWaiter(laneIndex);
       },
       onstreamcompleted: () => {
         this.laneRuntimeStates[laneIndex].lastStreamCompletedAt = new Date().toISOString();
@@ -502,12 +515,14 @@ export class AvplaySessionPair {
       onerror: (error) => {
         const message = `slot ${this.index} lane ${laneIndex + 1} AVPlay 오류: ${formatAvplayError(error, '')}`;
         this.laneRuntimeStates[laneIndex].lastError = message;
+        this.rejectFirstFrameWaiter(laneIndex, message);
         this.logger.error('avplay-trace', `event onerror slot ${this.index} lane ${laneIndex + 1} state=${this.laneState(laneIndex)} ${this.traceContext()} error=${formatAvplayError(error, '')}`);
         this.events.onError(message);
       },
       onerrormsg: (error, message) => {
         const errorMessage = `slot ${this.index} lane ${laneIndex + 1} AVPlay 오류: ${formatAvplayError(error, message)}`;
         this.laneRuntimeStates[laneIndex].lastError = errorMessage;
+        this.rejectFirstFrameWaiter(laneIndex, errorMessage);
         this.logger.error('avplay-trace', `event onerrormsg slot ${this.index} lane ${laneIndex + 1} state=${this.laneState(laneIndex)} ${this.traceContext()} error=${formatAvplayError(error, message)}`);
         this.events.onError(errorMessage);
       },
@@ -563,6 +578,7 @@ export class AvplaySessionPair {
     const message = error === undefined ? reason : `${reason}: ${formatAvplayError(error as AVPlayErrorLike, String(error))}`;
     this.logger.warn('avplay-trace', `slot ${this.index} lane ${laneIndex + 1} reset failed lane ${this.traceContext()}${this.formatTraceDetail(message)}`);
     this.laneRuntimeStates[laneIndex].lastError = message;
+    this.rejectFirstFrameWaiter(laneIndex, message);
     this.clearPreparedMetadataForLane(laneIndex);
     if (this.currentLaneIndex === laneIndex) {
       this.currentLaneIndex = null;
@@ -767,6 +783,7 @@ export class AvplaySessionPair {
     this.callLaneSafe(laneIndex, 'stop', () => {
       lane.player.stop();
     });
+    this.rejectFirstFrameWaiter(laneIndex, `slot ${this.index} lane ${laneIndex + 1} 재생이 중단되었습니다.`);
     this.laneRuntimeStates[laneIndex].audioMuted = null;
     this.laneRuntimeStates[laneIndex].playbackMode = null;
   }
@@ -1101,6 +1118,34 @@ export class AvplaySessionPair {
       lane.objectElement.style.visibility = shouldShow ? 'visible' : 'hidden';
       lane.objectElement.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
     });
+  }
+
+  private waitForFirstPlaybackFrame(laneIndex: number, itemName: string): Promise<void> {
+    this.rejectFirstFrameWaiter(laneIndex, `slot ${this.index} lane ${laneIndex + 1} 첫 프레임 대기가 교체되었습니다.`);
+    return new Promise((resolve, reject) => {
+      this.firstFrameWaiters.set(laneIndex, { itemName, resolve, reject });
+    });
+  }
+
+  private resolveFirstFrameWaiter(laneIndex: number): void {
+    const waiter = this.firstFrameWaiters.get(laneIndex);
+    if (!waiter) {
+      return;
+    }
+
+    this.firstFrameWaiters.delete(laneIndex);
+    this.logger.info('avplay', `slot ${this.index} lane ${laneIndex + 1} 첫 프레임 확인: ${waiter.itemName}`);
+    waiter.resolve();
+  }
+
+  private rejectFirstFrameWaiter(laneIndex: number, message: string): void {
+    const waiter = this.firstFrameWaiters.get(laneIndex);
+    if (!waiter) {
+      return;
+    }
+
+    this.firstFrameWaiters.delete(laneIndex);
+    waiter.reject(new Error(message));
   }
 
   private avplayLayerBelowSlot(): number {

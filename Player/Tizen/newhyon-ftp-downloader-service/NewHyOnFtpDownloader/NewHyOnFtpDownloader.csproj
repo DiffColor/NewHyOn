@@ -22,6 +22,12 @@
     <Folder Include="res\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <TizenTpkUserIncludeFiles Include="../../newhyon-tizen-player/public/newhyon-app-icon.png">
+      <TizenTpkFileName>newhyon-app-icon.png</TizenTpkFileName>
+    </TizenTpkUserIncludeFiles>
+  </ItemGroup>
+
   <Target Name="TizenVsixInstallCheck" BeforeTargets="CompileDesignTime">
     <Warning Condition="!Exists('$(TizenProjectExtensionsPath)Tizen.NET.ProjectType.props')" Text="$(TizenProjectExtensionsPath)Tizen.NET.ProjectType.props is not exist.&#xA; you need to check if 'Visual Studio for Tizen' is installed" />
     <Warning Condition="!Exists('$(TizenProjectExtensionsPath)Tizen.NET.ProjectType.targets')" Text="$(TizenProjectExtensionsPath)Tizen.NET.ProjectType.targets is not exist.\&#xA; you need to check if 'Visual Studio for Tizen' is installed" />

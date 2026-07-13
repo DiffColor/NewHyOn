@@ -79,10 +79,6 @@ if [[ -n "${CONTENT_PATH}" ]]; then
 
   CONTENT_PATH="${CONTENT_PATH}" perl -0pi -e 's{<content\s+src="[^"]+"\s*(?:/>|></content>)}{<content src="$ENV{CONTENT_PATH}"></content>}' "${STAGE_DIR}/config.xml"
 
-  CONTENT_DIR="${CONTENT_PATH%/*}"
-  if [[ "${CONTENT_DIR}" != "${CONTENT_PATH}" ]]; then
-    CONTENT_DIR="${CONTENT_DIR}" perl -0pi -e 's{(<icon\s+src=")([^"]+)("\s*(?:/>|></icon>))}{$1 . $ENV{CONTENT_DIR} . "/" . $2 . $3}e' "${STAGE_DIR}/config.xml"
-  fi
 fi
 
 cat > "${TIZEN_PROJECT_FILE}" <<'EOF'

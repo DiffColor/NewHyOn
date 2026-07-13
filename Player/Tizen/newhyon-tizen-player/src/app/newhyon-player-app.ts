@@ -114,6 +114,7 @@ interface PagePlayOptions {
   readonly playbackMode?: PlaybackMode;
   readonly commitPageTimelineBeforeContentSwitch?: boolean;
   readonly preparedRoles?: readonly AvplayPreparedRole[];
+  readonly waitForContentVisible?: boolean;
 }
 
 interface EmptyIntroVideoOptions {
@@ -356,7 +357,7 @@ export class NewHyOnPlayerApp {
       const startupResolution = this.createStartupPagePlans(this.currentContentManifest);
       this.commitPlaybackPlan(startupResolution.pagePlans, startupResolution.mode, 0);
       this.ensureFixedAvplaySessionPairs();
-      await this.applyBroadcastSchedule('startup');
+      await this.applyBroadcastSchedule('startup', { waitForContentVisible: true });
       this.startMasterTimer();
       this.hideLoading();
       void this.startOnlineConnectivity();
@@ -374,7 +375,7 @@ export class NewHyOnPlayerApp {
       const resolution = this.createStartupPagePlans(this.currentContentManifest);
       this.commitPlaybackPlan(resolution.pagePlans, resolution.mode, 0);
       this.ensureFixedAvplaySessionPairs();
-      await this.applyBroadcastSchedule('startup-recovery');
+      await this.applyBroadcastSchedule('startup-recovery', { waitForContentVisible: true });
       this.startMasterTimer();
       this.logger.info('startup', '초기 재생 복구 완료');
     } catch (recoveryError) {
@@ -1765,7 +1766,10 @@ export class NewHyOnPlayerApp {
     }
   }
 
-  private async applyBroadcastSchedule(source: string): Promise<void> {
+  private async applyBroadcastSchedule(
+    source: string,
+    options: { readonly waitForContentVisible?: boolean } = {},
+  ): Promise<void> {
     if (this.destroyed) {
       return;
     }
@@ -1794,7 +1798,7 @@ export class NewHyOnPlayerApp {
     if (!wasOnAir || !this.hasActivePlaybackSurface()) {
       this.logger.info('schedule', `on-air (${source}): ${evaluation.reason}`);
       this.applyPanelMute(false, source);
-      await this.playPage(this.pageIndex);
+      await this.playPage(this.pageIndex, { waitForContentVisible: options.waitForContentVisible === true });
       await this.sendHeartbeatNow();
       return;
     }
@@ -2015,6 +2019,7 @@ export class NewHyOnPlayerApp {
         page,
         options.commitPageTimelineBeforeContentSwitch === true,
         options.preparedRoles,
+        options.waitForContentVisible === true,
       );
       return;
     }
@@ -2093,6 +2098,7 @@ export class NewHyOnPlayerApp {
     page: SeamlessPagePlan,
     commitPageTimelineBeforeContentSwitch: boolean,
     preparedRoles: readonly AvplayPreparedRole[] | undefined,
+    waitForContentVisible: boolean,
   ): Promise<void> {
     this.logger.info('page', `prepare ${page.pageName} (${page.durationSeconds}s, content-set)`);
     this.clearTimers();
@@ -2116,7 +2122,7 @@ export class NewHyOnPlayerApp {
         page.slots[logicalSlotIndex] ?? this.createEmptySlotPlan(logicalSlotIndex, page),
         page.canvasWidth,
         page.canvasHeight,
-        { preparedRoles },
+        { preparedRoles, waitForContentVisible },
       );
     }));
     if (switchResults.some((started) => !started)) {

@@ -138,7 +138,10 @@ export class SlotPlayer {
     slot: SeamlessSlotPlan,
     canvasWidth: number,
     canvasHeight: number,
-    options: { readonly preparedRoles?: readonly AvplayPreparedRole[] } = {},
+    options: {
+      readonly preparedRoles?: readonly AvplayPreparedRole[];
+      readonly waitForContentVisible?: boolean;
+    } = {},
   ): Promise<boolean> {
     const previousSlot = this.slot;
     const previousItemIndex = this.itemIndex;
@@ -179,6 +182,7 @@ export class SlotPlayer {
     const started = await this.showCurrentItemAtElapsed(0, {
       preserveCurrentOnFailure: true,
       preparedRoles: options.preparedRoles,
+      waitForContentVisible: options.waitForContentVisible,
     });
     if (!started) {
       this.slot = previousSlot;
@@ -517,6 +521,7 @@ export class SlotPlayer {
     options: {
       readonly preserveCurrentOnFailure?: boolean;
       readonly preparedRoles?: readonly AvplayPreparedRole[];
+      readonly waitForContentVisible?: boolean;
     } = {},
   ): Promise<boolean> {
     const generation = this.nextContentGeneration();
@@ -540,6 +545,7 @@ export class SlotPlayer {
           deferPrepareNextUntilImagePaint = true;
         } else {
           await this.showImage(item, {
+            waitForVisiblePaint: options.waitForContentVisible === true,
             onVisibleApplied: () => {
               this.element.classList.remove('slot--video-active');
             },
@@ -552,7 +558,7 @@ export class SlotPlayer {
         this.element.classList.add('slot--video-active');
         const nextVideoSession = this.videoSession ?? this.getVideoSession();
         const playbackInfo = await nextVideoSession.play(item, this.slot, this.element, this.preserveAspectRatio, () => this.handleVideoEnded(item.id), {
-          waitForFirstFrame: false,
+          waitForFirstFrame: options.waitForContentVisible ?? this.waitForVideoFirstFrame,
           preparedRoles: options.preparedRoles ?? ['next-content'],
         });
         if (!this.isContentGenerationCurrent(generation)) {

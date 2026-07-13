@@ -33,11 +33,15 @@ describe('config.xml', () => {
     expect(config).toContain('package="NewHyOnT01"');
   });
 
-  it('Tizen 앱 목록에 NewHyOn 아이콘과 표시명을 사용한다', () => {
+  it('Tizen 앱 목록에 NewHyOn 패키지 아이콘과 표시명을 사용한다', () => {
     const config = readFileSync(resolve(projectRoot, 'public/config.xml'), 'utf8');
+    const iconPath = resolve(projectRoot, 'public/newhyon-app-icon.png');
+    const iconHeader = readFileSync(iconPath);
 
-    expect(config).toContain('<icon src="newhyon-logo.png" />');
+    expect(config).toContain('<icon src="newhyon-app-icon.png" />');
     expect(config).toContain('<name>NewHyOn Player</name>');
-    expect(existsSync(resolve(projectRoot, 'public/newhyon-logo.png'))).toBe(true);
+    expect(existsSync(iconPath)).toBe(true);
+    expect(iconHeader.readUInt32BE(16)).toBe(128);
+    expect(iconHeader.readUInt32BE(20)).toBe(128);
   });
 });

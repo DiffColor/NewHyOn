@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="https://newhyon.local/tizen-player" version="1.0.6" viewmodes="fullscreen">
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="https://newhyon.local/tizen-player" version="1.0.11" viewmodes="fullscreen">
   <access origin="*" subdomains="true" />
   <feature name="http://tizen.org/feature/tv.inputdevice" required="false" />
   <feature name="http://tizen.org/feature/tv.audio" required="false" />
   <content src="index.html" />
-  <icon src="newhyon-logo.png" />
+  <icon src="newhyon-app-icon.png" />
   <name>NewHyOn Player</name>
   <tizen:application id="NewHyOnT01.Player" package="NewHyOnT01" required_version="7.0" />
   <tizen:profile name="tv-samsung" />
