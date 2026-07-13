@@ -253,6 +253,31 @@ public class LocalSettingsProvider {
         }
     }
 
+    public static boolean updatePifAuthInfo(String authKey, String fingerprint) {
+        ObjectBoxDb storeDb = ObjectBoxDb.getDefaultInstance();
+        try {
+            storeDb.executeTransaction(r -> getOrCreateStoredSettings(r).setUsbAuthKey(authKey == null ? "" : authKey));
+            persistCurrentSettings();
+            return true;
+        } finally {
+            storeDb.close();
+        }
+    }
+
+    public static String getPifAuthKey() {
+        ObjectBoxDb storeDb = ObjectBoxDb.getDefaultInstance();
+        try {
+            StoredLocalSettings settings = findStoredSettings(storeDb);
+            return settings == null || settings.getUsbAuthKey() == null ? "" : settings.getUsbAuthKey();
+        } finally {
+            storeDb.close();
+        }
+    }
+
+    public static String getPifFingerprint() {
+        return "";
+    }
+
     public static String getManagerIp() {
         ObjectBoxDb storeDb = ObjectBoxDb.getDefaultInstance();
         try {

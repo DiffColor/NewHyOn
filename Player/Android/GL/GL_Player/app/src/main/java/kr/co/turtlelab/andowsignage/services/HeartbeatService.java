@@ -192,6 +192,7 @@ public class HeartbeatService extends Service {
         if (TextUtils.isEmpty(clientId)) {
             return;
         }
+        RethinkDbClient.getInstance().syncCurrentDeviceInfo();
         String playerName = resolvePlayerName();
         String status = resolvePlaybackAwareStatus(AndoWSignageApp.state);
         int process = parseProcess(AndoWSignageApp.process);

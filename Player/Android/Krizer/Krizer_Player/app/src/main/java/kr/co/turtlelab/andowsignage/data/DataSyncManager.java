@@ -102,10 +102,10 @@ public class DataSyncManager {
         if (player == null)
             return false;
 
-        String realmPlayerKey = player.getPlayerName();
+        String realmPlayerKey = player.getGuid();
         RethinkModels.WeeklyScheduleRecord weekly = rethinkClient.fetchWeeklySchedule(player.getGuid());
         if (TextUtils.isEmpty(realmPlayerKey)) {
-            realmPlayerKey = player.getGuid();
+            return false;
         }
 
         storeWeeklySchedule(realmPlayerKey, weekly);

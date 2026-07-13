@@ -11,6 +11,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
+import kr.co.turtlelab.andowsignage.AndoWSignage;
 import kr.co.turtlelab.andowsignage.AndoWSignageApp;
 import kr.co.turtlelab.andowsignage.datamodels.WeeklyScheduleDataModel;
 import kr.co.turtlelab.andowsignage.dataproviders.WeeklyScheduleProvider;
@@ -95,13 +96,13 @@ public class PowerService extends Service {
 	
 	public void Sleep() {
 		if(AndoWSignageApp.isSlept == false) {
+			AndoWSignageApp.isSlept = true;
+            AndoWSignageApp.markStoppedState();
 			sendPowerAction(ACTION_REAL_SLEEP);
 			Intent sleepIntent = new Intent();
 			sleepIntent.setAction("andowsignage.intent.action.SLEEP");
 	        ctx.sendBroadcast(sleepIntent);
 		}
-		AndoWSignageApp.isSlept = true;
-        AndoWSignageApp.markStoppedState();
 	}
 	
 	public void WakeUp() {
@@ -113,7 +114,21 @@ public class PowerService extends Service {
 			Intent wakeupIntent = new Intent();
 			wakeupIntent.setAction("andowsignage.intent.action.WAKEUP");
 			ctx.sendBroadcast(wakeupIntent);
+			resumePlaybackAfterWakeUp();
 		}
+	}
+
+	private void resumePlaybackAfterWakeUp() {
+		final AndoWSignage player = AndoWSignage.act;
+		if (player == null) {
+			return;
+		}
+		player.runOnUiThread(new Runnable() {
+			@Override
+			public void run() {
+				player.updateAndRestart(true);
+			}
+		});
 	}
 
 	private void sendPowerAction(String action) {

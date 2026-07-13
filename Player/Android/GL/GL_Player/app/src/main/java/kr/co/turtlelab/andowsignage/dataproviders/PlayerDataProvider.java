@@ -9,7 +9,6 @@ import kr.co.turtlelab.andowsignage.data.realm.RealmPlayer;
 import kr.co.turtlelab.andowsignage.data.rethink.RethinkDbClient;
 import kr.co.turtlelab.andowsignage.datamodels.LocalSettingsModel;
 import kr.co.turtlelab.andowsignage.datamodels.PlayerDataModel;
-import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
 
 public class PlayerDataProvider {
 
@@ -18,6 +17,7 @@ public class PlayerDataProvider {
     public static final String KEY_ENABLE_MANUAL_IP = "is_manual";
     public static final String KEY_MANUAL_IP = "manual_ip";
     public static final String KEY_KEEP_RATIO = "keepratio";
+    private static final String LEGACY_LOCAL_PLAYER_ID = "local_player";
 
     private PlayerDataProvider() {
     }
@@ -28,6 +28,16 @@ public class PlayerDataProvider {
         Realm realm = Realm.getDefaultInstance();
         try {
             RealmPlayer realmPlayer = realm.where(RealmPlayer.class).findFirst();
+            if (isLegacyLocalPlayer(realmPlayer)) {
+                if (migrateLegacyLocalPlayerAuth(realmPlayer)) {
+                    realm.executeTransaction(r -> r.where(RealmPlayer.class)
+                            .equalTo("playerId", LEGACY_LOCAL_PLAYER_ID)
+                            .findAll()
+                            .deleteAllFromRealm());
+                    RethinkDbClient.getInstance().invalidateDeviceInfoSync();
+                }
+                realmPlayer = null;
+            }
             if (realmPlayer != null) {
                 playerData.setPlayerId(realmPlayer.getPlayerId());
                 String name = realmPlayer.getPlayerName();
@@ -82,23 +92,18 @@ public class PlayerDataProvider {
     }
 
     public static boolean updatePlayerAuthInfo(String authKey, String fingerprint) {
+        if (!saveAuthInfo(authKey, fingerprint)) {
+            return false;
+        }
         Realm realm = Realm.getDefaultInstance();
         try {
             realm.executeTransaction(r -> {
                 RealmPlayer player = r.where(RealmPlayer.class).findFirst();
-                if (player == null) {
-                    String playerId = AndoWSignageApp.PLAYER_ID;
-                    if (TextUtils.isEmpty(playerId)) {
-                        playerId = "local_player";
-                    }
-                    player = r.createObject(RealmPlayer.class, playerId);
-                    player.setPlayerName(playerId);
+                if (isLegacyLocalPlayer(player)) {
+                    player.deleteFromRealm();
                 }
-                String normalizedAuthKey = authKey == null ? "" : authKey;
-                String normalizedFingerprint = fingerprint == null ? "" : fingerprint;
-                player.setPifAuthKey(normalizedAuthKey);
-                player.setPifFingerprint(normalizedFingerprint);
             });
+            RethinkDbClient.getInstance().invalidateDeviceInfoSync();
             return true;
         } catch (Throwable ignored) {
             return false;
@@ -108,20 +113,46 @@ public class PlayerDataProvider {
     }
 
     public static String getPlayerAuthKey() {
+        String stored = LocalSettingsProvider.getPifAuthKey();
+        if (!TextUtils.isEmpty(stored)) {
+            return stored;
+        }
         Realm realm = Realm.getDefaultInstance();
         try {
             RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
-            return player == null || player.getPifAuthKey() == null ? "" : player.getPifAuthKey();
+            if (player == null || player.getPifAuthKey() == null) {
+                return "";
+            }
+            String authKey = player.getPifAuthKey();
+            String fingerprint = player.getPifFingerprint();
+            if (saveAuthInfo(authKey, fingerprint) && isLegacyLocalPlayer(player)) {
+                realm.executeTransaction(r -> r.where(RealmPlayer.class).equalTo("playerId", LEGACY_LOCAL_PLAYER_ID).findAll().deleteAllFromRealm());
+                RethinkDbClient.getInstance().invalidateDeviceInfoSync();
+            }
+            return authKey;
         } finally {
             realm.close();
         }
     }
 
     public static String getPlayerAuthFingerprint() {
+        String stored = LocalSettingsProvider.getPifFingerprint();
+        if (!TextUtils.isEmpty(stored)) {
+            return stored;
+        }
         Realm realm = Realm.getDefaultInstance();
         try {
             RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
-            return player == null || player.getPifFingerprint() == null ? "" : player.getPifFingerprint();
+            if (player == null || player.getPifFingerprint() == null) {
+                return "";
+            }
+            String authKey = player.getPifAuthKey();
+            String fingerprint = player.getPifFingerprint();
+            if (saveAuthInfo(authKey, fingerprint) && isLegacyLocalPlayer(player)) {
+                realm.executeTransaction(r -> r.where(RealmPlayer.class).equalTo("playerId", LEGACY_LOCAL_PLAYER_ID).findAll().deleteAllFromRealm());
+                RethinkDbClient.getInstance().invalidateDeviceInfoSync();
+            }
+            return fingerprint;
         } finally {
             realm.close();
         }
@@ -144,5 +175,32 @@ public class PlayerDataProvider {
             }
         });
         realm.close();
+    }
+
+    public static boolean isLegacyLocalPlayerId(String playerId) {
+        return LEGACY_LOCAL_PLAYER_ID.equalsIgnoreCase(playerId == null ? "" : playerId.trim());
+    }
+
+    private static boolean isLegacyLocalPlayer(RealmPlayer player) {
+        return player != null && isLegacyLocalPlayerId(player.getPlayerId());
+    }
+
+    private static boolean migrateLegacyLocalPlayerAuth(RealmPlayer player) {
+        if (player == null) {
+            return false;
+        }
+        String authKey = LocalSettingsProvider.getPifAuthKey();
+        String fingerprint = LocalSettingsProvider.getPifFingerprint();
+        if (TextUtils.isEmpty(authKey)) {
+            authKey = player.getPifAuthKey();
+        }
+        if (TextUtils.isEmpty(fingerprint)) {
+            fingerprint = player.getPifFingerprint();
+        }
+        return saveAuthInfo(authKey, fingerprint);
+    }
+
+    private static boolean saveAuthInfo(String authKey, String fingerprint) {
+        return LocalSettingsProvider.updatePifAuthInfo(authKey, fingerprint);
     }
 }

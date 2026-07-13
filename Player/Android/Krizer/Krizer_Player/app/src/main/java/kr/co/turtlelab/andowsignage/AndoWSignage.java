@@ -1480,6 +1480,11 @@ public class AndoWSignage extends Activity {
 
 	TurtleVideoView vv;
 	public void showInitAnim() {
+		if (AndoWSignageApp.isSlept) {
+			stopAnim();
+			hidePageContainers();
+			return;
+		}
 		hidePageContainers();
 		if (vv != null) {
 			vv.bringToFront();
@@ -2745,6 +2750,10 @@ public class AndoWSignage extends Activity {
 	void popPage() {
 
 		try {
+			if (AndoWSignageApp.isSlept) {
+				stopAndRemoveAllViews();
+				return;
+			}
 			boolean forceContentPeriodRefresh = contentPeriodRefreshPending;
 			contentPeriodRefreshPending = false;
 			maybeApplyQueuedUpdate();

@@ -40,6 +40,7 @@ import kr.co.turtlelab.andowsignage.data.DataSyncManager;
 import kr.co.turtlelab.andowsignage.data.realm.RealmPlayer;
 import kr.co.turtlelab.andowsignage.data.update.UpdateQueueContract;
 import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
+import kr.co.turtlelab.andowsignage.dataproviders.PlayerDataProvider;
 import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
 
 /**
@@ -79,6 +80,7 @@ public class RethinkDbClient {
     private final Object deviceInfoLock = new Object();
     private boolean deviceInfoSynced = false;
     private boolean deviceInfoSyncInProgress = false;
+    private long deviceInfoRevision = 0L;
     private boolean forceClearAuthKeyOnce = false;
     private String lastSyncedPlayerGuid = null;
     private boolean guidVerified = false;
@@ -907,11 +909,13 @@ public class RethinkDbClient {
     }
 
     private void updateDeviceInfoIfNeeded() {
+        long syncRevision;
         synchronized (deviceInfoLock) {
             if (deviceInfoSynced || deviceInfoSyncInProgress) {
                 return;
             }
             deviceInfoSyncInProgress = true;
+            syncRevision = deviceInfoRevision;
         }
         try {
             String playerId = ensurePlayerGuid();
@@ -925,8 +929,10 @@ public class RethinkDbClient {
                 return;
             }
             synchronized (deviceInfoLock) {
-                deviceInfoSynced = true;
-                lastSyncedPlayerGuid = playerId;
+                if (syncRevision == deviceInfoRevision) {
+                    deviceInfoSynced = true;
+                    lastSyncedPlayerGuid = playerId;
+                }
             }
         } finally {
             synchronized (deviceInfoLock) {
@@ -968,12 +974,29 @@ public class RethinkDbClient {
         }
     }
 
+    public void invalidateDeviceInfoSync() {
+        synchronized (deviceInfoLock) {
+            deviceInfoSynced = false;
+            lastSyncedPlayerGuid = null;
+            deviceInfoRevision++;
+        }
+    }
+
     public String ensurePlayerGuid() {
         String storedPlayerName = getStoredPlayerName();
         if (!TextUtils.isEmpty(storedPlayerName)) {
             return ensurePlayerGuid(storedPlayerName);
         }
-        return ensurePlayerGuid(AndoWSignageApp.PLAYER_ID);
+        String configuredPlayerName = LocalSettingsProvider.getPlayerId();
+        if (!TextUtils.isEmpty(configuredPlayerName)
+                && !PlayerDataProvider.isLegacyLocalPlayerId(configuredPlayerName)) {
+            return ensurePlayerGuid(configuredPlayerName);
+        }
+        String appPlayerName = AndoWSignageApp.PLAYER_ID;
+        if (PlayerDataProvider.isLegacyLocalPlayerId(appPlayerName)) {
+            appPlayerName = "";
+        }
+        return ensurePlayerGuid(appPlayerName);
     }
 
     public String ensurePlayerGuid(String playerName) {
@@ -1049,7 +1072,7 @@ public class RethinkDbClient {
         Realm realm = Realm.getDefaultInstance();
         try {
             RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
-            if (player != null) {
+            if (player != null && !PlayerDataProvider.isLegacyLocalPlayerId(player.getPlayerId())) {
                 return player.getPlayerId();
             }
         } finally {
@@ -1062,7 +1085,7 @@ public class RethinkDbClient {
         Realm realm = Realm.getDefaultInstance();
         try {
             RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
-            if (player != null) {
+            if (player != null && !PlayerDataProvider.isLegacyLocalPlayerId(player.getPlayerId())) {
                 return player.getPlayerName();
             }
         } finally {
@@ -1101,23 +1124,11 @@ public class RethinkDbClient {
     }
 
     private String getStoredPlayerAuthKey() {
-        Realm realm = Realm.getDefaultInstance();
-        try {
-            RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
-            return player == null ? "" : player.getPifAuthKey();
-        } finally {
-            realm.close();
-        }
+        return PlayerDataProvider.getPlayerAuthKey();
     }
 
     private String getStoredPlayerAuthFingerprint() {
-        Realm realm = Realm.getDefaultInstance();
-        try {
-            RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
-            return player == null ? "" : player.getPifFingerprint();
-        } finally {
-            realm.close();
-        }
+        return PlayerDataProvider.getPlayerAuthFingerprint();
     }
 
     private boolean verifyPlayerDeviceAuthSynced(String playerId, String expectedAuthKey, String expectedFingerprint) {
@@ -1244,8 +1255,8 @@ public class RethinkDbClient {
         Realm realm = Realm.getDefaultInstance();
         realm.executeTransaction(r -> {
             RealmPlayer existing = r.where(RealmPlayer.class).findFirst();
-            String existingAuthKey = existing == null ? "" : existing.getPifAuthKey();
-            String existingFingerprint = existing == null ? "" : existing.getPifFingerprint();
+            String existingAuthKey = PlayerDataProvider.getPlayerAuthKey();
+            String existingFingerprint = PlayerDataProvider.getPlayerAuthFingerprint();
             if (existing != null && !TextUtils.isEmpty(existing.getPlayerId())
                     && !existing.getPlayerId().equals(record.getGuid())) {
                 existing.deleteFromRealm();
@@ -1273,8 +1284,8 @@ public class RethinkDbClient {
         Realm realm = Realm.getDefaultInstance();
         realm.executeTransaction(r -> {
             RealmPlayer existing = r.where(RealmPlayer.class).findFirst();
-            String existingAuthKey = existing == null ? "" : existing.getPifAuthKey();
-            String existingFingerprint = existing == null ? "" : existing.getPifFingerprint();
+            String existingAuthKey = PlayerDataProvider.getPlayerAuthKey();
+            String existingFingerprint = PlayerDataProvider.getPlayerAuthFingerprint();
             if (existing != null && !TextUtils.isEmpty(existing.getPlayerId())
                     && !existing.getPlayerId().equals(guid)) {
                 existing.deleteFromRealm();

@@ -1,10 +1,13 @@
 package kr.co.turtlelab.andowsignage.dataproviders;
 
+import android.text.TextUtils;
+
 import java.util.ArrayList;
 import java.util.List;
 
 import kr.co.turtlelab.andowsignage.AndoWSignageApp;
 import kr.co.turtlelab.andowsignage.data.objectbox.ObjectBoxDb;
+import kr.co.turtlelab.andowsignage.data.store.StoredPlayer;
 import kr.co.turtlelab.andowsignage.data.store.StoredWeeklySchedule;
 import kr.co.turtlelab.andowsignage.datamodels.WeeklyScheduleDataModel;
 
@@ -21,16 +24,9 @@ public class WeeklyScheduleProvider {
         List<WeeklyScheduleDataModel> list = new ArrayList<>();
         ObjectBoxDb storeDb = ObjectBoxDb.getDefaultInstance();
         try {
-            StoredWeeklySchedule schedule = storeDb.where(StoredWeeklySchedule.class)
-                    .equalTo("playerId", AndoWSignageApp.PLAYER_ID)
-                    .findFirst();
+            StoredWeeklySchedule schedule = findSchedule(storeDb);
             if (schedule == null) {
-                storeDb.executeTransaction(r -> ensureScheduleInTransaction(r));
-                schedule = storeDb.where(StoredWeeklySchedule.class)
-                        .equalTo("playerId", AndoWSignageApp.PLAYER_ID)
-                        .findFirst();
-            }
-            if (schedule == null) {
+                addDefaultModels(list);
                 return list;
             }
             StoredWeeklySchedule detached = storeDb.copyEntity(schedule);
@@ -96,22 +92,70 @@ public class WeeklyScheduleProvider {
         list.add(model);
     }
 
+    private static void addDefaultModels(List<WeeklyScheduleDataModel> list) {
+        for (String day : DAYS) {
+            WeeklyScheduleDataModel model = new WeeklyScheduleDataModel();
+            model.setDay(day);
+            model.setFrom("0", "0");
+            model.setTo("0", "0");
+            model.setOnAir("true");
+            list.add(model);
+        }
+    }
+
     private static StoredWeeklySchedule ensureScheduleInTransaction(ObjectBoxDb storeDb) {
         if (storeDb == null) {
             return null;
         }
-        StoredWeeklySchedule schedule = storeDb.where(StoredWeeklySchedule.class)
-                .equalTo("playerId", AndoWSignageApp.PLAYER_ID)
-                .findFirst();
+        StoredWeeklySchedule schedule = findSchedule(storeDb);
         if (schedule != null) {
             return schedule;
         }
-        if (AndoWSignageApp.PLAYER_ID == null) {
+        String playerGuid = resolvePreferredScheduleKey(storeDb);
+        if (TextUtils.isEmpty(playerGuid)) {
             return null;
         }
-        schedule = storeDb.createObject(StoredWeeklySchedule.class, AndoWSignageApp.PLAYER_ID);
+        schedule = storeDb.createObject(StoredWeeklySchedule.class, playerGuid);
         applyDefaultSchedule(schedule);
         return schedule;
+    }
+
+    private static StoredWeeklySchedule findSchedule(ObjectBoxDb storeDb) {
+        for (StoredPlayer player : storeDb.where(StoredPlayer.class).findAll()) {
+            if (PlayerDataProvider.isLegacyLocalPlayerId(player.getPlayerId())) {
+                continue;
+            }
+            StoredWeeklySchedule schedule = findScheduleByKey(storeDb, player.getPlayerId());
+            if (schedule != null) {
+                return schedule;
+            }
+            schedule = findScheduleByKey(storeDb, player.getPlayerName());
+            if (schedule != null) {
+                return schedule;
+            }
+        }
+        if (!PlayerDataProvider.isLegacyLocalPlayerId(AndoWSignageApp.PLAYER_ID)) {
+            return findScheduleByKey(storeDb, AndoWSignageApp.PLAYER_ID);
+        }
+        return null;
+    }
+
+    private static String resolvePreferredScheduleKey(ObjectBoxDb storeDb) {
+        for (StoredPlayer player : storeDb.where(StoredPlayer.class).findAll()) {
+            if (!PlayerDataProvider.isLegacyLocalPlayerId(player.getPlayerId())) {
+                return player.getPlayerId();
+            }
+        }
+        return null;
+    }
+
+    private static StoredWeeklySchedule findScheduleByKey(ObjectBoxDb storeDb, String playerId) {
+        if (TextUtils.isEmpty(playerId)) {
+            return null;
+        }
+        return storeDb.where(StoredWeeklySchedule.class)
+                .equalTo("playerId", playerId)
+                .findFirst();
     }
 
     private static void applyDefaultSchedule(StoredWeeklySchedule schedule) {

@@ -298,6 +298,35 @@ public class LocalSettingsProvider {
         }
     }
 
+    public static boolean updatePifAuthInfo(String authKey, String fingerprint) {
+        Realm realm = Realm.getDefaultInstance();
+        try {
+            realm.executeTransaction(r -> {
+                RealmLocalSettings settings = rWhere(r);
+                if (settings == null) settings = r.createObject(RealmLocalSettings.class, LOCAL_SETTINGS_ID);
+                settings.setUsbAuthKey(authKey == null ? "" : authKey);
+            });
+            persistCurrentSettings();
+            return true;
+        } finally {
+            realm.close();
+        }
+    }
+
+    public static String getPifAuthKey() {
+        Realm realm = Realm.getDefaultInstance();
+        try {
+            RealmLocalSettings settings = rWhere(realm);
+            return settings == null || settings.getUsbAuthKey() == null ? "" : settings.getUsbAuthKey();
+        } finally {
+            realm.close();
+        }
+    }
+
+    public static String getPifFingerprint() {
+        return "";
+    }
+
     public static String getManagerIp() {
         Realm realm = Realm.getDefaultInstance();
         try {

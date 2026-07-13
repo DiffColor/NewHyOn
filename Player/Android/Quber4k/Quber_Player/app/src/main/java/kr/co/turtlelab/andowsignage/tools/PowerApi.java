@@ -35,11 +35,12 @@ public final class PowerApi {
         sendAction(context, ACTION_POWEROFF);
     }
 
-    public static void setSleepMode(Context context, boolean enabled) {
+    public static boolean setSleepMode(Context context, boolean enabled) {
         boolean handled = QuberAgentClient.get().setSleepMode(enabled);
-        if (handled) return;
-        // Fallback: no-op for non-Quber 장비.
-        Log.d(TAG, "Fallback sleepMode(not supported), enabled=" + enabled);
+        if (!handled) {
+            Log.w(TAG, "Quber sleep mode command failed. enabled=" + enabled);
+        }
+        return handled;
     }
 
     public static Boolean queryHdmiCableState() {

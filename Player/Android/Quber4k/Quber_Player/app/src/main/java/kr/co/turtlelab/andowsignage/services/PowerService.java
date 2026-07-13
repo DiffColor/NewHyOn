@@ -11,12 +11,12 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
+import kr.co.turtlelab.andowsignage.AndoWSignage;
 import kr.co.turtlelab.andowsignage.AndoWSignageApp;
 import kr.co.turtlelab.andowsignage.datamodels.WeeklyScheduleDataModel;
 import kr.co.turtlelab.andowsignage.dataproviders.WeeklyScheduleProvider;
 import kr.co.turtlelab.andowsignage.tools.LightestTimer;
 import kr.co.turtlelab.andowsignage.tools.PowerApi;
-import kr.co.turtlelab.andowsignage.tools.Utils;
 
 public class PowerService extends Service {
 	private static final int CHECK_INTERVAL_MS = 15000;
@@ -49,20 +49,22 @@ public class PowerService extends Service {
 		Date date = new Date();
 		SimpleDateFormat df = new SimpleDateFormat("ccc HH mm", Locale.ENGLISH);
 		String[] curTime = df.format(date).split(" ");
+		boolean handled = false;
 		
 		for (WeeklyScheduleDataModel sch : weeklySchDataList) {
 			if(sch.getDayStr().toLowerCase(Locale.US).equalsIgnoreCase(curTime[0].toLowerCase(Locale.US))) {
+				handled = true;
 				if(sch.getOnAir()) {					
 					int[] from = sch.getFrom();
 					int[] to = sch.getTo();
-					long currSec = Utils.getSecondsADay(Integer.parseInt(curTime[1]), Integer.parseInt(curTime[2]));
-					long fromSec = Utils.getSecondsADay(from[0], from[1]);
-					long toSec = Utils.getSecondsADay(to[0], to[1]);
-					if (from[0] == 0 && from[1] == 0 && to[0] == 0 && to[1] == 0) {
+					int currentMinutes = (Integer.parseInt(curTime[1]) * 60) + Integer.parseInt(curTime[2]);
+					int startMinutes = (from[0] * 60) + from[1];
+					int endMinutes = (to[0] * 60) + to[1];
+					if (startMinutes == endMinutes) {
 						WakeUp();
 						break;
 					}
-					if(currSec >= fromSec && currSec <= toSec) {
+					if(isWithinOnAirWindow(currentMinutes, startMinutes, endMinutes)) {
 						WakeUp();
 					} else {
 						Sleep();
@@ -74,17 +76,47 @@ public class PowerService extends Service {
 				}
 			}
 		}
+
+		if (!handled) {
+			WakeUp();
+		}
+	}
+
+	private boolean isWithinOnAirWindow(int currentMinutes, int startMinutes, int endMinutes) {
+		if (startMinutes == endMinutes) {
+			return true;
+		}
+		if (endMinutes > startMinutes) {
+			return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+		}
+		return currentMinutes >= startMinutes || currentMinutes < endMinutes;
 	}
 	
 	public void Sleep() {
 		if(AndoWSignageApp.isSlept == false) {
-			PowerApi.setSleepMode(ctx, true);
-			Intent sleepIntent = new Intent();
-			sleepIntent.setAction("andowsignage.intent.action.SLEEP");
-	        ctx.sendBroadcast(sleepIntent);
+			AndoWSignageApp.isSlept = true;
+            AndoWSignageApp.markStoppedState();
+			if (PowerApi.setSleepMode(ctx, true)) {
+				Intent sleepIntent = new Intent();
+				sleepIntent.setAction("andowsignage.intent.action.SLEEP");
+				ctx.sendBroadcast(sleepIntent);
+			} else {
+				stopPlaybackForSleepCommandFailure();
+			}
 		}
-		AndoWSignageApp.isSlept = true;
-        AndoWSignageApp.state = AndoWSignageApp.RP_STATUS.stopped.toString();
+	}
+
+	private void stopPlaybackForSleepCommandFailure() {
+		final AndoWSignage player = AndoWSignage.act;
+		if (player == null) {
+			return;
+		}
+		player.runOnUiThread(new Runnable() {
+			@Override
+			public void run() {
+				player.stopAndRemoveAllViews();
+			}
+		});
 	}
 	
 	public void WakeUp() {
@@ -92,6 +124,7 @@ public class PowerService extends Service {
 //			skip_count = SKIP_COUNT;
 			AndoWSignageApp.isSlept = false;
 			PowerApi.setSleepMode(ctx, false);
+			resumePlaybackAfterWakeUp();
 
 //			Intent wakeupIntent = new Intent();
 //			wakeupIntent.setAction("andowsignage.intent.action.WAKEUP");
@@ -113,8 +146,22 @@ public class PowerService extends Service {
 //			playerIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 //			ctx.startActivity(playerIntent);
 
-			PowerApi.requestReboot(ctx);
+			// Android 플레이어는 방송 시작 시 재부팅하지 않는다.
+			// PowerApi.requestReboot(ctx);
 		}
+	}
+
+	private void resumePlaybackAfterWakeUp() {
+		final AndoWSignage player = AndoWSignage.act;
+		if (player == null) {
+			return;
+		}
+		player.runOnUiThread(new Runnable() {
+			@Override
+			public void run() {
+				player.updateAndRestart(true);
+			}
+		});
 	}
 
 	@Override
