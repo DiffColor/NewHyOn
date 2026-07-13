@@ -28,10 +28,6 @@ public class PlayerDataProvider {
         Realm realm = Realm.getDefaultInstance();
         try {
             RealmPlayer realmPlayer = realm.where(RealmPlayer.class).findFirst();
-            if (isLegacyLocalPlayer(realmPlayer)) {
-                // GUID가 확정되는 시점에 인증값을 실제 플레이어 레코드로 옮긴다.
-                realmPlayer = null;
-            }
             if (realmPlayer != null) {
                 playerData.setPlayerId(realmPlayer.getPlayerId());
                 String name = realmPlayer.getPlayerName();
@@ -91,7 +87,7 @@ public class PlayerDataProvider {
             LocalSettingsProvider.updatePlayerAuthKey(authKey);
             realm.executeTransaction(r -> {
                 RealmPlayer player = r.where(RealmPlayer.class).findFirst();
-                if (player != null && !isLegacyLocalPlayer(player)) {
+                if (player != null) {
                     player.setPifAuthKey(authKey == null ? "" : authKey);
                     player.setPifFingerprint(fingerprint == null ? "" : fingerprint);
                 }
@@ -154,12 +150,15 @@ public class PlayerDataProvider {
         realm.close();
     }
 
-    public static boolean isLegacyLocalPlayerId(String playerId) {
-        return LEGACY_LOCAL_PLAYER_ID.equalsIgnoreCase(playerId == null ? "" : playerId.trim());
+    public static void removeLegacyLocalPlayers(Realm realm) {
+        realm.executeTransaction(PlayerDataProvider::removeLegacyLocalPlayerData);
     }
 
-    private static boolean isLegacyLocalPlayer(RealmPlayer player) {
-        return player != null && isLegacyLocalPlayerId(player.getPlayerId());
+    private static void removeLegacyLocalPlayerData(Realm realm) {
+        realm.where(RealmPlayer.class)
+                .equalTo("playerId", LEGACY_LOCAL_PLAYER_ID)
+                .findAll()
+                .deleteAllFromRealm();
     }
 
 }

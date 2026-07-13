@@ -212,7 +212,7 @@ namespace AndoW_Manager
                 element.UpdateDataInfo(player);
                 element.SetOrderingNumber(orderNumber);
                 orderNumber++;
-                element.UpdatePlaylistOptions(GetPlaylistNamesForPlayer(player), player.PIF_CurrentPlayList);
+                element.UpdatePlaylistOptions(GetPlaylistNamesForPlayer(player), player.PIF_DefaultPlayList);
                 element.SetPlaylistSelectionEnabled(_usePerPlayerPlaylist);
 
                 bool isInitiallySelected = _initialSelectedPlayerNames.Contains(player.PIF_PlayerName);
@@ -411,7 +411,6 @@ namespace AndoW_Manager
         {
             PlayerInfoClass commandPlayer = new PlayerInfoClass();
             commandPlayer.CopyData(player);
-            commandPlayer.PIF_CurrentPlayList = playlistName;
             commandPlayer.PIF_DefaultPlayList = playlistName;
             return commandPlayer;
         }
@@ -477,8 +476,8 @@ namespace AndoW_Manager
 
                 try
                 {
-                    player.PIF_CurrentPlayList = playlistName;
-                    DataShop.Instance.g_PlayerInfoManager.EditPlayerCurrentPlayList(player);
+                    player.PIF_DefaultPlayList = playlistName;
+                    DataShop.Instance.g_PlayerInfoManager.EditPlayerDefaultPlayList(player);
 
                     if (Page3.Instance != null)
                     {

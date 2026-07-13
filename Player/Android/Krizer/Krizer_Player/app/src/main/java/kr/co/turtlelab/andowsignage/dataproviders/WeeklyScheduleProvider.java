@@ -105,9 +105,6 @@ public class WeeklyScheduleProvider {
 
     private static RealmWeeklySchedule findSchedule(Realm realm) {
         for (RealmPlayer player : realm.where(RealmPlayer.class).findAll()) {
-            if (PlayerDataProvider.isLegacyLocalPlayerId(player.getPlayerId())) {
-                continue;
-            }
             RealmWeeklySchedule schedule = findScheduleByKey(realm, player.getPlayerId());
             if (schedule != null) {
                 return schedule;
@@ -117,10 +114,7 @@ public class WeeklyScheduleProvider {
                 return schedule;
             }
         }
-        if (!PlayerDataProvider.isLegacyLocalPlayerId(AndoWSignageApp.PLAYER_ID)) {
-            return findScheduleByKey(realm, AndoWSignageApp.PLAYER_ID);
-        }
-        return null;
+        return findScheduleByKey(realm, AndoWSignageApp.PLAYER_ID);
     }
 
     private static RealmWeeklySchedule findScheduleByKey(Realm realm, String playerId) {

@@ -76,7 +76,7 @@ namespace AndoW_Manager
             PlayerNameText.Text = this.g_PlayerInfoClass.PIF_PlayerName;
             IpAddressText.Text = this.g_PlayerInfoClass.PIF_IPAddress;
             RemoteIdText.Text = this.g_PlayerInfoClass.PIF_RemoteID;
-            PageListCombo.SelectedItem = this.g_PlayerInfoClass.PIF_CurrentPlayList;
+            PageListCombo.SelectedItem = this.g_PlayerInfoClass.PIF_DefaultPlayList;
 
             if (this.g_PlayerInfoClass.PIF_IsLandScape == true)
             {
@@ -123,11 +123,11 @@ namespace AndoW_Manager
 
              if (PageListCombo.SelectedItem != null)
              {
-                 this.g_PlayerInfoClass.PIF_CurrentPlayList = PageListCombo.SelectedItem.ToString();
+                 this.g_PlayerInfoClass.PIF_DefaultPlayList = PageListCombo.SelectedItem.ToString();
              }
              else
              {
-                 this.g_PlayerInfoClass.PIF_CurrentPlayList = string.Empty;
+                 this.g_PlayerInfoClass.PIF_DefaultPlayList = string.Empty;
              }
 
              if (DisplayTypeCombo.SelectedItem != null)

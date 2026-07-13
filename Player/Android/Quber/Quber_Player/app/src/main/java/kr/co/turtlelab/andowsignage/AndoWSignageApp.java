@@ -10,6 +10,7 @@ import java.io.File;
 
 import io.realm.Realm;
 import io.realm.RealmConfiguration;
+import kr.co.turtlelab.andowsignage.dataproviders.PlayerDataProvider;
 import kr.co.turtlelab.andowsignage.tools.CanvasUtils;
 import kr.co.turtlelab.andowsignage.tools.LocalPathUtils;
 import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
@@ -103,6 +104,16 @@ public class AndoWSignageApp extends Application {
 				.allowWritesOnUiThread(true)
 				.build();
 		Realm.setDefaultConfiguration(config);
+		removeLegacyLocalPlayer();
+	}
+
+	private void removeLegacyLocalPlayer() {
+		Realm realm = Realm.getDefaultInstance();
+		try {
+			PlayerDataProvider.removeLegacyLocalPlayers(realm);
+		} finally {
+			realm.close();
+		}
 	}
 	
 	synchronized public static AndoWSignageApp getApplication() {

@@ -391,7 +391,7 @@ namespace AndoW_Manager
 
             if (string.Equals(command, RP_ORDER.updatelist.ToString(), StringComparison.OrdinalIgnoreCase) && validateCurrentPlaylist)
             {
-                blocked = TizenPlaylistUpdatePolicy.TryValidatePlayerPlaylist(player, player?.PIF_CurrentPlayList, out blockResult) == false;
+                blocked = TizenPlaylistUpdatePolicy.TryValidatePlayerPlaylist(player, player?.PIF_DefaultPlayList, out blockResult) == false;
             }
             else if (string.Equals(command, RP_ORDER.updateschedule.ToString(), StringComparison.OrdinalIgnoreCase))
             {
@@ -420,7 +420,7 @@ namespace AndoW_Manager
             }
 
             TizenPlaylistBlockResult blockResult;
-            if (TizenPlaylistUpdatePolicy.TryValidatePlayerPlaylist(player, player.PIF_CurrentPlayList, out blockResult) == false)
+            if (TizenPlaylistUpdatePolicy.TryValidatePlayerPlaylist(player, player.PIF_DefaultPlayList, out blockResult) == false)
             {
                 MessageTools.ShowMessageBox(TizenPlaylistUpdatePolicy.BuildBlockedMessage(new[] { blockResult }), "확인");
                 return false;

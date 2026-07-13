@@ -122,9 +122,6 @@ public class WeeklyScheduleProvider {
 
     private static StoredWeeklySchedule findSchedule(ObjectBoxDb storeDb) {
         for (StoredPlayer player : storeDb.where(StoredPlayer.class).findAll()) {
-            if (PlayerDataProvider.isLegacyLocalPlayerId(player.getPlayerId())) {
-                continue;
-            }
             StoredWeeklySchedule schedule = findScheduleByKey(storeDb, player.getPlayerId());
             if (schedule != null) {
                 return schedule;
@@ -134,17 +131,12 @@ public class WeeklyScheduleProvider {
                 return schedule;
             }
         }
-        if (!PlayerDataProvider.isLegacyLocalPlayerId(AndoWSignageApp.PLAYER_ID)) {
-            return findScheduleByKey(storeDb, AndoWSignageApp.PLAYER_ID);
-        }
-        return null;
+        return findScheduleByKey(storeDb, AndoWSignageApp.PLAYER_ID);
     }
 
     private static String resolvePreferredScheduleKey(ObjectBoxDb storeDb) {
         for (StoredPlayer player : storeDb.where(StoredPlayer.class).findAll()) {
-            if (!PlayerDataProvider.isLegacyLocalPlayerId(player.getPlayerId())) {
-                return player.getPlayerId();
-            }
+            return player.getPlayerId();
         }
         return null;
     }

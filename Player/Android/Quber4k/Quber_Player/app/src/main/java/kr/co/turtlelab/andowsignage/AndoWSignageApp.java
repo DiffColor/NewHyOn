@@ -9,6 +9,8 @@ import android.view.WindowManager;
 import java.io.File;
 
 import kr.co.turtlelab.andowsignage.data.objectbox.ObjectBoxStore;
+import kr.co.turtlelab.andowsignage.data.objectbox.ObjectBoxDb;
+import kr.co.turtlelab.andowsignage.dataproviders.PlayerDataProvider;
 import kr.co.turtlelab.andowsignage.tools.CanvasUtils;
 import kr.co.turtlelab.andowsignage.tools.LocalPathUtils;
 import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
@@ -91,6 +93,16 @@ public class AndoWSignageApp extends Application {
 
 	private void initObjectBox(File appRootDir) {
 		ObjectBoxStore.init(this, appRootDir);
+		removeLegacyLocalPlayer();
+	}
+
+	private void removeLegacyLocalPlayer() {
+		ObjectBoxDb storeDb = ObjectBoxDb.getDefaultInstance();
+		try {
+			PlayerDataProvider.removeLegacyLocalPlayers(storeDb);
+		} finally {
+			storeDb.close();
+		}
 	}
 	
 	synchronized public static AndoWSignageApp getApplication() {

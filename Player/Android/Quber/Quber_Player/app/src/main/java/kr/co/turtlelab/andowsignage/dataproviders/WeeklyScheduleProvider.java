@@ -139,8 +139,7 @@ public class WeeklyScheduleProvider {
 
     private static String resolvePreferredScheduleKey(Realm realm) {
         for (RealmPlayer player : realm.where(RealmPlayer.class).findAll()) {
-            if (!TextUtils.isEmpty(player.getPlayerId())
-                    && !PlayerDataProvider.isLegacyLocalPlayerId(player.getPlayerId())) {
+            if (!TextUtils.isEmpty(player.getPlayerId())) {
                 return player.getPlayerId();
             }
         }
@@ -151,12 +150,10 @@ public class WeeklyScheduleProvider {
         Set<String> keys = new LinkedHashSet<>();
         List<RealmPlayer> players = realm.where(RealmPlayer.class).findAll();
         for (RealmPlayer player : players) {
-            if (!PlayerDataProvider.isLegacyLocalPlayerId(player.getPlayerId())) {
-                addKey(keys, player.getPlayerId());
-                addKey(keys, player.getPlayerName());
-            }
+            addKey(keys, player.getPlayerId());
+            addKey(keys, player.getPlayerName());
         }
-        if (keys.isEmpty() && !PlayerDataProvider.isLegacyLocalPlayerId(AndoWSignageApp.PLAYER_ID)) {
+        if (keys.isEmpty()) {
             // 이전 버전이 이름으로 저장한 캐시를 GUID 동기화 전 한 번만 읽는다.
             addKey(keys, AndoWSignageApp.PLAYER_ID);
         }

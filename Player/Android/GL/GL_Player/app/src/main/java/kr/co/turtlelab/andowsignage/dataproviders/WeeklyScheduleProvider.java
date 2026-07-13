@@ -139,8 +139,7 @@ public class WeeklyScheduleProvider {
 
     private static String resolvePreferredScheduleKey(Realm realm) {
         for (RealmPlayer player : realm.where(RealmPlayer.class).findAll()) {
-            if (!TextUtils.isEmpty(player.getPlayerId())
-                    && !PlayerDataProvider.isLegacyLocalPlayerId(player.getPlayerId())) {
+            if (!TextUtils.isEmpty(player.getPlayerId())) {
                 return player.getPlayerId();
             }
         }
@@ -150,12 +149,10 @@ public class WeeklyScheduleProvider {
     private static List<String> resolveScheduleKeys(Realm realm) {
         Set<String> keys = new LinkedHashSet<>();
         for (RealmPlayer player : realm.where(RealmPlayer.class).findAll()) {
-            if (!PlayerDataProvider.isLegacyLocalPlayerId(player.getPlayerId())) {
-                addKey(keys, player.getPlayerId());
-                addKey(keys, player.getPlayerName());
-            }
+            addKey(keys, player.getPlayerId());
+            addKey(keys, player.getPlayerName());
         }
-        if (keys.isEmpty() && !PlayerDataProvider.isLegacyLocalPlayerId(AndoWSignageApp.PLAYER_ID)) {
+        if (keys.isEmpty()) {
             addKey(keys, AndoWSignageApp.PLAYER_ID);
         }
         return new ArrayList<>(keys);

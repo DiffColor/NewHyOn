@@ -19,7 +19,7 @@ public final class RethinkModels {
         private String guid;
         @SerializedName("PIF_PlayerName")
         private String playerName;
-        @SerializedName("PIF_CurrentPlayList")
+        @SerializedName("PIF_DefaultPlayList")
         private String playlist;
         @SerializedName("PIF_IsLandScape")
         private boolean landscape;

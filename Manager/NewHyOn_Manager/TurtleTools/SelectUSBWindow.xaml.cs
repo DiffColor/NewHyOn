@@ -218,7 +218,7 @@ namespace TurtleTools
             }
 
             return players
-                .Where(p => p != null && p.PIF_CurrentPlayList.Equals(playlistName, StringComparison.CurrentCultureIgnoreCase))
+                .Where(p => p != null && p.PIF_DefaultPlayList.Equals(playlistName, StringComparison.CurrentCultureIgnoreCase))
                 .Select(ClonePlayer)
                 .ToList();
         }

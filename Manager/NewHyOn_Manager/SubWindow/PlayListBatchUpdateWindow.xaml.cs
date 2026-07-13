@@ -183,7 +183,7 @@ namespace AndoW_Manager
         {
         //    try
         //    {
-        //        DataShop.Instance.g_PlayerInfoManager.EditPlayerCurrentPlayList(g_SelectedPlayerInfoList[g_BatchIndex]);
+        //        DataShop.Instance.g_PlayerInfoManager.EditPlayerDefaultPlayList(g_SelectedPlayerInfoList[g_BatchIndex]);
         //        SaveFileForUpdateAtBatchUpdate(g_SelectedPlayerInfoList[g_BatchIndex]);
 
         //        //UpdateBatchUpdateStatus(g_SelectedPlayerInfoList[g_BatchIndex].PIF_PlayerName);
@@ -240,7 +240,7 @@ namespace AndoW_Manager
                 {
                     foreach (PlayerInfoClass item in g_SelectedPlayerInfoList)
                     {
-                        item.PIF_CurrentPlayList = ListCombo.SelectedItem.ToString();
+                        item.PIF_DefaultPlayList = ListCombo.SelectedItem.ToString();
                     }
 
                     //WCFWindow1.Instance.RefreshBatchUpdatePlayerNameList(g_SelectedPlayerNameList);
@@ -293,14 +293,14 @@ namespace AndoW_Manager
                                 break;
                             }
 
-                            item.PIF_CurrentPlayList = scrollSpeedComboBox_Copy2.SelectedItem.ToString();
+                            item.PIF_DefaultPlayList = scrollSpeedComboBox_Copy2.SelectedItem.ToString();
 
 
                             try
                             {
-                                ILYCODEDataShop.Instance.g_PlayerInfoManager.EditPlayerCurrentPlayList(item);
+                                ILYCODEDataShop.Instance.g_PlayerInfoManager.EditPlayerDefaultPlayList(item);
 
-                                // ILYCODEDataShop.Instance.g_PlayerInfoManager.EditPlayerCurrentPlayList(g_PlayerInfoClass);
+                                // ILYCODEDataShop.Instance.g_PlayerInfoManager.EditPlayerDefaultPlayList(g_PlayerInfoClass);
                                 // this.g_ParentPage.ChanagePageListName(this.g_PlayerInfoClass);
 
                                // WCFWindow1.Instance.g_BatchUpdateEvent.Reset();
@@ -366,9 +366,9 @@ namespace AndoW_Manager
                     continue;
                 }
 
-                pic.PIF_CurrentPlayList = listname;
+                pic.PIF_DefaultPlayList = listname;
                 string pname = pic.PIF_PlayerName;
-                DataShop.Instance.g_PlayerInfoManager.EditPlayerCurrentPlayList(pic);
+                DataShop.Instance.g_PlayerInfoManager.EditPlayerDefaultPlayList(pic);
                 Page3.Instance.ChanagePageListName(pic);
                 var playerInfo = DataShop.Instance.g_PlayerInfoManager.GetPlayerInfoByName(pname);
                 if (playerInfo != null)

@@ -28,14 +28,6 @@ public class PlayerDataProvider {
         ObjectBoxDb storeDb = ObjectBoxDb.getDefaultInstance();
         try {
             StoredPlayer storedPlayer = storeDb.where(StoredPlayer.class).findFirst();
-            if (isLegacyLocalPlayer(storedPlayer)) {
-                if (migrateLegacyLocalPlayerAuth(storedPlayer)) {
-                    StoredPlayer legacyPlayer = storedPlayer;
-                    storeDb.executeTransaction(r -> r.delete(legacyPlayer));
-                    RethinkDbClient.getInstance().invalidateDeviceInfoSync();
-                }
-                storedPlayer = null;
-            }
             if (storedPlayer != null) {
                 playerData.setPlayerId(storedPlayer.getPlayerId());
                 String name = storedPlayer.getPlayerName();
@@ -90,15 +82,16 @@ public class PlayerDataProvider {
     }
 
     public static boolean updatePlayerAuthInfo(String authKey, String fingerprint) {
-        if (!saveAuthInfo(authKey, fingerprint)) {
+        if (!LocalSettingsProvider.updatePifAuthInfo(authKey, fingerprint)) {
             return false;
         }
         ObjectBoxDb storeDb = ObjectBoxDb.getDefaultInstance();
         try {
             storeDb.executeTransaction(r -> {
                 StoredPlayer player = r.where(StoredPlayer.class).findFirst();
-                if (isLegacyLocalPlayer(player)) {
-                    r.delete(player);
+                if (player != null) {
+                    player.setPifAuthKey(authKey == null ? "" : authKey);
+                    player.setPifFingerprint(fingerprint == null ? "" : fingerprint);
                 }
             });
             RethinkDbClient.getInstance().invalidateDeviceInfoSync();
@@ -121,13 +114,7 @@ public class PlayerDataProvider {
             if (player == null || player.getPifAuthKey() == null) {
                 return "";
             }
-            String authKey = player.getPifAuthKey();
-            String fingerprint = player.getPifFingerprint();
-            if (saveAuthInfo(authKey, fingerprint) && isLegacyLocalPlayer(player)) {
-                storeDb.executeTransaction(r -> r.delete(player));
-                RethinkDbClient.getInstance().invalidateDeviceInfoSync();
-            }
-            return authKey;
+            return player.getPifAuthKey();
         } finally {
             storeDb.close();
         }
@@ -144,13 +131,7 @@ public class PlayerDataProvider {
             if (player == null || player.getPifFingerprint() == null) {
                 return "";
             }
-            String authKey = player.getPifAuthKey();
-            String fingerprint = player.getPifFingerprint();
-            if (saveAuthInfo(authKey, fingerprint) && isLegacyLocalPlayer(player)) {
-                storeDb.executeTransaction(r -> r.delete(player));
-                RethinkDbClient.getInstance().invalidateDeviceInfoSync();
-            }
-            return fingerprint;
+            return player.getPifFingerprint();
         } finally {
             storeDb.close();
         }
@@ -175,30 +156,14 @@ public class PlayerDataProvider {
         storeDb.close();
     }
 
-    public static boolean isLegacyLocalPlayerId(String playerId) {
-        return LEGACY_LOCAL_PLAYER_ID.equalsIgnoreCase(playerId == null ? "" : playerId.trim());
+    public static void removeLegacyLocalPlayers(ObjectBoxDb storeDb) {
+        storeDb.executeTransaction(PlayerDataProvider::removeLegacyLocalPlayerData);
     }
 
-    private static boolean isLegacyLocalPlayer(StoredPlayer player) {
-        return player != null && isLegacyLocalPlayerId(player.getPlayerId());
-    }
-
-    private static boolean migrateLegacyLocalPlayerAuth(StoredPlayer player) {
-        if (player == null) {
-            return false;
-        }
-        String authKey = LocalSettingsProvider.getPifAuthKey();
-        String fingerprint = LocalSettingsProvider.getPifFingerprint();
-        if (TextUtils.isEmpty(authKey)) {
-            authKey = player.getPifAuthKey();
-        }
-        if (TextUtils.isEmpty(fingerprint)) {
-            fingerprint = player.getPifFingerprint();
-        }
-        return saveAuthInfo(authKey, fingerprint);
-    }
-
-    private static boolean saveAuthInfo(String authKey, String fingerprint) {
-        return LocalSettingsProvider.updatePifAuthInfo(authKey, fingerprint);
+    private static void removeLegacyLocalPlayerData(ObjectBoxDb storeDb) {
+        storeDb.where(StoredPlayer.class)
+                .equalTo("playerId", LEGACY_LOCAL_PLAYER_ID)
+                .findAll()
+                .deleteAll();
     }
 }

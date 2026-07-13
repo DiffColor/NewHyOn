@@ -550,15 +550,6 @@ public class RethinkDbClient {
             return false;
         }
         Map<String, Object> values = new HashMap<>();
-        String playerName = getStoredPlayerName();
-        if (TextUtils.isEmpty(playerName)) {
-            playerName = AndoWSignageApp.PLAYER_ID;
-        }
-        if (!TextUtils.isEmpty(playerName)) {
-            values.put("PIF_PlayerName", playerName.trim());
-        }
-        String defaultPlaylist = getStoredDefaultPlaylist();
-        values.put("PIF_DefaultPlayList", TextUtils.isEmpty(defaultPlaylist) ? "" : defaultPlaylist.trim());
         AuthSyncSelection authSelection = resolveAuthSync(existing, mac);
         String expectedAuthKey = authSelection.shouldWriteAuthKey
                 ? normalizeAuthKey(authSelection.authKey)
@@ -1037,15 +1028,10 @@ public class RethinkDbClient {
             return ensurePlayerGuid(storedPlayerName);
         }
         String configuredPlayerName = LocalSettingsProvider.getPlayerId();
-        if (!TextUtils.isEmpty(configuredPlayerName)
-                && !PlayerDataProvider.isLegacyLocalPlayerId(configuredPlayerName)) {
+        if (!TextUtils.isEmpty(configuredPlayerName)) {
             return ensurePlayerGuid(configuredPlayerName);
         }
-        String appPlayerName = AndoWSignageApp.PLAYER_ID;
-        if (PlayerDataProvider.isLegacyLocalPlayerId(appPlayerName)) {
-            appPlayerName = "";
-        }
-        return ensurePlayerGuid(appPlayerName);
+        return ensurePlayerGuid(AndoWSignageApp.PLAYER_ID);
     }
 
     public String ensurePlayerGuid(String playerName) {
@@ -1123,7 +1109,7 @@ public class RethinkDbClient {
         ObjectBoxDb storeDb = ObjectBoxDb.getDefaultInstance();
         try {
             StoredPlayer player = storeDb.where(StoredPlayer.class).findFirst();
-            if (player != null && !PlayerDataProvider.isLegacyLocalPlayerId(player.getPlayerId())) {
+            if (player != null) {
                 return player.getPlayerId();
             }
         } finally {
@@ -1136,7 +1122,7 @@ public class RethinkDbClient {
         ObjectBoxDb storeDb = ObjectBoxDb.getDefaultInstance();
         try {
             StoredPlayer player = storeDb.where(StoredPlayer.class).findFirst();
-            if (player != null && !PlayerDataProvider.isLegacyLocalPlayerId(player.getPlayerId())) {
+            if (player != null) {
                 return player.getPlayerName();
             }
         } finally {
@@ -1317,8 +1303,10 @@ public class RethinkDbClient {
             if (target == null) {
                 target = r.createObject(StoredPlayer.class, record.getGuid());
             }
-            target.setPlayerName(record.getPlayerName());
-            if (record.getPlaylist() != null) {
+            if (!TextUtils.isEmpty(record.getPlayerName())) {
+                target.setPlayerName(record.getPlayerName());
+            }
+            if (!TextUtils.isEmpty(record.getPlaylist())) {
                 target.setPlaylistName(record.getPlaylist());
             }
             target.setPifAuthKey(existingAuthKey == null ? "" : existingAuthKey);

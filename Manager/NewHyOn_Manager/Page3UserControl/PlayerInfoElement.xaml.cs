@@ -474,14 +474,14 @@ namespace AndoW_Manager
             /*
             if (this.g_ParentPage.Is_ComboBoxInit == false)
             {
-                if (this.g_PlayerInfoClass.PIF_CurrentPlayList == scrollSpeedComboBox_Copy1.SelectedItem.ToString())
+                if (this.g_PlayerInfoClass.PIF_DefaultPlayList == scrollSpeedComboBox_Copy1.SelectedItem.ToString())
                 {
                     MessageTools.ShowMessageBox("이전 플레이 리스트와 동일합니다.", "확인");
                     return;
                 }
                 else
                 {
-                    g_PlayerInfoClass.PIF_CurrentPlayList = scrollSpeedComboBox_Copy1.SelectedItem.ToString();
+                    g_PlayerInfoClass.PIF_DefaultPlayList = scrollSpeedComboBox_Copy1.SelectedItem.ToString();
                     this.g_ParentPage.ChanagePageListName(this.g_PlayerInfoClass);
 
                     //1. 먼저 재생할 페이지를 먼저 보낸후 
@@ -543,7 +543,7 @@ namespace AndoW_Manager
                     MessageTools.ShowMessageBox(
                         TizenPlaylistUpdatePolicy.BuildBlockedMessage(new[] { blockResult }),
                         "확인");
-                    PlaylistCombo.SelectedItem = g_PlayerInfoClass.PIF_CurrentPlayList;
+                    PlaylistCombo.SelectedItem = g_PlayerInfoClass.PIF_DefaultPlayList;
                     return;
                 }
 
@@ -551,8 +551,8 @@ namespace AndoW_Manager
 
                 if (DataShop.Instance.g_PageInfoManager.g_PageInfoClassList.Count > 0)
                 {
-                    g_PlayerInfoClass.PIF_CurrentPlayList = selectedPlaylist;
-                    DataShop.Instance.g_PlayerInfoManager.EditPlayerCurrentPlayList(g_PlayerInfoClass);
+                    g_PlayerInfoClass.PIF_DefaultPlayList = selectedPlaylist;
+                    DataShop.Instance.g_PlayerInfoManager.EditPlayerDefaultPlayList(g_PlayerInfoClass);
                     Page3.Instance.ChanagePageListName(this.g_PlayerInfoClass);
 
                     MainWindow.Instance.SendUrgentUpdateList(this.g_PlayerInfoClass);
@@ -560,7 +560,7 @@ namespace AndoW_Manager
                 else
                 {
                     MessageTools.ShowMessageBox("비어있는 플레이리스트는 전송할수 없습니다.", "확인");
-                    PlaylistCombo.SelectedItem = g_PlayerInfoClass.PIF_CurrentPlayList;
+                    PlaylistCombo.SelectedItem = g_PlayerInfoClass.PIF_DefaultPlayList;
                 }
             }
         }
@@ -893,7 +893,7 @@ namespace AndoW_Manager
 
         private void ApplyCurrentPlaylistSelection()
         {
-            string currentPlaylist = g_PlayerInfoClass.PIF_CurrentPlayList;
+            string currentPlaylist = g_PlayerInfoClass.PIF_DefaultPlayList;
             if (string.IsNullOrWhiteSpace(currentPlaylist))
             {
                 PlaylistCombo.SelectedIndex = -1;

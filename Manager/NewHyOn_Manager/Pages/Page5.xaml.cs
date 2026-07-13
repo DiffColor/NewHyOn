@@ -106,7 +106,7 @@ namespace AndoW_Manager
                 return;
 
             List<string> _players = DataShop.Instance.g_PlayerInfoManager.g_PlayerInfoClassList
-                .Where(x => x != null && x.PIF_CurrentPlayList.Equals(playlist, StringComparison.CurrentCultureIgnoreCase))
+                .Where(x => x != null && x.PIF_DefaultPlayList.Equals(playlist, StringComparison.CurrentCultureIgnoreCase))
                 .Select(x => x.PIF_PlayerName)
                 .ToList();
 
@@ -120,7 +120,7 @@ namespace AndoW_Manager
                 }
 
                 TizenPlaylistBlockResult blockResult;
-                if (TizenPlaylistUpdatePolicy.TryValidatePlayerPlaylist(playerInfo, playerInfo.PIF_CurrentPlayList, out blockResult) == false)
+                if (TizenPlaylistUpdatePolicy.TryValidatePlayerPlaylist(playerInfo, playerInfo.PIF_DefaultPlayList, out blockResult) == false)
                 {
                     if (blockResult != null)
                     {
@@ -231,7 +231,7 @@ namespace AndoW_Manager
                     continue;
                 }
 
-                DataShop.Instance.g_PlayerInfoManager.EditPlayerCurrentPlayList(player, playlist);
+                DataShop.Instance.g_PlayerInfoManager.EditPlayerDefaultPlayList(player, playlist);
                 playerInfo = DataShop.Instance.g_PlayerInfoManager.GetPlayerInfoByName(player);
                 if (playerInfo == null)
                 {

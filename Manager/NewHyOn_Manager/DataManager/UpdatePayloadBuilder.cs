@@ -19,7 +19,7 @@ namespace AndoW_Manager
             var pageManager = DataShop.Instance.g_PageInfoManager;
 
             listManager.LoadDataFromDatabase();
-            var pageList = listManager.GetPageListByName(player.PIF_CurrentPlayList);
+            var pageList = listManager.GetPageListByName(player.PIF_DefaultPlayList);
             if (pageList == null)
             {
                 return null;

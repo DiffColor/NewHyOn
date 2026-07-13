@@ -300,32 +300,6 @@ namespace AndoW_Manager
         }
 
 
-        public void EditPlayerCurrentPlayList(PlayerInfoClass paramCls)
-        {
-            foreach (PlayerInfoClass item in g_PlayerInfoClassList)
-            {
-                if (IsSamePlayerName(item.PIF_PlayerName, paramCls.PIF_PlayerName))
-                {
-                    item.PIF_CurrentPlayList = paramCls.PIF_CurrentPlayList;
-                    SavePlayer(item);
-                    break;
-                }
-            }
-        }
-
-        public void EditPlayerCurrentPlayList(string pname, string listname)
-        {
-            foreach (PlayerInfoClass item in g_PlayerInfoClassList)
-            {
-                if (IsSamePlayerName(item.PIF_PlayerName, pname))
-                {
-                    item.PIF_CurrentPlayList = listname;
-                    SavePlayer(item);
-                    break;
-                }
-            }
-        }
-
         public void EditPlayerDefaultPlayList(PlayerInfoClass paramCls)
         {
             foreach (PlayerInfoClass item in g_PlayerInfoClassList)
@@ -367,13 +341,6 @@ namespace AndoW_Manager
                 }
 
                 bool changed = false;
-
-                if (!string.IsNullOrWhiteSpace(item.PIF_CurrentPlayList)
-                    && item.PIF_CurrentPlayList.Equals(playlistName, StringComparison.CurrentCultureIgnoreCase))
-                {
-                    item.PIF_CurrentPlayList = string.Empty;
-                    changed = true;
-                }
 
                 if (!string.IsNullOrWhiteSpace(item.PIF_DefaultPlayList)
                     && item.PIF_DefaultPlayList.Equals(playlistName, StringComparison.CurrentCultureIgnoreCase))
