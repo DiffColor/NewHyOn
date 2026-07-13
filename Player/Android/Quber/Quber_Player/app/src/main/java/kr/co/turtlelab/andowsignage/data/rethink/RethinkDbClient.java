@@ -38,8 +38,11 @@ import io.realm.Realm;
 import kr.co.turtlelab.andowsignage.AndoWSignageApp;
 import kr.co.turtlelab.andowsignage.data.DataSyncManager;
 import kr.co.turtlelab.andowsignage.data.realm.RealmPlayer;
+import kr.co.turtlelab.andowsignage.data.realm.RealmLocalSettings;
+import kr.co.turtlelab.andowsignage.data.realm.RealmWeeklySchedule;
 import kr.co.turtlelab.andowsignage.data.update.UpdateQueueContract;
 import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
+import kr.co.turtlelab.andowsignage.dataproviders.PlayerDataProvider;
 import kr.co.turtlelab.andowsignage.tools.NetworkUtils;
 import kr.co.turtlelab.andowsignage.tools.QuberAgentClient;
 
@@ -81,6 +84,7 @@ public class RethinkDbClient {
     private final Object deviceInfoLock = new Object();
     private boolean deviceInfoSynced = false;
     private boolean deviceInfoSyncInProgress = false;
+    private long deviceInfoRevision = 0L;
     private boolean forceClearAuthKeyOnce = false;
     private String lastSyncedPlayerGuid = null;
     private boolean guidVerified = false;
@@ -953,12 +957,13 @@ public class RethinkDbClient {
     }
 
     private boolean updateDeviceInfoIfNeeded() {
+        long syncRevision;
         synchronized (deviceInfoLock) {
-            if (deviceInfoSyncInProgress) {
+            if (deviceInfoSynced || deviceInfoSyncInProgress) {
                 return false;
             }
             deviceInfoSyncInProgress = true;
-            deviceInfoSynced = false;
+            syncRevision = deviceInfoRevision;
         }
         try {
             String playerId = ensurePlayerGuid();
@@ -972,10 +977,12 @@ public class RethinkDbClient {
                 return false;
             }
             synchronized (deviceInfoLock) {
-                deviceInfoSynced = true;
-                lastSyncedPlayerGuid = playerId;
+                if (syncRevision == deviceInfoRevision) {
+                    deviceInfoSynced = true;
+                    lastSyncedPlayerGuid = playerId;
+                }
             }
-            return true;
+            return isDeviceInfoSynced();
         } finally {
             synchronized (deviceInfoLock) {
                 deviceInfoSyncInProgress = false;
@@ -1026,12 +1033,29 @@ public class RethinkDbClient {
         }
     }
 
+    public void invalidateDeviceInfoSync() {
+        synchronized (deviceInfoLock) {
+            deviceInfoSynced = false;
+            lastSyncedPlayerGuid = null;
+            deviceInfoRevision++;
+        }
+    }
+
     public String ensurePlayerGuid() {
         String storedPlayerName = getStoredPlayerName();
         if (!TextUtils.isEmpty(storedPlayerName)) {
             return ensurePlayerGuid(storedPlayerName);
         }
-        return ensurePlayerGuid(AndoWSignageApp.PLAYER_ID);
+        String configuredPlayerName = LocalSettingsProvider.getPlayerId();
+        if (!TextUtils.isEmpty(configuredPlayerName)
+                && !PlayerDataProvider.isLegacyLocalPlayerId(configuredPlayerName)) {
+            return ensurePlayerGuid(configuredPlayerName);
+        }
+        String appPlayerName = AndoWSignageApp.PLAYER_ID;
+        if (PlayerDataProvider.isLegacyLocalPlayerId(appPlayerName)) {
+            appPlayerName = "";
+        }
+        return ensurePlayerGuid(appPlayerName);
     }
 
     public String ensurePlayerGuid(String playerName) {
@@ -1109,7 +1133,7 @@ public class RethinkDbClient {
         Realm realm = Realm.getDefaultInstance();
         try {
             RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
-            if (player != null) {
+            if (player != null && !PlayerDataProvider.isLegacyLocalPlayerId(player.getPlayerId())) {
                 return player.getPlayerId();
             }
         } finally {
@@ -1122,7 +1146,7 @@ public class RethinkDbClient {
         Realm realm = Realm.getDefaultInstance();
         try {
             RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
-            if (player != null) {
+            if (player != null && !PlayerDataProvider.isLegacyLocalPlayerId(player.getPlayerId())) {
                 return player.getPlayerName();
             }
         } finally {
@@ -1161,23 +1185,11 @@ public class RethinkDbClient {
     }
 
     private String getStoredPlayerAuthKey() {
-        Realm realm = Realm.getDefaultInstance();
-        try {
-            RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
-            return player == null ? "" : player.getPifAuthKey();
-        } finally {
-            realm.close();
-        }
+        return PlayerDataProvider.getPlayerAuthKey();
     }
 
     private String getStoredPlayerAuthFingerprint() {
-        Realm realm = Realm.getDefaultInstance();
-        try {
-            RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
-            return player == null ? "" : player.getPifFingerprint();
-        } finally {
-            realm.close();
-        }
+        return PlayerDataProvider.getPlayerAuthFingerprint();
     }
 
     private boolean verifyPlayerDeviceAuthSynced(String playerId, String expectedAuthKey, String expectedFingerprint) {
@@ -1228,7 +1240,8 @@ public class RethinkDbClient {
 
     public void preparePlayerNameChange(String playerName) {
         String normalizedPlayerName = playerName == null ? "" : playerName.trim();
-        if (TextUtils.isEmpty(normalizedPlayerName)) {
+        if (TextUtils.isEmpty(normalizedPlayerName)
+                || PlayerDataProvider.isLegacyLocalPlayerId(normalizedPlayerName)) {
             return;
         }
         updateStoredPlayerName(normalizedPlayerName);
@@ -1264,6 +1277,8 @@ public class RethinkDbClient {
         Realm realm = Realm.getDefaultInstance();
         realm.executeTransaction(r -> {
             RealmPlayer existing = r.where(RealmPlayer.class).findFirst();
+            boolean migrateLegacySchedule = existing != null
+                    && PlayerDataProvider.isLegacyLocalPlayerId(existing.getPlayerId());
             String existingAuthKey = existing == null ? "" : existing.getPifAuthKey();
             String existingFingerprint = existing == null ? "" : existing.getPifFingerprint();
             if (existing != null && !TextUtils.isEmpty(existing.getPlayerId())
@@ -1279,9 +1294,22 @@ public class RethinkDbClient {
             if (record.getPlaylist() != null) {
                 target.setPlaylistName(record.getPlaylist());
             }
+            String configuredAuthKey = LocalSettingsProvider.getPlayerAuthKey();
+            if (!TextUtils.isEmpty(configuredAuthKey)) {
+                existingAuthKey = configuredAuthKey;
+            }
+            RealmLocalSettings settings = r.where(RealmLocalSettings.class)
+                    .equalTo("id", "local_settings")
+                    .findFirst();
+            if (settings != null && !TextUtils.isEmpty(existingAuthKey)) {
+                settings.setUsbAuthKey(existingAuthKey);
+            }
             target.setPifAuthKey(existingAuthKey == null ? "" : existingAuthKey);
             target.setPifFingerprint(existingFingerprint == null ? "" : existingFingerprint);
             target.setLandscape(record.isLandscape());
+            if (migrateLegacySchedule) {
+                migrateLegacyWeeklySchedule(r, record.getGuid());
+            }
         });
         realm.close();
     }
@@ -1293,6 +1321,8 @@ public class RethinkDbClient {
         Realm realm = Realm.getDefaultInstance();
         realm.executeTransaction(r -> {
             RealmPlayer existing = r.where(RealmPlayer.class).findFirst();
+            boolean migrateLegacySchedule = existing != null
+                    && PlayerDataProvider.isLegacyLocalPlayerId(existing.getPlayerId());
             String existingAuthKey = existing == null ? "" : existing.getPifAuthKey();
             String existingFingerprint = existing == null ? "" : existing.getPifFingerprint();
             if (existing != null && !TextUtils.isEmpty(existing.getPlayerId())
@@ -1307,10 +1337,49 @@ public class RethinkDbClient {
             if (!TextUtils.isEmpty(playerName)) {
                 target.setPlayerName(playerName);
             }
+            String configuredAuthKey = LocalSettingsProvider.getPlayerAuthKey();
+            if (!TextUtils.isEmpty(configuredAuthKey)) {
+                existingAuthKey = configuredAuthKey;
+            }
+            RealmLocalSettings settings = r.where(RealmLocalSettings.class)
+                    .equalTo("id", "local_settings")
+                    .findFirst();
+            if (settings != null && !TextUtils.isEmpty(existingAuthKey)) {
+                settings.setUsbAuthKey(existingAuthKey);
+            }
             target.setPifAuthKey(existingAuthKey == null ? "" : existingAuthKey);
             target.setPifFingerprint(existingFingerprint == null ? "" : existingFingerprint);
+            if (migrateLegacySchedule) {
+                migrateLegacyWeeklySchedule(r, guid);
+            }
         });
         realm.close();
+    }
+
+    private void migrateLegacyWeeklySchedule(Realm realm, String targetPlayerGuid) {
+        if (realm == null || TextUtils.isEmpty(targetPlayerGuid)) {
+            return;
+        }
+        RealmWeeklySchedule legacy = realm.where(RealmWeeklySchedule.class)
+                .equalTo("playerId", "local_player")
+                .findFirst();
+        if (legacy == null) {
+            return;
+        }
+        RealmWeeklySchedule target = realm.where(RealmWeeklySchedule.class)
+                .equalTo("playerId", targetPlayerGuid)
+                .findFirst();
+        if (target == null) {
+            target = realm.createObject(RealmWeeklySchedule.class, targetPlayerGuid);
+            String[] days = {"MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"};
+            for (String day : days) {
+                target.setSchedule(day,
+                        legacy.getStartHour(day), legacy.getStartMinute(day),
+                        legacy.getEndHour(day), legacy.getEndMinute(day));
+                target.setOnAir(day, legacy.isOnAir(day));
+            }
+        }
+        legacy.deleteFromRealm();
     }
 
     private void resetDeviceInfoSyncWhenGuidChanged(String guid) {
@@ -1325,9 +1394,12 @@ public class RethinkDbClient {
     private void refreshPlayerGuidFromRemote() {
         String playerName = getStoredPlayerName();
         if (TextUtils.isEmpty(playerName)) {
-            playerName = AndoWSignageApp.PLAYER_ID;
+            playerName = LocalSettingsProvider.getPlayerId();
         }
         if (TextUtils.isEmpty(playerName)) {
+            playerName = AndoWSignageApp.PLAYER_ID;
+        }
+        if (TextUtils.isEmpty(playerName) || PlayerDataProvider.isLegacyLocalPlayerId(playerName)) {
             return;
         }
         ensurePlayerGuid(playerName);

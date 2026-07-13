@@ -297,6 +297,29 @@ public class LocalSettingsProvider {
         }
     }
 
+    public static void updatePlayerAuthKey(String authKey) {
+        Realm realm = Realm.getDefaultInstance();
+        realm.executeTransaction(r -> {
+            RealmLocalSettings settings = rWhere(r);
+            if (settings == null) {
+                settings = r.createObject(RealmLocalSettings.class, LOCAL_SETTINGS_ID);
+            }
+            settings.setUsbAuthKey(authKey == null ? "" : authKey);
+        });
+        realm.close();
+        persistCurrentSettings();
+    }
+
+    public static String getPlayerAuthKey() {
+        Realm realm = Realm.getDefaultInstance();
+        try {
+            RealmLocalSettings settings = rWhere(realm);
+            return settings == null || settings.getUsbAuthKey() == null ? "" : settings.getUsbAuthKey();
+        } finally {
+            realm.close();
+        }
+    }
+
     public static String getManagerIp() {
         Realm realm = Realm.getDefaultInstance();
         try {

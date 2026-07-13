@@ -41,6 +41,7 @@ import kr.co.turtlelab.andowsignage.data.update.UpdateQueueDownloader;
 import kr.co.turtlelab.andowsignage.data.update.UpdateQueueHelper;
 import kr.co.turtlelab.andowsignage.data.update.UpdateQueueProcessor;
 import kr.co.turtlelab.andowsignage.data.update.UpdatePayloadModels;
+import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
 import kr.co.turtlelab.andowsignage.dataproviders.UpdateQueueProvider;
 import kr.co.turtlelab.andowsignage.services.HeartbeatService;
 import kr.co.turtlelab.andowsignage.tools.LocalPathUtils;
@@ -101,10 +102,10 @@ public class DataSyncManager {
         if (player == null)
             return false;
 
-        String realmPlayerKey = player.getPlayerName();
+        String realmPlayerKey = player.getGuid();
         RethinkModels.WeeklyScheduleRecord weekly = rethinkClient.fetchWeeklySchedule(player.getGuid());
         if (TextUtils.isEmpty(realmPlayerKey)) {
-            realmPlayerKey = player.getGuid();
+            return false;
         }
 
         storeWeeklySchedule(realmPlayerKey, weekly);
@@ -452,30 +453,25 @@ public class DataSyncManager {
     }
 
     private String resolveScheduleCacheId(UpdatePayloadModels.ScheduleUpdatePayload schedule) {
-        if (schedule == null) {
-            return "";
-        }
-        if (!TextUtils.isEmpty(schedule.PlayerId)) {
-            return schedule.PlayerId;
-        }
-        if (!TextUtils.isEmpty(schedule.PlayerName)) {
-            return schedule.PlayerName;
-        }
-        return "";
+        return resolveSchedulePlayerId(schedule);
     }
 
     private String resolveSchedulePlayerId(UpdatePayloadModels.ScheduleUpdatePayload schedule) {
         if (schedule == null) {
             return "";
         }
-        if (!TextUtils.isEmpty(schedule.PlayerId)) {
-            return schedule.PlayerId;
-        }
         String stored = rethinkClient.getStoredPlayerGuid();
         if (TextUtils.isEmpty(stored)) {
             stored = rethinkClient.ensurePlayerGuid();
         }
-        return TextUtils.isEmpty(stored) ? "" : stored;
+        if (TextUtils.isEmpty(stored)) {
+            return "";
+        }
+        if (!TextUtils.isEmpty(schedule.PlayerId)
+                && !TextUtils.equals(schedule.PlayerId, stored)) {
+            return "";
+        }
+        return stored;
     }
 
     private String resolveSchedulePlayerName(UpdatePayloadModels.ScheduleUpdatePayload schedule) {
@@ -718,6 +714,8 @@ public class DataSyncManager {
             r.delete(RealmWelcome.class);
 
             RealmPlayer realmPlayer = r.where(RealmPlayer.class).findFirst();
+            String storedAuthKey = realmPlayer == null ? "" : realmPlayer.getPifAuthKey();
+            String storedFingerprint = realmPlayer == null ? "" : realmPlayer.getPifFingerprint();
             if (realmPlayer != null && TextUtils.isEmpty(realmPlayer.getPlayerId()) == false
                     && TextUtils.equals(realmPlayer.getPlayerId(), player.getGuid()) == false) {
                 realmPlayer.deleteFromRealm();
@@ -729,6 +727,9 @@ public class DataSyncManager {
             realmPlayer.setPlayerName(player.getPlayerName());
             realmPlayer.setPlaylistName(player.getPlaylist());
             realmPlayer.setLandscape(player.isLandscape());
+            String configuredAuthKey = LocalSettingsProvider.getPlayerAuthKey();
+            realmPlayer.setPifAuthKey(TextUtils.isEmpty(configuredAuthKey) ? storedAuthKey : configuredAuthKey);
+            realmPlayer.setPifFingerprint(storedFingerprint);
 
             for (int i = 0; i < pages.size(); i++) {
                 RethinkModels.PageInfoRecord page = pages.get(i);

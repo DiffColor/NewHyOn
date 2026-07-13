@@ -11,6 +11,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
+import kr.co.turtlelab.andowsignage.AndoWSignage;
 import kr.co.turtlelab.andowsignage.AndoWSignageApp;
 import kr.co.turtlelab.andowsignage.datamodels.WeeklyScheduleDataModel;
 import kr.co.turtlelab.andowsignage.dataproviders.WeeklyScheduleProvider;
@@ -94,13 +95,29 @@ public class PowerService extends Service {
 	
 	public void Sleep() {
 		if(AndoWSignageApp.isSlept == false) {
-			PowerApi.setSleepMode(ctx, true);
-			Intent sleepIntent = new Intent();
-			sleepIntent.setAction("andowsignage.intent.action.SLEEP");
-	        ctx.sendBroadcast(sleepIntent);
+			AndoWSignageApp.isSlept = true;
+            AndoWSignageApp.markStoppedState();
+			if (PowerApi.setSleepMode(ctx, true)) {
+				Intent sleepIntent = new Intent();
+				sleepIntent.setAction("andowsignage.intent.action.SLEEP");
+				ctx.sendBroadcast(sleepIntent);
+			} else {
+				stopPlaybackForSleepCommandFailure();
+			}
 		}
-		AndoWSignageApp.isSlept = true;
-        AndoWSignageApp.markStoppedState();
+	}
+
+	private void stopPlaybackForSleepCommandFailure() {
+		final AndoWSignage player = AndoWSignage.act;
+		if (player == null) {
+			return;
+		}
+		player.runOnUiThread(new Runnable() {
+			@Override
+			public void run() {
+				player.stopAndRemoveAllViews();
+			}
+		});
 	}
 	
 	public void WakeUp() {
@@ -108,6 +125,7 @@ public class PowerService extends Service {
 //			skip_count = SKIP_COUNT;
 			AndoWSignageApp.isSlept = false;
 			PowerApi.setSleepMode(ctx, false);
+			resumePlaybackAfterWakeUp();
 
 //			Intent wakeupIntent = new Intent();
 //			wakeupIntent.setAction("andowsignage.intent.action.WAKEUP");
@@ -129,8 +147,22 @@ public class PowerService extends Service {
 //			playerIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 //			ctx.startActivity(playerIntent);
 
-			PowerApi.requestReboot(ctx);
+			// Android 플레이어는 방송 시작 시 재부팅하지 않는다.
+			// PowerApi.requestReboot(ctx);
 		}
+	}
+
+	private void resumePlaybackAfterWakeUp() {
+		final AndoWSignage player = AndoWSignage.act;
+		if (player == null) {
+			return;
+		}
+		player.runOnUiThread(new Runnable() {
+			@Override
+			public void run() {
+				player.updateAndRestart(true);
+			}
+		});
 	}
 
 	@Override

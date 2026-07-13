@@ -72,7 +72,7 @@ public final class QuberAgentClient {
     }
 
     public boolean requestReboot() {
-        return sendCommand(CMD_REBOOT, null, false).success;
+        return sendCommand(CMD_REBOOT, null, true).success;
     }
 
     /**
@@ -83,16 +83,16 @@ public final class QuberAgentClient {
         try {
             params.put("status", false);
         } catch (JSONException ignore) { }
-        return sendCommand(CMD_HDMI_ON_OFF, params, false).success;
+        return sendCommand(CMD_HDMI_ON_OFF, params, true).success;
     }
 
     public boolean setSleepMode(boolean enabled) {
         JSONObject params = new JSONObject();
         try {
-            // Spec 상 boolean/int 모두 허용된다.
-            params.put("systemSleepMode", enabled);
+            // 설치된 Quber Agent v9는 boolean이 아닌 0/1 정수 형식만 수용한다.
+            params.put("systemSleepMode", enabled ? 1 : 0);
         } catch (JSONException ignore) { }
-        return sendCommand(CMD_SLEEP_MODE_SET, params, false).success;
+        return sendCommand(CMD_SLEEP_MODE_SET, params, true).success;
     }
 
     public String readDeviceId() {
@@ -151,7 +151,7 @@ public final class QuberAgentClient {
             } catch (JSONException ignore) {
             }
         }
-        QuberResponse resp = sendCommand(CMD_SCHEDULE_SET, params, false);
+        QuberResponse resp = sendCommand(CMD_SCHEDULE_SET, params, true);
         return resp.success;
     }
 
@@ -160,7 +160,7 @@ public final class QuberAgentClient {
         try {
             params.put("status", on);
         } catch (JSONException ignore) { }
-        return sendCommand(CMD_HDMI_ON_OFF, params, false).success;
+        return sendCommand(CMD_HDMI_ON_OFF, params, true).success;
     }
 
     private QuberResponse sendCommand(String cmdCode, Object params, boolean expectResponse) {
@@ -206,7 +206,10 @@ public final class QuberAgentClient {
 
         try {
             JSONObject response = waiter.await(RESPONSE_TIMEOUT_MS);
-            return QuberResponse.success(response);
+            if (response != null && "2000".equals(response.optString("resultCode"))) {
+                return QuberResponse.success(response);
+            }
+            return QuberResponse.failed();
         } catch (Exception e) {
             pendingResponses.remove(requestId);
             Log.w(TAG, "Timeout waiting for response " + cmdCode, e);

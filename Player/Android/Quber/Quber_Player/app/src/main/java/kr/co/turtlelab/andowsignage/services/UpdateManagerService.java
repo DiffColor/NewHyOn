@@ -296,11 +296,13 @@ public class UpdateManagerService extends Service implements SignalRClientServic
             return;
         }
         executeCommandAsync(() -> {
-            String playerKey = weekly.getPlayerId();
-            if (TextUtils.isEmpty(playerKey)) {
-                playerKey = resolvePlayerGuid();
+            String playerGuid = resolvePlayerGuid();
+            if (TextUtils.isEmpty(playerGuid)
+                    || (!TextUtils.isEmpty(weekly.getPlayerId())
+                    && !TextUtils.equals(weekly.getPlayerId(), playerGuid))) {
+                return;
             }
-            syncManager.applyWeeklyScheduleRecord(playerKey, weekly);
+            syncManager.applyWeeklyScheduleRecord(playerGuid, weekly);
         });
     }
 
@@ -435,13 +437,13 @@ public class UpdateManagerService extends Service implements SignalRClientServic
                     handled = false;
                     break;
                 }
-                String weeklyKey = !TextUtils.isEmpty(payload.Schedule.PlayerId)
-                        ? payload.Schedule.PlayerId
-                        : payload.Schedule.PlayerName;
-                if (TextUtils.isEmpty(weeklyKey)) {
-                    weeklyKey = playerGuid;
+                if (!TextUtils.isEmpty(payload.Schedule.PlayerId)
+                        && !TextUtils.equals(payload.Schedule.PlayerId, playerGuid)) {
+                    client.updateCommandHistory(historyId, "failed", "WEEKLY_PAYLOAD", "player id mismatch", null);
+                    handled = false;
+                    break;
                 }
-                if (syncManager.applyWeeklySchedulePayload(weeklyKey, payload.Schedule.WeeklySchedule)) {
+                if (syncManager.applyWeeklySchedulePayload(playerGuid, payload.Schedule.WeeklySchedule)) {
                     client.updateCommandHistory(historyId, "done", null, null, null);
                 } else {
                     client.updateCommandHistory(historyId, "failed", "WEEKLY_PAYLOAD", "payload missing", null);

@@ -9,7 +9,6 @@ import kr.co.turtlelab.andowsignage.data.realm.RealmPlayer;
 import kr.co.turtlelab.andowsignage.data.rethink.RethinkDbClient;
 import kr.co.turtlelab.andowsignage.datamodels.LocalSettingsModel;
 import kr.co.turtlelab.andowsignage.datamodels.PlayerDataModel;
-import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
 
 public class PlayerDataProvider {
 
@@ -18,6 +17,7 @@ public class PlayerDataProvider {
     public static final String KEY_ENABLE_MANUAL_IP = "is_manual";
     public static final String KEY_MANUAL_IP = "manual_ip";
     public static final String KEY_KEEP_RATIO = "keepratio";
+    private static final String LEGACY_LOCAL_PLAYER_ID = "local_player";
 
     private PlayerDataProvider() {
     }
@@ -28,6 +28,10 @@ public class PlayerDataProvider {
         Realm realm = Realm.getDefaultInstance();
         try {
             RealmPlayer realmPlayer = realm.where(RealmPlayer.class).findFirst();
+            if (isLegacyLocalPlayer(realmPlayer)) {
+                // GUID가 확정되는 시점에 인증값을 실제 플레이어 레코드로 옮긴다.
+                realmPlayer = null;
+            }
             if (realmPlayer != null) {
                 playerData.setPlayerId(realmPlayer.getPlayerId());
                 String name = realmPlayer.getPlayerName();
@@ -84,21 +88,15 @@ public class PlayerDataProvider {
     public static boolean updatePlayerAuthInfo(String authKey, String fingerprint) {
         Realm realm = Realm.getDefaultInstance();
         try {
+            LocalSettingsProvider.updatePlayerAuthKey(authKey);
             realm.executeTransaction(r -> {
                 RealmPlayer player = r.where(RealmPlayer.class).findFirst();
-                if (player == null) {
-                    String playerId = AndoWSignageApp.PLAYER_ID;
-                    if (TextUtils.isEmpty(playerId)) {
-                        playerId = "local_player";
-                    }
-                    player = r.createObject(RealmPlayer.class, playerId);
-                    player.setPlayerName(playerId);
+                if (player != null && !isLegacyLocalPlayer(player)) {
+                    player.setPifAuthKey(authKey == null ? "" : authKey);
+                    player.setPifFingerprint(fingerprint == null ? "" : fingerprint);
                 }
-                String normalizedAuthKey = authKey == null ? "" : authKey;
-                String normalizedFingerprint = fingerprint == null ? "" : fingerprint;
-                player.setPifAuthKey(normalizedAuthKey);
-                player.setPifFingerprint(normalizedFingerprint);
             });
+            RethinkDbClient.getInstance().invalidateDeviceInfoSync();
             return true;
         } catch (Throwable ignored) {
             return false;
@@ -108,10 +106,17 @@ public class PlayerDataProvider {
     }
 
     public static String getPlayerAuthKey() {
+        String stored = LocalSettingsProvider.getPlayerAuthKey();
+        if (!TextUtils.isEmpty(stored)) {
+            return stored;
+        }
         Realm realm = Realm.getDefaultInstance();
         try {
             RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
-            return player == null || player.getPifAuthKey() == null ? "" : player.getPifAuthKey();
+            if (player == null || player.getPifAuthKey() == null) {
+                return "";
+            }
+            return player.getPifAuthKey();
         } finally {
             realm.close();
         }
@@ -121,7 +126,10 @@ public class PlayerDataProvider {
         Realm realm = Realm.getDefaultInstance();
         try {
             RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
-            return player == null || player.getPifFingerprint() == null ? "" : player.getPifFingerprint();
+            if (player == null || player.getPifFingerprint() == null) {
+                return "";
+            }
+            return player.getPifFingerprint();
         } finally {
             realm.close();
         }
@@ -145,4 +153,13 @@ public class PlayerDataProvider {
         });
         realm.close();
     }
+
+    public static boolean isLegacyLocalPlayerId(String playerId) {
+        return LEGACY_LOCAL_PLAYER_ID.equalsIgnoreCase(playerId == null ? "" : playerId.trim());
+    }
+
+    private static boolean isLegacyLocalPlayer(RealmPlayer player) {
+        return player != null && isLegacyLocalPlayerId(player.getPlayerId());
+    }
+
 }

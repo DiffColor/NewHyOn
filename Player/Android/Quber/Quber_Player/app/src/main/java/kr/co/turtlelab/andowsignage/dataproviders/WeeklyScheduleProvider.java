@@ -28,6 +28,7 @@ public class WeeklyScheduleProvider {
         try {
             RealmWeeklySchedule schedule = findSchedule(realm);
             if (schedule == null) {
+                addDefaultModels(list);
                 return list;
             }
             RealmWeeklySchedule detached = realm.copyFromRealm(schedule);
@@ -93,6 +94,17 @@ public class WeeklyScheduleProvider {
         list.add(model);
     }
 
+    private static void addDefaultModels(List<WeeklyScheduleDataModel> list) {
+        for (String day : DAYS) {
+            WeeklyScheduleDataModel model = new WeeklyScheduleDataModel();
+            model.setDay(day);
+            model.setFrom("0", "0");
+            model.setTo("0", "0");
+            model.setOnAir("true");
+            list.add(model);
+        }
+    }
+
     private static RealmWeeklySchedule ensureScheduleInTransaction(Realm realm) {
         if (realm == null) {
             return null;
@@ -126,28 +138,27 @@ public class WeeklyScheduleProvider {
     }
 
     private static String resolvePreferredScheduleKey(Realm realm) {
-        RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
-        if (player != null && !TextUtils.isEmpty(player.getPlayerId())) {
-            return player.getPlayerId();
-        }
-        if (!TextUtils.isEmpty(AndoWSignageApp.PLAYER_ID)) {
-            return AndoWSignageApp.PLAYER_ID;
-        }
-        if (player != null && !TextUtils.isEmpty(player.getPlayerName())) {
-            return player.getPlayerName();
+        for (RealmPlayer player : realm.where(RealmPlayer.class).findAll()) {
+            if (!TextUtils.isEmpty(player.getPlayerId())
+                    && !PlayerDataProvider.isLegacyLocalPlayerId(player.getPlayerId())) {
+                return player.getPlayerId();
+            }
         }
         return null;
     }
 
     private static List<String> resolveScheduleKeys(Realm realm) {
         Set<String> keys = new LinkedHashSet<>();
-        RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
-        if (player != null) {
-            addKey(keys, player.getPlayerId());
+        List<RealmPlayer> players = realm.where(RealmPlayer.class).findAll();
+        for (RealmPlayer player : players) {
+            if (!PlayerDataProvider.isLegacyLocalPlayerId(player.getPlayerId())) {
+                addKey(keys, player.getPlayerId());
+                addKey(keys, player.getPlayerName());
+            }
         }
-        addKey(keys, AndoWSignageApp.PLAYER_ID);
-        if (player != null) {
-            addKey(keys, player.getPlayerName());
+        if (keys.isEmpty() && !PlayerDataProvider.isLegacyLocalPlayerId(AndoWSignageApp.PLAYER_ID)) {
+            // 이전 버전이 이름으로 저장한 캐시를 GUID 동기화 전 한 번만 읽는다.
+            addKey(keys, AndoWSignageApp.PLAYER_ID);
         }
         return new ArrayList<>(keys);
     }
