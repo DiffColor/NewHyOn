@@ -168,6 +168,10 @@ namespace TurtleTools
             {
                 case "playing":
                     return PlayerStatus.Playing;
+                case "off-air":
+                case "offair":
+                case "off_air":
+                    return PlayerStatus.OffAir;
                 case "idle":
                 case "stopped":
                 case "stop":

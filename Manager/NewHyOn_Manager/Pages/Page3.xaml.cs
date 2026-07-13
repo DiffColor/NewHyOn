@@ -45,8 +45,6 @@ namespace AndoW_Manager
             new Dictionary<string, PlayerInfoElement>(StringComparer.OrdinalIgnoreCase);
         private Dictionary<string, PlayerInfoElement> _playerElementByName =
             new Dictionary<string, PlayerInfoElement>(StringComparer.OrdinalIgnoreCase);
-        private HashSet<PlayerInfoElement> _visiblePlayerElements = new HashSet<PlayerInfoElement>();
-        private bool _visibleRefreshScheduled;
         private bool _isPlayerInfoRefreshing;
         private readonly TimeSpan _minimumPlayerInfoRefreshIndicatorDuration = TimeSpan.FromMilliseconds(700);
 
@@ -158,8 +156,6 @@ namespace AndoW_Manager
             PlayerListBox.SelectionChanged += PlayerListBox_SelectionChanged;
             PlayerListBox.PreviewMouseLeftButtonDown += PlayerListBox_PreviewMouseLeftButtonDown;
             PlayerListBox.PreviewMouseWheel += PlayerListBox_PreviewMouseWheel;
-            PlayerListScrollViewer.ScrollChanged += PlayerListScrollViewer_ScrollChanged;
-
             this.Loaded += Page3_Loaded;
 
             BTN0DO_Copy9.Click += BTN0DO_Copy9_Click;  // 모든 플레이어 처음페이지부터
@@ -192,7 +188,6 @@ namespace AndoW_Manager
         void Page3_Loaded(object sender, RoutedEventArgs e)
         {
             RefreshPlayerGroups();
-            ScheduleVisibleRefresh();
         }
 
         private void PlayerListBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -575,8 +570,6 @@ namespace AndoW_Manager
                 g_PlayerInfoElementList.Select(x => x.g_PlayerInfoClass),
                 forceRefresh: true);
 
-            ScheduleVisibleRefresh();
-
             Is_ComboBoxInit = false;
             UpdateSelectionVisuals();
             UpdateGroupButtonState();
@@ -914,87 +907,6 @@ namespace AndoW_Manager
             }
         }
 
-        private void PlayerListScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
-        {
-            if (e.HorizontalChange == 0 && e.VerticalChange == 0 &&
-                e.ViewportWidthChange == 0 && e.ViewportHeightChange == 0 &&
-                e.ExtentWidthChange == 0 && e.ExtentHeightChange == 0)
-            {
-                return;
-            }
-
-            ScheduleVisibleRefresh();
-        }
-
-        private void ScheduleVisibleRefresh()
-        {
-            if (_visibleRefreshScheduled)
-            {
-                return;
-            }
-
-            _visibleRefreshScheduled = true;
-            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
-            {
-                _visibleRefreshScheduled = false;
-                UpdateVisiblePlayerElements();
-
-                var snapshot = _heartbeatMonitor?.GetCurrentStatesSnapshot();
-                if (snapshot == null || snapshot.Count == 0)
-                {
-                    return;
-                }
-
-                ApplyHeartbeatStates(snapshot);
-            }));
-        }
-
-        private void UpdateVisiblePlayerElements()
-        {
-            _visiblePlayerElements = GetVisiblePlayerElements() ?? new HashSet<PlayerInfoElement>();
-        }
-
-        private HashSet<PlayerInfoElement> GetVisiblePlayerElements()
-        {
-            var visible = new HashSet<PlayerInfoElement>();
-            if (PlayerListBox == null || PlayerListScrollViewer == null)
-            {
-                return visible;
-            }
-
-            double viewportWidth = PlayerListScrollViewer.ViewportWidth;
-            double viewportHeight = PlayerListScrollViewer.ViewportHeight;
-            if (viewportWidth <= 0 || viewportHeight <= 0)
-            {
-                return null;
-            }
-
-            Rect viewport = new Rect(0, 0, viewportWidth, viewportHeight);
-            foreach (object item in PlayerListBox.Items)
-            {
-                var element = item as PlayerInfoElement;
-                if (element == null || !element.IsVisible)
-                {
-                    continue;
-                }
-
-                try
-                {
-                    Rect bounds = element.TransformToAncestor(PlayerListScrollViewer)
-                        .TransformBounds(new Rect(new Point(0, 0), element.RenderSize));
-                    if (bounds.IntersectsWith(viewport))
-                    {
-                        visible.Add(element);
-                    }
-                }
-                catch (InvalidOperationException)
-                {
-                }
-            }
-
-            return visible;
-        }
-
         private void ApplyHeartbeatStates(IEnumerable<PlayerHeartbeatState> updatedStates)
         {
             if (g_PlayerInfoElementList.Count == 0)
@@ -1002,20 +914,11 @@ namespace AndoW_Manager
                 return;
             }
 
-            if (_visiblePlayerElements == null || _visiblePlayerElements.Count == 0)
-            {
-                return;
-            }
             foreach (var state in updatedStates)
             {
                 var element = FindPlayerElement(state.ClientId);
                 if (element != null)
                 {
-                    if (!_visiblePlayerElements.Contains(element))
-                    {
-                        continue;
-                    }
-
                     bool? isConnected = state.LastHeartbeat.HasValue;
                     element.ApplyPlayerStatus(state.Status, state.Process, state.Version, state.CurrentPageName, state.HdmiState, isConnected);
                     if (IsSelectedPlayer(element.g_PlayerInfoClass?.PIF_PlayerName))

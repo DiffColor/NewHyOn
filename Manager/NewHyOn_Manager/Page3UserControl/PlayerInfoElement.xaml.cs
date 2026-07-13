@@ -1132,9 +1132,15 @@ namespace AndoW_Manager
                     break;
 
                 case PlayerStatus.Stopped:
-                    statusText = "중지됨";
-                    statusBrush = new SolidColorBrush(Colors.Gray);
-                    DisableContentReport();
+                    statusText = isConnected == true ? "온라인" : "중지됨";
+                    statusBrush = new SolidColorBrush(isConnected == true ? Colors.YellowGreen : Colors.Gray);
+                    ApplyPreviewPlaceholder();
+                    break;
+
+                case PlayerStatus.OffAir:
+                    statusText = "온라인";
+                    statusBrush = new SolidColorBrush(Colors.YellowGreen);
+                    ApplyPreviewPlaceholder();
                     break;
 
                 default:

@@ -14,7 +14,7 @@ namespace AndoW_Manager
         [Description("세로")]
         Portrait
     }
-    public enum PlayerStatus { Playing, Stopped, Updating }
+    public enum PlayerStatus { Playing, Stopped, Updating, OffAir }
     public enum RP_STATUS { playing, stopped, updating };
     public enum RP_ORDER { updatelist, updateschedule, updateweekly, upgrade, reboot, check, getmac, poweroff, clearqueue, sync };
     
