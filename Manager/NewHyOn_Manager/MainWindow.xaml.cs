@@ -80,13 +80,13 @@ namespace AndoW_Manager
             Version assemblyVersion = typeof(MainWindow).Assembly.GetName().Version;
             if (assemblyVersion == null)
             {
-                Favorite_title_Copy.Text = "New Hyon";
+                Favorite_title_Copy.Text = "New HyOn";
                 return;
             }
 
             int fieldCount = assemblyVersion.Revision > 0 ? 4 : 3;
             string versionText = assemblyVersion.ToString(fieldCount);
-            Favorite_title_Copy.Text = $"New Hyon ( v{versionText} )";
+            Favorite_title_Copy.Text = $"New HyOn ( v{versionText} )";
         }
 
         public void InitPages()

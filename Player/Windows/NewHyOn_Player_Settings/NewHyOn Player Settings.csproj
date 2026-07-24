@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows7.0</TargetFramework>
     <RootNamespace>NewHyOn.Player.Settings</RootNamespace>
     <AssemblyName>NewHyOn Player Settings</AssemblyName>
     <DefineConstants>$(DefineConstants);PLAYER_SETTINGS_USE_APP_CONTEXT_BASE_DIRECTORY</DefineConstants>
