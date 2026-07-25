@@ -17,6 +17,7 @@ public class StoredLocalSettings {
     private boolean manualIpEnabled;
     private boolean keepRatioEnabled;
     private String usbAuthKey = "";
+    private String pifFingerprint = "";
     private boolean switchOnContentEnd;
     private String playerId = "";
     private String managerIp = "";
@@ -68,6 +69,14 @@ public class StoredLocalSettings {
 
     public void setUsbAuthKey(String usbAuthKey) {
         this.usbAuthKey = usbAuthKey;
+    }
+
+    public String getPifFingerprint() {
+        return pifFingerprint;
+    }
+
+    public void setPifFingerprint(String pifFingerprint) {
+        this.pifFingerprint = pifFingerprint;
     }
 
     public boolean isSwitchOnContentEndEnabled() {

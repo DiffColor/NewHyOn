@@ -256,7 +256,11 @@ public class LocalSettingsProvider {
     public static boolean updatePifAuthInfo(String authKey, String fingerprint) {
         ObjectBoxDb storeDb = ObjectBoxDb.getDefaultInstance();
         try {
-            storeDb.executeTransaction(r -> getOrCreateStoredSettings(r).setUsbAuthKey(authKey == null ? "" : authKey));
+            storeDb.executeTransaction(r -> {
+                StoredLocalSettings settings = getOrCreateStoredSettings(r);
+                settings.setUsbAuthKey(authKey == null ? "" : authKey);
+                settings.setPifFingerprint(fingerprint == null ? "" : fingerprint);
+            });
             persistCurrentSettings();
             return true;
         } finally {
@@ -275,7 +279,13 @@ public class LocalSettingsProvider {
     }
 
     public static String getPifFingerprint() {
-        return "";
+        ObjectBoxDb storeDb = ObjectBoxDb.getDefaultInstance();
+        try {
+            StoredLocalSettings settings = findStoredSettings(storeDb);
+            return settings == null || settings.getPifFingerprint() == null ? "" : settings.getPifFingerprint();
+        } finally {
+            storeDb.close();
+        }
     }
 
     public static String getManagerIp() {

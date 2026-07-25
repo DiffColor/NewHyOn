@@ -142,7 +142,7 @@
     },
     {
       "id": "3:892636072375574579",
-      "lastPropertyId": "17:146227413326452518",
+      "lastPropertyId": "18:7631667684054480160",
       "name": "StoredLocalSettings",
       "properties": [
         {
@@ -231,6 +231,11 @@
         {
           "id": "17:146227413326452518",
           "name": "ftpRootPath",
+          "type": 9
+        },
+        {
+          "id": "18:7631667684054480160",
+          "name": "pifFingerprint",
           "type": 9
         }
       ],
