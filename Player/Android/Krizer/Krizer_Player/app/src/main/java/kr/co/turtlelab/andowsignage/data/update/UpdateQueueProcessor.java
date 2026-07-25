@@ -4,8 +4,10 @@ import android.text.TextUtils;
 
 import java.util.List;
 
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.realm.Realm;
@@ -27,11 +29,15 @@ public class UpdateQueueProcessor implements UpdateQueueDownloader.LeaseHandler 
         boolean apply(RealmUpdateQueue queue);
     }
 
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
     private final QueueApplier queueApplier;
     private final UpdateQueueDownloader downloader;
     private final UpdateQueueValidator validator;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final AtomicBoolean recovered = new AtomicBoolean(false);
+    private static final UpdateExecutionController executionController = new UpdateExecutionController();
+    private final ThreadLocal<UpdateExecutionController.Token> executionToken = new ThreadLocal<>();
+    private ScheduledFuture<?> retryWakeup;
     private final UpdateLeaseClient leaseClient;
     private final UpdateThrottleSettingsClient throttleSettingsClient;
     private UpdateThrottleModels.UpdateLeaseEntry activeLease;
@@ -69,8 +75,31 @@ public class UpdateQueueProcessor implements UpdateQueueDownloader.LeaseHandler 
     }
 
     public void schedule() {
-        UpdateQueueHelper.recoverInterruptedQueues();
+        if (!recovered.get()) {
+            boolean recoveredNow = executionController.runIfIdle(() -> {
+                UpdateQueueHelper.recoverInterruptedQueues();
+                return true;
+            });
+            if (!recoveredNow) {
+                return;
+            }
+            recovered.set(true);
+        }
         UpdateQueueHelper.requeueFailedQueuesIfDue();
+        if (running.get()) {
+            return;
+        }
+        long delayMs = UpdateQueueWakePolicy.delayForHead(
+                UpdateQueueHelper.getFifoHeadNextRetryAt(), System.currentTimeMillis());
+        if (delayMs == UpdateQueueWakePolicy.NO_WAKEUP) {
+            cancelRetryWakeup();
+            return;
+        }
+        if (delayMs > 0L) {
+            scheduleRetryWakeup(delayMs);
+            return;
+        }
+        cancelRetryWakeup();
         if (!running.compareAndSet(false, true)) {
             return;
         }
@@ -79,11 +108,37 @@ public class UpdateQueueProcessor implements UpdateQueueDownloader.LeaseHandler 
                 processNext();
             } finally {
                 running.set(false);
-                if (UpdateQueueHelper.hasPendingQueue()) {
-                    schedule();
-                }
+                schedule();
             }
         });
+    }
+
+    private synchronized void scheduleRetryWakeup(long delayMs) {
+        cancelRetryWakeup();
+        retryWakeup = executor.schedule(() -> {
+            synchronized (UpdateQueueProcessor.this) {
+                retryWakeup = null;
+            }
+            schedule();
+        }, Math.max(1L, delayMs), TimeUnit.MILLISECONDS);
+    }
+
+    private synchronized void cancelRetryWakeup() {
+        if (retryWakeup != null) {
+            retryWakeup.cancel(false);
+            retryWakeup = null;
+        }
+    }
+
+    public int cancelActiveQueues(String reason) {
+        return executionController.cancelActiveAndRun(() -> UpdateQueueHelper.cancelActiveQueues(reason));
+    }
+
+    public void shutdown() {
+        cancelRetryWakeup();
+        executionController.cancelActive();
+        releaseLease();
+        executor.shutdownNow();
     }
 
     public boolean processImmediate(long queueId, boolean ignoreLease) {
@@ -96,8 +151,7 @@ public class UpdateQueueProcessor implements UpdateQueueDownloader.LeaseHandler 
                 return false;
             }
             RealmUpdateQueue snapshot = realm.copyFromRealm(queue);
-            processQueueInternal(snapshot, ignoreLease);
-            return true;
+            return processQueueInternal(snapshot, ignoreLease);
         } finally {
             realm.close();
         }
@@ -222,41 +276,63 @@ public class UpdateQueueProcessor implements UpdateQueueDownloader.LeaseHandler 
         processQueueInternal(queue, false);
     }
 
-    private void processQueueInternal(RealmUpdateQueue queue, boolean ignoreLease) {
+    private boolean processQueueInternal(RealmUpdateQueue queue, boolean ignoreLease) {
         if (queue == null) {
-            return;
+            return false;
         }
-        switch (queue.getStatus()) {
-            case UpdateQueueContract.Status.QUEUED:
-                handleQueued(queue, ignoreLease);
-                break;
-            case UpdateQueueContract.Status.DOWNLOADING:
-                handleDownloading(queue, ignoreLease);
-                break;
-            case UpdateQueueContract.Status.DOWNLOADED:
-                handleDownloaded(queue);
-                break;
-            case UpdateQueueContract.Status.VALIDATING:
-                handleValidating(queue);
-                break;
-            case UpdateQueueContract.Status.READY:
-                handleReady(queue);
-                break;
-            default:
-                break;
+        UpdateExecutionController.Token token = executionController.beginIf(
+                queue.getId(), queue.getExternalId(),
+                () -> UpdateQueueHelper.isActiveQueue(queue.getId(), queue.getExternalId()));
+        if (token == null) {
+            return false;
+        }
+        executionToken.set(token);
+        try {
+            switch (queue.getStatus()) {
+                case UpdateQueueContract.Status.QUEUED:
+                    handleQueued(queue, ignoreLease);
+                    break;
+                case UpdateQueueContract.Status.DOWNLOADING:
+                    handleDownloading(queue, ignoreLease);
+                    break;
+                case UpdateQueueContract.Status.DOWNLOADED:
+                    handleDownloaded(queue);
+                    break;
+                case UpdateQueueContract.Status.VALIDATING:
+                    handleValidating(queue);
+                    break;
+                case UpdateQueueContract.Status.READY:
+                    return handleReady(queue);
+                default:
+                    break;
+            }
+            return true;
+        } finally {
+            executionToken.remove();
+            executionController.complete(token);
         }
     }
 
+    private boolean isCurrentExecution() {
+        return executionController.isCurrent(executionToken.get());
+    }
+
     private void handleQueued(RealmUpdateQueue queue, boolean ignoreLease) {
+        if (!isCurrentExecution()) {
+            return;
+        }
         String playerId = UpdateQueueHelper.getPlayerId(queue);
-        UpdateQueueHelper.updateStatus(queue.getId(), UpdateQueueContract.Status.DOWNLOADING);
-        UpdateProgressTracker tracker = new UpdateProgressTracker(queue.getId(), playerId, queue.getExternalId());
+        UpdateQueueHelper.updateStatus(executionToken.get(), queue.getId(), UpdateQueueContract.Status.DOWNLOADING);
         handleDownloading(queue, ignoreLease);
     }
 
     private void handleDownloading(RealmUpdateQueue queue, boolean ignoreLeaseFlag) {
+        if (!isCurrentExecution()) {
+            return;
+        }
         String playerId = UpdateQueueHelper.getPlayerId(queue);
-        UpdateProgressTracker tracker = new UpdateProgressTracker(queue.getId(), playerId, queue.getExternalId());
+        UpdateProgressTracker tracker = new UpdateProgressTracker(
+                queue.getId(), playerId, queue.getExternalId(), executionToken.get());
         tracker.stepDownload(0f);
         boolean ignoreLease = ignoreLeaseFlag;
         UpdateThrottleSettings settings = ignoreLease ? null : getSettings();
@@ -266,9 +342,12 @@ public class UpdateQueueProcessor implements UpdateQueueDownloader.LeaseHandler 
         }
         UpdateQueueDownloader.DownloadOutcome outcome = new UpdateQueueDownloader.DownloadOutcome();
         if (downloader != null) {
-            outcome = downloader.download(queue, tracker, ignoreLease);
+            outcome = downloader.download(queue, tracker, ignoreLease, executionToken.get());
         } else {
             outcome.success = true;
+        }
+        if (outcome.cancelled || !isCurrentExecution()) {
+            return;
         }
         if (outcome.leaseBusy) {
             scheduleLeaseRetry(queue, settings, "LEASE_BUSY");
@@ -280,7 +359,7 @@ public class UpdateQueueProcessor implements UpdateQueueDownloader.LeaseHandler 
         }
         if (outcome.success) {
             tracker.stepDownload(1f);
-            UpdateQueueHelper.updateStatus(queue.getId(), UpdateQueueContract.Status.DOWNLOADED);
+            UpdateQueueHelper.updateStatus(executionToken.get(), queue.getId(), UpdateQueueContract.Status.DOWNLOADED);
             if (!ignoreLease) {
                 releaseLeaseIfOwner(queue);
             }
@@ -297,16 +376,24 @@ public class UpdateQueueProcessor implements UpdateQueueDownloader.LeaseHandler 
     }
 
     private void handleDownloaded(RealmUpdateQueue queue) {
+        if (!isCurrentExecution()) {
+            return;
+        }
         String playerId = UpdateQueueHelper.getPlayerId(queue);
-        UpdateProgressTracker tracker = new UpdateProgressTracker(queue.getId(), playerId, queue.getExternalId());
-        UpdateQueueHelper.updateStatus(queue.getId(), UpdateQueueContract.Status.VALIDATING);
+        UpdateProgressTracker tracker = new UpdateProgressTracker(
+                queue.getId(), playerId, queue.getExternalId(), executionToken.get());
+        UpdateQueueHelper.updateStatus(executionToken.get(), queue.getId(), UpdateQueueContract.Status.VALIDATING);
         tracker.stepValidate(0f);
         boolean valid = validator != null && validator.validate(queue, tracker);
+        if (!isCurrentExecution()) {
+            return;
+        }
         if (valid) {
             tracker.stepValidate(1f);
-            UpdateQueueHelper.updateStatus(queue.getId(), UpdateQueueContract.Status.READY);
+            UpdateQueueHelper.updateStatus(executionToken.get(), queue.getId(), UpdateQueueContract.Status.READY);
             if (queueApplier != null) {
-                queueApplier.apply(queue);
+                UpdateExecutionController.Token token = executionToken.get();
+                executionController.runIfCurrent(token, () -> queueApplier.apply(queue));
             }
         } else {
             String errorMessage = (validator == null || TextUtils.isEmpty(validator.getLastError()))
@@ -317,18 +404,21 @@ public class UpdateQueueProcessor implements UpdateQueueDownloader.LeaseHandler 
     }
 
     private void handleFailure(RealmUpdateQueue queue, String errorMessage, String exhaustedErrorCode) {
+        if (!isCurrentExecution()) {
+            return;
+        }
         int attemptNumber = queue.getRetryCount() + 1;
         boolean retry = UpdateFailurePolicy.shouldRetry(errorMessage, attemptNumber);
         long nextRetryAt = retry
                 ? System.currentTimeMillis() + UpdateQueueContract.RetryPolicy.getDelayMs(attemptNumber)
                 : 0L;
-        UpdateQueueHelper.incrementRetry(queue.getId(), nextRetryAt);
+        UpdateQueueHelper.incrementRetry(executionToken.get(), queue.getId(), nextRetryAt);
         if (retry) {
-            UpdateQueueHelper.updateStatus(queue.getId(), UpdateQueueContract.Status.QUEUED,
+            UpdateQueueHelper.updateStatus(executionToken.get(), queue.getId(), UpdateQueueContract.Status.QUEUED,
                     "TRANSIENT_UPDATE_ERROR", errorMessage);
             return;
         }
-        UpdateQueueHelper.updateStatus(queue.getId(), UpdateQueueContract.Status.FAILED,
+        UpdateQueueHelper.updateStatus(executionToken.get(), queue.getId(), UpdateQueueContract.Status.FAILED,
                 UpdateFailurePolicy.getFinalErrorCode(errorMessage, attemptNumber, exhaustedErrorCode),
                 errorMessage);
     }
@@ -337,20 +427,27 @@ public class UpdateQueueProcessor implements UpdateQueueDownloader.LeaseHandler 
         handleDownloaded(queue);
     }
 
-    private void handleReady(RealmUpdateQueue queue) {
-        UpdateQueueHelper.updateStatus(queue.getId(), UpdateQueueContract.Status.READY);
+    private boolean handleReady(RealmUpdateQueue queue) {
+        if (queueApplier != null) {
+            UpdateExecutionController.Token token = executionToken.get();
+            return executionController.runIfCurrent(token, () -> queueApplier.apply(queue));
+        } else if (isCurrentExecution()) {
+            UpdateQueueHelper.updateStatus(executionToken.get(), queue.getId(), UpdateQueueContract.Status.READY);
+            return true;
+        }
+        return false;
     }
 
     private void scheduleLeaseRetry(RealmUpdateQueue queue, UpdateThrottleSettings settings, String reason) {
-        if (queue == null) {
+        if (queue == null || !isCurrentExecution()) {
             return;
         }
         int attemptNumber = queue.getRetryCount() + 1;
         if (attemptNumber >= UpdateFailurePolicy.MAX_ATTEMPTS) {
             if (queue.getRetryCount() < UpdateFailurePolicy.MAX_ATTEMPTS) {
-                UpdateQueueHelper.incrementRetry(queue.getId(), 0L);
+                UpdateQueueHelper.incrementRetry(executionToken.get(), queue.getId(), 0L);
             }
-            UpdateQueueHelper.updateStatus(queue.getId(),
+            UpdateQueueHelper.updateStatus(executionToken.get(), queue.getId(),
                     UpdateQueueContract.Status.FAILED,
                     "LEASE_RETRY_EXHAUSTED",
                     reason);
@@ -361,7 +458,7 @@ public class UpdateQueueProcessor implements UpdateQueueDownloader.LeaseHandler 
             retrySeconds = 60;
         }
         long nextRetryAt = System.currentTimeMillis() + (retrySeconds * 1000L);
-        UpdateQueueHelper.scheduleLeaseRetry(queue.getId(), nextRetryAt, "LEASE", reason);
+        UpdateQueueHelper.scheduleLeaseRetry(executionToken.get(), queue.getId(), nextRetryAt, "LEASE", reason);
     }
 
     private boolean hasDownloads(RealmUpdateQueue queue) {

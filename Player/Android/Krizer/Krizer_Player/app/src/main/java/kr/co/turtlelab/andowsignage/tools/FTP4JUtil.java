@@ -77,6 +77,17 @@ public class FTP4JUtil {
             client.login(id, pw);
         }
 
+        public void abortCurrentTransfer() {
+            try {
+                client.abortCurrentDataTransfer(true);
+            } catch (Exception ignore) {
+            }
+        }
+
+        public long getFileSize(String remotePath) {
+            return queryRemoteSize(client, remotePath);
+        }
+
         @Override
         public void close() {
             disconnectClient(client);

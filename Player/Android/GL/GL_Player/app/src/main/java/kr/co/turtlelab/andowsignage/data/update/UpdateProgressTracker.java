@@ -4,6 +4,7 @@ import android.text.TextUtils;
 
 import java.util.concurrent.atomic.AtomicReference;
 
+
 import kr.co.turtlelab.andowsignage.data.rethink.RethinkDbClient;
 import kr.co.turtlelab.andowsignage.services.HeartbeatService;
 
@@ -13,6 +14,7 @@ import kr.co.turtlelab.andowsignage.services.HeartbeatService;
  */
 public class UpdateProgressTracker {
 
+
     private final long queueId;
     private final String externalQueueId;
     private final AtomicReference<Float> lastReported = new AtomicReference<>(0f);
@@ -20,6 +22,7 @@ public class UpdateProgressTracker {
     private final String playerId;
     private final AtomicReference<Float> downloadProgress = new AtomicReference<>(0f);
     private final AtomicReference<Float> validateProgress = new AtomicReference<>(0f);
+    private final UpdateExecutionController.Token executionToken;
 
     public UpdateProgressTracker(long queueId) {
         this(queueId, null, null);
@@ -30,9 +33,15 @@ public class UpdateProgressTracker {
     }
 
     public UpdateProgressTracker(long queueId, String playerId, String externalQueueId) {
+        this(queueId, playerId, externalQueueId, null);
+    }
+
+    public UpdateProgressTracker(long queueId, String playerId, String externalQueueId,
+                                 UpdateExecutionController.Token executionToken) {
         this.queueId = queueId;
         this.playerId = TextUtils.isEmpty(playerId) ? "" : playerId;
         this.externalQueueId = TextUtils.isEmpty(externalQueueId) ? String.valueOf(queueId) : externalQueueId;
+        this.executionToken = executionToken;
     }
 
     public float stepDownload(float unit) {
@@ -75,22 +84,26 @@ public class UpdateProgressTracker {
             overall = vl;
         }
         overall = Math.min(100f, Math.max(0f, overall));
-        UpdateQueueHelper.updateProgress(queueId, dl, vl, overall);
-        return overall;
+        final float finalOverall = overall;
+        runIfCurrent(() -> {
+            UpdateQueueHelper.updateProgress(queueId, dl, vl, finalOverall);
+            return true;
+        });
+        return finalOverall;
     }
 
     private void maybeReport(float percent, float downloadPercent, float validatePercent, String status) {
-        Float last = lastReported.get();
-        String lastStatus = lastReportedStatus.get();
-        if (Math.abs(percent - last) < UpdateQueueContract.ProgressWeight.EPSILON
-                && ((status == null && lastStatus == null)
-                || (status != null && status.equals(lastStatus)))) {
-            return;
-        }
-        lastReported.set(percent);
-        lastReportedStatus.set(status);
-        RethinkDbClient.getInstance()
-                .sendProgress(externalQueueId,
+        runIfCurrent(() -> {
+            Float last = lastReported.get();
+            String lastStatus = lastReportedStatus.get();
+            if (Math.abs(percent - last) < UpdateQueueContract.ProgressWeight.EPSILON
+                    && ((status == null && lastStatus == null)
+                    || (status != null && status.equals(lastStatus)))) {
+                return true;
+            }
+            lastReported.set(percent);
+            lastReportedStatus.set(status);
+            RethinkDbClient.getInstance().sendProgress(externalQueueId,
                         percent,
                         status,
                         0,
@@ -105,7 +118,13 @@ public class UpdateProgressTracker {
                         null,
                         null,
                         null,
-                        null);
-        HeartbeatService.reportUpdateProgress(status, percent, false);
+                    null);
+            HeartbeatService.reportUpdateProgress(status, percent, false);
+            return true;
+        });
+    }
+
+    private boolean runIfCurrent(UpdateExecutionController.CurrentAction action) {
+        return executionToken == null ? action.run() : executionToken.runIfCurrent(action);
     }
 }

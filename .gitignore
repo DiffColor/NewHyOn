@@ -238,6 +238,9 @@ Player/Windows/NewHyOn_Player/mpv-2.dll
 **/ClientBin/
 tmp/
 ~$*
+
+# Local Hermes plans and validation artifacts
+.hermes/
 *~
 *.dbmdl
 *.dbproj.schemaview

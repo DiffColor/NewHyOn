@@ -123,6 +123,43 @@ public final class UpdateQueueHelper {
         updateStatus(queueId, status, null, null);
     }
 
+    public static boolean updateStatus(UpdateExecutionController.Token token,
+                                       long queueId,
+                                       String status) {
+        return updateStatus(token, queueId, status, null, null);
+    }
+
+    public static boolean updateStatus(UpdateExecutionController.Token token,
+                                       long queueId,
+                                       String status,
+                                       String errorCode,
+                                       String errorMessage) {
+        return token != null && token.runIfCurrent(() -> {
+            updateStatus(queueId, status, errorCode, errorMessage);
+            return true;
+        });
+    }
+
+    public static boolean incrementRetry(UpdateExecutionController.Token token,
+                                         long queueId,
+                                         long nextRetryAt) {
+        return token != null && token.runIfCurrent(() -> {
+            incrementRetry(queueId, nextRetryAt);
+            return true;
+        });
+    }
+
+    public static boolean scheduleLeaseRetry(UpdateExecutionController.Token token,
+                                             long queueId,
+                                             long nextRetryAt,
+                                             String errorCode,
+                                             String errorMessage) {
+        return token != null && token.runIfCurrent(() -> {
+            scheduleLeaseRetry(queueId, nextRetryAt, errorCode, errorMessage);
+            return true;
+        });
+    }
+
     public static void updateStatus(long queueId,
                                     String status,
                                     String errorCode,
@@ -212,12 +249,12 @@ public final class UpdateQueueHelper {
                 }
             });
             updateCommandHistoryByQueueAsync(historySnapshot.get());
+            sendStatusAsync(statusSnapshot.get());
             if (deleteRemoteRecord.get()) {
                 deleteQueueRecordAsync(queueId,
                         statusSnapshot.get() == null ? "" : statusSnapshot.get().externalId,
                         playerRef.get());
             }
-            sendStatusAsync(statusSnapshot.get());
         } finally {
             realm.close();
         }
@@ -364,6 +401,54 @@ public final class UpdateQueueHelper {
                     .sort("id")
                     .findFirst();
             return queue != null;
+        } finally {
+            realm.close();
+        }
+    }
+
+    public static long getFifoHeadNextRetryAt() {
+        Realm realm = Realm.getDefaultInstance();
+        try {
+            RealmUpdateQueue queue = realm.where(RealmUpdateQueue.class)
+                    .in("status", new String[]{
+                            UpdateQueueContract.Status.QUEUED,
+                            UpdateQueueContract.Status.DOWNLOADING,
+                            UpdateQueueContract.Status.DOWNLOADED,
+                            UpdateQueueContract.Status.VALIDATING,
+                            UpdateQueueContract.Status.READY})
+                    .sort("id")
+                    .findFirst();
+            RealmUpdateQueue retryQueue = realm.where(RealmUpdateQueue.class)
+                    .equalTo("status", UpdateQueueContract.Status.FAILED)
+                    .greaterThan("nextRetryAt", 0L)
+                    .lessThan("retryCount", UpdateQueueContract.RetryPolicy.MAX_ATTEMPTS)
+                    .sort("id")
+                    .findFirst();
+            if (queue == null) {
+                return retryQueue == null ? UpdateQueueWakePolicy.NO_QUEUE : retryQueue.getNextRetryAt();
+            }
+            if (retryQueue == null || queue.getId() < retryQueue.getId()) {
+                return queue.getNextRetryAt();
+            }
+            return retryQueue.getNextRetryAt();
+        } finally {
+            realm.close();
+        }
+    }
+
+    public static boolean isActiveQueue(long queueId, String externalId) {
+        Realm realm = Realm.getDefaultInstance();
+        try {
+            RealmUpdateQueue queue = realm.where(RealmUpdateQueue.class)
+                    .equalTo("id", queueId)
+                    .findFirst();
+            if (queue == null
+                    || UpdateQueueContract.Status.DONE.equals(queue.getStatus())
+                    || UpdateQueueContract.Status.FAILED.equals(queue.getStatus())
+                    || UpdateQueueContract.Status.CANCELLED.equals(queue.getStatus())) {
+                return false;
+            }
+            return TextUtils.isEmpty(externalId) || TextUtils.equals(externalId, queue.getExternalId());
         } finally {
             realm.close();
         }

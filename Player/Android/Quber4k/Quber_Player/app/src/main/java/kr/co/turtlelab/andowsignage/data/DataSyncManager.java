@@ -61,6 +61,7 @@ public class DataSyncManager {
     private final RethinkDbClient rethinkClient = RethinkDbClient.getInstance();
     private final Gson gson = new Gson();
     private final UpdateQueueProcessor queueProcessor;
+    private final ThreadLocal<Boolean> queueApplyUiRestart = new ThreadLocal<>();
 
     public DataSyncManager() {
         queueProcessor = new UpdateQueueProcessor(this::applyQueueEntry);
@@ -576,6 +577,10 @@ public class DataSyncManager {
         if (queueProcessor != null) {
             queueProcessor.releaseLeaseIfAny();
         }
+    }
+
+    public int cancelActiveQueues(String reason) {
+        return queueProcessor == null ? 0 : queueProcessor.cancelActiveQueues(reason);
     }
 
     public void releasePlayerLease(String playerId) {
@@ -1351,7 +1356,8 @@ public class DataSyncManager {
     }
 
     private boolean applyQueueEntry(StoredUpdateQueue queue) {
-        return applyQueueEntry(queue, true);
+        Boolean requestUiRestart = queueApplyUiRestart.get();
+        return applyQueueEntry(queue, requestUiRestart == null || requestUiRestart);
     }
 
     private boolean applyQueueEntry(StoredUpdateQueue queue, boolean requestUiRestart) {
@@ -1521,19 +1527,35 @@ public class DataSyncManager {
     }
 
     public boolean applyNextReadyQueue() {
-        return UpdateQueueProvider.consumeNextReadyQueue(this::applyQueueEntry);
+        return UpdateQueueProvider.consumeNextReadyQueue(queue -> processReadyQueue(queue, true));
     }
 
     public boolean applyNextReadyQueue(boolean requestUiRestart) {
-        return UpdateQueueProvider.consumeNextReadyQueue(queue -> applyQueueEntry(queue, requestUiRestart));
+        return UpdateQueueProvider.consumeNextReadyQueue(queue -> processReadyQueue(queue, requestUiRestart));
     }
 
     public boolean applyNextSilentReadyQueue() {
-        return UpdateQueueProvider.consumeNextSilentReadyQueue(queue -> applyQueueEntry(queue, false));
+        return UpdateQueueProvider.consumeNextSilentReadyQueue(queue -> processReadyQueue(queue, false));
     }
 
     public boolean applyNextPlaybackRestartReadyQueue(boolean requestUiRestart) {
-        return UpdateQueueProvider.consumeNextPlaybackRestartReadyQueue(queue -> applyQueueEntry(queue, requestUiRestart));
+        return UpdateQueueProvider.consumeNextPlaybackRestartReadyQueue(queue -> processReadyQueue(queue, requestUiRestart));
+    }
+
+    private boolean processReadyQueue(StoredUpdateQueue queue, boolean requestUiRestart) {
+        if (queue == null) {
+            return false;
+        }
+        queueApplyUiRestart.set(requestUiRestart);
+        try {
+            return queueProcessor.processImmediate(queue.getId(), false);
+        } finally {
+            queueApplyUiRestart.remove();
+        }
+    }
+
+    public void shutdownUpdateQueueProcessor() {
+        queueProcessor.shutdown();
     }
 
     public void resumePendingQueues() {

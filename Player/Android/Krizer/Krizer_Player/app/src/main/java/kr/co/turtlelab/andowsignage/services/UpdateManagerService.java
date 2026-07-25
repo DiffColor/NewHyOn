@@ -181,6 +181,9 @@ public class UpdateManagerService extends Service implements SignalRClientServic
         if (updateTimer != null) {
             updateTimer.stop();
         }
+        if (syncManager != null) {
+            syncManager.shutdownUpdateQueueProcessor();
+        }
         if (signalRClient != null) {
             signalRClient.setListener(null);
             if (!AndoWSignageApp.isShutdownInProgress()) {
@@ -367,11 +370,8 @@ public class UpdateManagerService extends Service implements SignalRClientServic
         if (!"updatelist".equals(command)) {
             historyId = client.createCommandHistory(playerGuid, playerName, command);
         }
-        boolean isClearQueue = "clearqueue".equals(command);
-        boolean hasActiveQueue = UpdateQueueHelper.hasActiveQueue();
-        if (hasActiveQueue && !isClearQueue) {
-            int cancelled = UpdateQueueHelper.cancelActiveQueues("Cancelled due to new command");
-            UpdateQueueHelper.requeueFailedQueuesIfDue();
+        if ("updatelist".equals(command) && UpdateQueueHelper.hasActiveQueue()) {
+            int cancelled = syncManager.cancelActiveQueues("Cancelled due to new updatelist command");
             syncManager.releaseActiveLease();
 //            SystemUtils.runOnUiThread(() -> Toast.makeText(AndoWSignage.getCtx(),
 //                    "Cancelling active queue (" + cancelled + ") and executing " + command,
@@ -490,7 +490,7 @@ public class UpdateManagerService extends Service implements SignalRClientServic
                 break;
             case "clearqueue":
                 client.updateCommandHistory(historyId, "in_progress", null, null, null);
-                int cancelled = UpdateQueueHelper.cancelActiveQueues("Cancelled via command");
+                int cancelled = syncManager.cancelActiveQueues("Cancelled via command");
                 syncManager.releaseActiveLease();
                 SystemUtils.runOnUiThread(() -> {
                     String msg = cancelled > 0

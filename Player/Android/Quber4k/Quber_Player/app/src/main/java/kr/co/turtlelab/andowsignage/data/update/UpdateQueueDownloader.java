@@ -30,6 +30,7 @@ public class UpdateQueueDownloader {
         public boolean missing;
         public boolean leaseBusy;
         public boolean leaseLost;
+        public boolean cancelled;
         public String lastError;
     }
 
@@ -52,7 +53,16 @@ public class UpdateQueueDownloader {
     }
 
     public DownloadOutcome download(StoredUpdateQueue queue, UpdateProgressTracker tracker, boolean ignoreLease) {
+        return download(queue, tracker, ignoreLease, null);
+    }
+
+    public DownloadOutcome download(StoredUpdateQueue queue, UpdateProgressTracker tracker, boolean ignoreLease,
+                                    UpdateExecutionController.Token token) {
         DownloadOutcome outcome = new DownloadOutcome();
+        if (token != null && token.isCancelled()) {
+            outcome.cancelled = true;
+            return outcome;
+        }
         UpdateThrottleModels.UpdateThrottleSettings settings = ignoreLease ? null
                 : (leaseHandler == null ? null : leaseHandler.getSettings());
         if (!ignoreLease && leaseHandler != null && !leaseHandler.ensureLease(queue, settings)) {
@@ -71,6 +81,9 @@ public class UpdateQueueDownloader {
         }
         final java.util.concurrent.atomic.AtomicBoolean stopRenew = new java.util.concurrent.atomic.AtomicBoolean(false);
         final java.util.concurrent.atomic.AtomicBoolean renewFailed = new java.util.concurrent.atomic.AtomicBoolean(false);
+        final java.util.concurrent.atomic.AtomicBoolean transferStop = token == null
+                ? renewFailed
+                : token.getTransferStopFlag();
         Thread renewThread = null;
         if (!ignoreLease && leaseHandler != null && settings != null) {
             renewThread = new Thread(() -> {
@@ -81,6 +94,11 @@ public class UpdateQueueDownloader {
                     }
                     if (!leaseHandler.tryRenewLeaseIfNeeded(settings)) {
                         renewFailed.set(true);
+                        if (token != null) {
+                            token.requestTransferStop();
+                        } else {
+                            transferStop.set(true);
+                        }
                         return;
                     }
                 }
@@ -90,6 +108,10 @@ public class UpdateQueueDownloader {
         tracker.stepDownload(calculateDownloadProgress(entries));
         try {
             for (UpdateQueueContract.DownloadEntry entry : entries) {
+                if (token != null && token.isCancelled()) {
+                    outcome.cancelled = true;
+                    return outcome;
+                }
                 if (entry == null) {
                     continue;
                 }
@@ -109,8 +131,15 @@ public class UpdateQueueDownloader {
                     }
                     entry.Status = UpdateQueueContract.DownloadStatus.DOWNLOADING;
                     markChunkStatus(entry, UpdateQueueContract.ChunkStatus.DOWNLOADING, 0L);
-                    UpdateQueueHelper.updateDownloadJournal(queue.getId(), journal.toJson());
-                    boolean success = downloadSingle(entries, entry, tracker, renewFailed);
+                    if (!updateDownloadJournal(token, queue.getId(), journal.toJson())) {
+                        outcome.cancelled = true;
+                        return outcome;
+                    }
+                    boolean success = downloadSingle(entries, entry, tracker, transferStop, token);
+                    if (token != null && token.isCancelled()) {
+                        outcome.cancelled = true;
+                        return outcome;
+                    }
                     if (!success) {
                         String lastError = entry.LastError == null ? "" : entry.LastError;
                         outcome.lastError = TextUtils.isEmpty(lastError)
@@ -124,7 +153,10 @@ public class UpdateQueueDownloader {
                         entry.Status = UpdateQueueContract.DownloadStatus.QUEUED;
                         entry.Attempts += 1;
                         resetChunksToPending(entry);
-                        UpdateQueueHelper.updateDownloadJournal(queue.getId(), journal.toJson());
+                        if (!updateDownloadJournal(token, queue.getId(), journal.toJson())) {
+                            outcome.cancelled = true;
+                            return outcome;
+                        }
                         tracker.stepDownload(calculateDownloadProgress(entries));
                         outcome.success = false;
                         return outcome;
@@ -133,14 +165,24 @@ public class UpdateQueueDownloader {
                     entry.Attempts += 1;
                     markChunkDone(entry, entry.SizeBytes);
                     entry.LastError = "";
-                    UpdateQueueHelper.updateDownloadJournal(queue.getId(), journal.toJson());
+                    if (!updateDownloadJournal(token, queue.getId(), journal.toJson())) {
+                        outcome.cancelled = true;
+                        return outcome;
+                    }
                     tracker.stepDownload(calculateDownloadProgress(entries));
                 } catch (Exception ex) {
+                    if (token != null && token.isCancelled()) {
+                        outcome.cancelled = true;
+                        return outcome;
+                    }
                     entry.Status = UpdateQueueContract.DownloadStatus.QUEUED;
                     entry.LastError = ex.getMessage();
                     entry.Attempts += 1;
                     resetChunksToPending(entry);
-                    UpdateQueueHelper.updateDownloadJournal(queue.getId(), journal.toJson());
+                    if (!updateDownloadJournal(token, queue.getId(), journal.toJson())) {
+                        outcome.cancelled = true;
+                        return outcome;
+                    }
                     tracker.stepDownload(calculateDownloadProgress(entries));
                     outcome.lastError = "Download failed: " + entry.FileName + " / " + ex.getMessage();
                     outcome.success = false;
@@ -163,7 +205,8 @@ public class UpdateQueueDownloader {
     private boolean downloadSingle(List<UpdateQueueContract.DownloadEntry> entries,
                                    UpdateQueueContract.DownloadEntry entry,
                                    UpdateProgressTracker tracker,
-                                   java.util.concurrent.atomic.AtomicBoolean renewFailed) {
+                                   java.util.concurrent.atomic.AtomicBoolean renewFailed,
+                                   UpdateExecutionController.Token token) {
         if (entry == null) {
             return true;
         }
@@ -185,12 +228,19 @@ public class UpdateQueueDownloader {
         File finalFile = new File(finalPath);
         String stagingPath = UpdateQueueHelper.getTempContentPath(localFileName);
         ensureParentDir(stagingPath);
-        File stagingFile = new File(stagingPath);
-        if (FileIntegrityUtils.verifyFile(stagingFile, entry.SizeBytes, entry.Checksum)) {
+        File canonicalStagingFile = new File(stagingPath);
+        if (entry.SizeBytes > 0L
+                && FileIntegrityUtils.verifyFile(canonicalStagingFile, entry.SizeBytes, entry.Checksum)) {
             return true;
         }
+        File stagingFile = canonicalStagingFile;
+        if (token != null) {
+            cleanupExecutionStagingFiles(canonicalStagingFile);
+            stagingFile = new File(stagingPath + ".exec." + token.getExecutionId());
+        }
         // 기존 파일이 유효하면 다운로드를 건너뛴다.
-        if (FileIntegrityUtils.verifyFile(finalFile, entry.SizeBytes, entry.Checksum)) {
+        if (entry.SizeBytes > 0L
+                && FileIntegrityUtils.verifyFile(finalFile, entry.SizeBytes, entry.Checksum)) {
             return true;
         }
         UpdateQueueLogger.log("Staging download to " + stagingPath + " (final: " + finalPath + ")");
@@ -213,7 +263,34 @@ public class UpdateQueueDownloader {
         ensureChunks(entry);
         List<UpdateQueueContract.DownloadChunk> chunks = entry.Chunks;
         try (FTP4JUtil.Session session = ftp.openSession()) {
-            for (UpdateQueueContract.DownloadChunk chunk : chunks) {
+            Runnable transferAbort = session::abortCurrentTransfer;
+            if (token != null) {
+                token.setTransferAbortAction(transferAbort);
+            }
+            try {
+                if (entry.SizeBytes <= 0L) {
+                    entry.SizeBytes = UpdateDownloadSizePolicy.resolveExpectedSize(
+                            entry.SizeBytes,
+                            session.getFileSize(remotePath));
+                    if (entry.SizeBytes <= 0L) {
+                        entry.LastError = "REMOTE_SIZE_UNAVAILABLE";
+                        return false;
+                    }
+                    ensureTempFileLength(stagingFile, entry.SizeBytes);
+                    for (UpdateQueueContract.DownloadChunk chunk : chunks) {
+                        if (chunk != null) {
+                            chunk.Length = UpdateDownloadSizePolicy.resolveChunkLength(
+                                    chunk.Length,
+                                    entry.SizeBytes,
+                                    chunk.Offset);
+                        }
+                    }
+                    if (FileIntegrityUtils.verifyFile(canonicalStagingFile, entry.SizeBytes, entry.Checksum)
+                            || FileIntegrityUtils.verifyFile(finalFile, entry.SizeBytes, entry.Checksum)) {
+                        return true;
+                    }
+                }
+                for (UpdateQueueContract.DownloadChunk chunk : chunks) {
                 if (chunk == null) {
                     continue;
                 }
@@ -253,6 +330,11 @@ public class UpdateQueueDownloader {
                 chunk.DownloadedBytes = length;
                 chunk.LastUpdatedTicks = UpdateQueueHelper.toDotNetLocalTicks(System.currentTimeMillis());
             }
+            } finally {
+                if (token != null) {
+                    token.clearTransferAbortAction(transferAbort);
+                }
+            }
         } catch (Exception ex) {
             entry.LastError = TextUtils.isEmpty(ex.getMessage()) ? "FTP_SESSION_FAIL" : ex.getMessage();
             return false;
@@ -261,7 +343,67 @@ public class UpdateQueueDownloader {
             entry.LastError = "HASH_MISMATCH";
             return false;
         }
+        final File publishSource = stagingFile;
+        try {
+            boolean published = token == null
+                    ? publishExecutionStaging(publishSource, canonicalStagingFile)
+                    : token.runIfCurrentChecked(
+                            () -> publishExecutionStaging(publishSource, canonicalStagingFile));
+            if (!published) {
+                stagingFile.delete();
+                entry.LastError = token != null && token.isCancelled()
+                        ? "CANCELLED"
+                        : "STAGING_PUBLISH_FAIL";
+                return false;
+            }
+        } catch (Exception ex) {
+            stagingFile.delete();
+            entry.LastError = TextUtils.isEmpty(ex.getMessage())
+                    ? "STAGING_PUBLISH_FAIL"
+                    : ex.getMessage();
+            return false;
+        }
         return true;
+    }
+
+    private void cleanupExecutionStagingFiles(File canonicalStagingFile) {
+        File parent = canonicalStagingFile == null ? null : canonicalStagingFile.getParentFile();
+        if (parent == null) {
+            return;
+        }
+        File[] staleFiles = parent.listFiles((dir, name) ->
+                name.startsWith(canonicalStagingFile.getName() + ".exec."));
+        if (staleFiles == null) {
+            return;
+        }
+        for (File staleFile : staleFiles) {
+            if (staleFile != null) {
+                staleFile.delete();
+            }
+        }
+    }
+
+    private boolean publishExecutionStaging(File source, File target) {
+        if (source == null || target == null || source.equals(target)) {
+            return source != null;
+        }
+        if (target.exists() && !target.delete()) {
+            return false;
+        }
+        return source.renameTo(target);
+    }
+
+    private boolean updateDownloadJournal(UpdateExecutionController.Token token,
+                                          long queueId,
+                                          String downloadJson) {
+        if (token == null) {
+            UpdateQueueHelper.updateDownloadJournal(queueId, downloadJson);
+            return true;
+        }
+        return token.runIfCurrent(() -> {
+            UpdateQueueHelper.updateDownloadJournal(queueId, downloadJson);
+            return true;
+        });
     }
 
     private FTP4JUtil.DownloadResult downloadChunkWithRetry(FTP4JUtil.Session session,

@@ -30,6 +30,7 @@ android {
         applicationId "kr.co.turtlelab.andowsignage"
         minSdk 21
         targetSdk 30
+        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -70,4 +71,5 @@ dependencies {
     implementation 'com.rethinkdb:rethinkdb-driver:2.4.4'
     implementation 'com.microsoft.signalr:signalr:7.0.20'
     testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'com.android.support.test:runner:1.0.2'
 }

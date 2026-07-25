@@ -182,6 +182,9 @@ public class UpdateManagerService extends Service implements SignalRClientServic
         if (updateTimer != null) {
             updateTimer.stop();
         }
+        if (syncManager != null) {
+            syncManager.shutdownUpdateQueueProcessor();
+        }
         if (signalRClient != null) {
             signalRClient.setListener(null);
             if (!AndoWSignageApp.isShutdownInProgress()) {
@@ -366,8 +369,7 @@ public class UpdateManagerService extends Service implements SignalRClientServic
                     }
 
                     if (UpdateQueueHelper.hasActiveQueue()) {
-                        UpdateQueueHelper.cancelActiveQueues("Cancelled due to new updatelist command");
-                        UpdateQueueHelper.requeueFailedQueuesIfDue();
+                        syncManager.cancelActiveQueues("Cancelled due to new updatelist command");
                         syncManager.releaseActiveLease();
                     }
 
@@ -465,7 +467,7 @@ public class UpdateManagerService extends Service implements SignalRClientServic
                 break;
             case "clearqueue":
                 client.updateCommandHistory(historyId, "in_progress", null, null, null);
-                int cancelled = UpdateQueueHelper.cancelActiveQueues("Cancelled via command");
+                int cancelled = syncManager.cancelActiveQueues("Cancelled via command");
                 syncManager.releaseActiveLease();
                 SystemUtils.runOnUiThread(() -> {
                     String msg = cancelled > 0
