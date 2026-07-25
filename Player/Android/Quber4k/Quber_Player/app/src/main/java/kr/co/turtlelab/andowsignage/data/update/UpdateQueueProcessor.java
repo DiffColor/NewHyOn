@@ -3,7 +3,7 @@ package kr.co.turtlelab.andowsignage.data.update;
 import android.text.TextUtils;
 
 import java.util.List;
-import java.util.Locale;
+
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -258,7 +258,7 @@ public class UpdateQueueProcessor implements UpdateQueueDownloader.LeaseHandler 
         String playerId = UpdateQueueHelper.getPlayerId(queue);
         UpdateProgressTracker tracker = new UpdateProgressTracker(queue.getId(), playerId, queue.getExternalId());
         tracker.stepDownload(0f);
-        boolean ignoreLease = ignoreLeaseFlag || shouldIgnoreLease(queue);
+        boolean ignoreLease = ignoreLeaseFlag;
         UpdateThrottleSettings settings = ignoreLease ? null : getSettings();
         if (!ignoreLease && hasDownloads(queue) && !ensureLease(queue, settings)) {
             scheduleLeaseRetry(queue, settings, "LEASE_BUSY");
@@ -286,14 +286,10 @@ public class UpdateQueueProcessor implements UpdateQueueDownloader.LeaseHandler 
             }
             handleDownloaded(queue);
         } else {
-            // 다운로드 실패 시 Windows와 동일하게 재시도 가능 상태로 되돌린다.
-            long delay = UpdateQueueContract.RetryPolicy.getDelayMs(queue.getRetryCount() + 1);
-            UpdateQueueHelper.incrementRetry(queue.getId(), System.currentTimeMillis() + delay);
             String errorMessage = TextUtils.isEmpty(outcome.lastError)
                     ? "Download failed"
                     : outcome.lastError;
-            UpdateQueueHelper.updateStatus(queue.getId(), UpdateQueueContract.Status.QUEUED,
-                    "DOWNLOAD", errorMessage);
+            handleFailure(queue, errorMessage, "DOWNLOAD_RETRY_EXHAUSTED");
             if (!ignoreLease) {
                 releaseLeaseIfOwner(queue);
             }
@@ -313,16 +309,28 @@ public class UpdateQueueProcessor implements UpdateQueueDownloader.LeaseHandler 
                 queueApplier.apply(queue);
             }
         } else {
-            long delay = UpdateQueueContract.RetryPolicy.getDelayMs(queue.getRetryCount() + 1);
-            UpdateQueueHelper.incrementRetry(queue.getId(), System.currentTimeMillis() + delay);
-            // 검증 실패도 재시도 대상이므로 QUEUED로 복귀시킨다.
-            // Windows와 동일하게 현재 진행률은 유지하고 재시도 시점만 갱신한다.
             String errorMessage = (validator == null || TextUtils.isEmpty(validator.getLastError()))
                     ? "File validation failed"
                     : validator.getLastError();
-            UpdateQueueHelper.updateStatus(queue.getId(), UpdateQueueContract.Status.QUEUED,
-                    "VALIDATE", errorMessage);
+            handleFailure(queue, errorMessage, "VALIDATION_RETRY_EXHAUSTED");
         }
+    }
+
+    private void handleFailure(StoredUpdateQueue queue, String errorMessage, String exhaustedErrorCode) {
+        int attemptNumber = queue.getRetryCount() + 1;
+        boolean retry = UpdateFailurePolicy.shouldRetry(errorMessage, attemptNumber);
+        long nextRetryAt = retry
+                ? System.currentTimeMillis() + UpdateQueueContract.RetryPolicy.getDelayMs(attemptNumber)
+                : 0L;
+        UpdateQueueHelper.incrementRetry(queue.getId(), nextRetryAt);
+        if (retry) {
+            UpdateQueueHelper.updateStatus(queue.getId(), UpdateQueueContract.Status.QUEUED,
+                    "TRANSIENT_UPDATE_ERROR", errorMessage);
+            return;
+        }
+        UpdateQueueHelper.updateStatus(queue.getId(), UpdateQueueContract.Status.FAILED,
+                UpdateFailurePolicy.getFinalErrorCode(errorMessage, attemptNumber, exhaustedErrorCode),
+                errorMessage);
     }
 
     private void handleValidating(StoredUpdateQueue queue) {
@@ -337,23 +345,23 @@ public class UpdateQueueProcessor implements UpdateQueueDownloader.LeaseHandler 
         if (queue == null) {
             return;
         }
+        int attemptNumber = queue.getRetryCount() + 1;
+        if (attemptNumber >= UpdateFailurePolicy.MAX_ATTEMPTS) {
+            if (queue.getRetryCount() < UpdateFailurePolicy.MAX_ATTEMPTS) {
+                UpdateQueueHelper.incrementRetry(queue.getId(), 0L);
+            }
+            UpdateQueueHelper.updateStatus(queue.getId(),
+                    UpdateQueueContract.Status.FAILED,
+                    "LEASE_RETRY_EXHAUSTED",
+                    reason);
+            return;
+        }
         int retrySeconds = settings == null ? 60 : settings.RetryIntervalSeconds;
         if (retrySeconds <= 0) {
             retrySeconds = 60;
         }
         long nextRetryAt = System.currentTimeMillis() + (retrySeconds * 1000L);
         UpdateQueueHelper.scheduleLeaseRetry(queue.getId(), nextRetryAt, "LEASE", reason);
-    }
-
-    private boolean shouldIgnoreLease(StoredUpdateQueue queue) {
-        if (queue == null) {
-            return false;
-        }
-        if (queue.getRetryCount() < 3) {
-            return false;
-        }
-        String error = queue.getErrorMessage();
-        return !TextUtils.isEmpty(error) && error.toUpperCase(Locale.US).startsWith("LEASE");
     }
 
     private boolean hasDownloads(StoredUpdateQueue queue) {

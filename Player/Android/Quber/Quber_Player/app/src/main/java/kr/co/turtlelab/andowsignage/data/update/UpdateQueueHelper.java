@@ -179,7 +179,6 @@ public final class UpdateQueueHelper {
                     UpdateQueueLogger.log("Queue #" + queueId
                             + " failed: " + String.valueOf(errorCode)
                             + " / " + String.valueOf(normalizedErrorMessage));
-                    deleteRemoteRecord.set(true);
                     historySnapshot.set(buildCommandHistorySnapshot(queue,
                             UpdateQueueContract.Status.FAILED.toLowerCase(),
                             errorCode,
@@ -293,6 +292,7 @@ public final class UpdateQueueHelper {
                     return;
                 }
                 queue.setStatus(UpdateQueueContract.Status.QUEUED);
+                queue.setRetryCount(queue.getRetryCount() + 1);
                 resetProgressForRetry(queue);
                 queue.setNextRetryAt(nextRetryAt);
                 queue.setUpdatedAt(now);

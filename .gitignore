@@ -216,6 +216,8 @@ coverage*.info
 **/.idea/
 **/local.properties
 Test/
+!Player/Android/Quber4k/Quber_Player/app/src/test/
+!Player/Android/Quber4k/Quber_Player/app/src/test/**
 
 # Tizen web player generated build/package outputs
 Player/Tizen/newhyon-tizen-player/dist/

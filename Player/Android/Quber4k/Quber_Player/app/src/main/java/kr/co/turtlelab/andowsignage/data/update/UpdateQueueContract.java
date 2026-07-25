@@ -46,7 +46,7 @@ public final class UpdateQueueContract {
 
     public static final class RetryPolicy {
         // Windows UpdateService와 동일: 30s → 60s → 120s → 180s(상한)
-        public static final int MAX_ATTEMPTS = Integer.MAX_VALUE;
+        public static final int MAX_ATTEMPTS = UpdateFailurePolicy.MAX_ATTEMPTS;
         private static final long BASE_DELAY_MS = 30_000L;
         private static final long MAX_DELAY_MS = 180_000L;
 

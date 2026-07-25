@@ -174,7 +174,6 @@ public final class UpdateQueueHelper {
                     UpdateQueueLogger.log("Queue #" + queueId
                             + " failed: " + String.valueOf(errorCode)
                             + " / " + String.valueOf(normalizedErrorMessage));
-                    deleteRemoteRecord.set(true);
                     RethinkDbClient.getInstance().updateCommandHistoryByQueue(queue.getExternalId(),
                             UpdateQueueContract.Status.FAILED.toLowerCase(),
                             errorCode,
@@ -291,6 +290,8 @@ public final class UpdateQueueHelper {
                     return;
                 }
                 queue.setStatus(UpdateQueueContract.Status.QUEUED);
+                queue.setRetryCount(queue.getRetryCount() + 1);
+                resetProgressForRetry(queue);
                 queue.setNextRetryAt(nextRetryAt);
                 queue.setUpdatedAt(now);
                 if (!TextUtils.isEmpty(errorCode)) {
@@ -503,6 +504,15 @@ public final class UpdateQueueHelper {
 
     private static void sendStatus(StoredUpdateQueue queue) {
         sendStatus(queue, getPlayerId(queue));
+    }
+
+    private static void resetProgressForRetry(StoredUpdateQueue queue) {
+        if (queue == null) {
+            return;
+        }
+        queue.setProgress(0f);
+        queue.setDownloadProgress(0f);
+        queue.setValidateProgress(0f);
     }
 
     private static void sendStatus(StoredUpdateQueue queue, String playerId) {

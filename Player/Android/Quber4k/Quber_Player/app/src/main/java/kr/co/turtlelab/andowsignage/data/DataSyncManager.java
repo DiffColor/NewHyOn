@@ -35,6 +35,7 @@ import kr.co.turtlelab.andowsignage.data.store.StoredWeeklySchedule;
 import kr.co.turtlelab.andowsignage.data.rethink.RethinkDbClient;
 import kr.co.turtlelab.andowsignage.data.rethink.RethinkModels;
 import kr.co.turtlelab.andowsignage.data.update.ContentDownloadJournal;
+import kr.co.turtlelab.andowsignage.data.update.UpdateFailurePolicy;
 import kr.co.turtlelab.andowsignage.data.update.UpdateQueueContract;
 import kr.co.turtlelab.andowsignage.data.update.UpdateQueueDownloader;
 import kr.co.turtlelab.andowsignage.data.update.UpdateQueueHelper;
@@ -1408,7 +1409,11 @@ public class DataSyncManager {
                 applied = false;
             } else {
                 playerGUID = resolveSchedulePlayerId(schedulePayload);
-                try {
+                if (TextUtils.isEmpty(resolveScheduleCacheId(schedulePayload))) {
+                    applied = false;
+                    lastError = "Invalid schedule payload: player identifier is empty";
+                    errorCode = "INVALID_SCHEDULE_PAYLOAD";
+                } else try {
                     applied = applyQueuedSchedulePayload(schedulePayload);
                     if (!applied) {
                         lastError = "Failed to apply schedule payload";
@@ -1454,10 +1459,19 @@ public class DataSyncManager {
                 requestSchedulePlaybackRefresh();
             }
         } else {
-            long delay = UpdateQueueContract.RetryPolicy.getDelayMs(queue.getRetryCount() + 1);
-            UpdateQueueHelper.incrementRetry(queue.getId(), System.currentTimeMillis() + delay);
-            UpdateQueueHelper.updateStatus(queue.getId(), UpdateQueueContract.Status.FAILED,
-                    errorCode, TextUtils.isEmpty(lastError) ? "Failed to apply queue" : lastError);
+            String errorMessage = TextUtils.isEmpty(lastError) ? "Failed to apply queue" : lastError;
+            String classifiedError = errorCode + ": " + errorMessage;
+            int attemptNumber = queue.getRetryCount() + 1;
+            boolean retry = UpdateFailurePolicy.shouldRetry(classifiedError, attemptNumber);
+            long nextRetryAt = retry
+                    ? System.currentTimeMillis() + UpdateQueueContract.RetryPolicy.getDelayMs(attemptNumber)
+                    : 0L;
+            UpdateQueueHelper.incrementRetry(queue.getId(), nextRetryAt);
+            UpdateQueueHelper.updateStatus(queue.getId(),
+                    retry ? UpdateQueueContract.Status.QUEUED : UpdateQueueContract.Status.FAILED,
+                    retry ? "TRANSIENT_UPDATE_ERROR"
+                            : UpdateFailurePolicy.getFinalErrorCode(classifiedError, attemptNumber, "APPLY_RETRY_EXHAUSTED"),
+                    errorMessage);
             if (!TextUtils.isEmpty(playerGUID)) {
                 releasePlayerLeaseAsync(playerGUID);
             }

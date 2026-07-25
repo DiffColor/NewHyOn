@@ -36,6 +36,7 @@ import kr.co.turtlelab.andowsignage.data.realm.RealmWeeklySchedule;
 import kr.co.turtlelab.andowsignage.data.rethink.RethinkDbClient;
 import kr.co.turtlelab.andowsignage.data.rethink.RethinkModels;
 import kr.co.turtlelab.andowsignage.data.update.ContentDownloadJournal;
+import kr.co.turtlelab.andowsignage.data.update.UpdateFailurePolicy;
 import kr.co.turtlelab.andowsignage.data.update.UpdateQueueContract;
 import kr.co.turtlelab.andowsignage.data.update.UpdateQueueDownloader;
 import kr.co.turtlelab.andowsignage.data.update.UpdateQueueHelper;
@@ -1084,6 +1085,10 @@ public class DataSyncManager {
                     restoreApplyBackup(backup);
                 }
             }
+        } else {
+            lastError = "Unsupported update queue type: " + queue.getType();
+            errorCode = "INVALID_PAYLOAD";
+            applied = false;
         }
         if (applied) {
             UpdateQueueHelper.updateStatus(queue.getId(), UpdateQueueContract.Status.DONE);
@@ -1116,10 +1121,19 @@ public class DataSyncManager {
                 }
             }
         } else {
-            long delay = UpdateQueueContract.RetryPolicy.getDelayMs(queue.getRetryCount() + 1);
-            UpdateQueueHelper.incrementRetry(queue.getId(), System.currentTimeMillis() + delay);
-            UpdateQueueHelper.updateStatus(queue.getId(), UpdateQueueContract.Status.FAILED,
-                    errorCode, TextUtils.isEmpty(lastError) ? "Failed to apply queue" : lastError);
+            String errorMessage = TextUtils.isEmpty(lastError) ? "Failed to apply queue" : lastError;
+            String classifiedError = errorCode + ": " + errorMessage;
+            int attemptNumber = queue.getRetryCount() + 1;
+            boolean retry = UpdateFailurePolicy.shouldRetry(classifiedError, attemptNumber);
+            long nextRetryAt = retry
+                    ? System.currentTimeMillis() + UpdateQueueContract.RetryPolicy.getDelayMs(attemptNumber)
+                    : 0L;
+            UpdateQueueHelper.incrementRetry(queue.getId(), nextRetryAt);
+            UpdateQueueHelper.updateStatus(queue.getId(),
+                    retry ? UpdateQueueContract.Status.QUEUED : UpdateQueueContract.Status.FAILED,
+                    retry ? "TRANSIENT_UPDATE_ERROR"
+                            : UpdateFailurePolicy.getFinalErrorCode(classifiedError, attemptNumber, "APPLY_RETRY_EXHAUSTED"),
+                    errorMessage);
             if (!TextUtils.isEmpty(playerGUID)) {
                 releasePlayerLeaseAsync(playerGUID);
             }

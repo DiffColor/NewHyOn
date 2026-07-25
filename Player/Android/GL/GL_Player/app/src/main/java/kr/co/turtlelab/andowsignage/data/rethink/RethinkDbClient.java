@@ -38,6 +38,7 @@ import io.realm.Realm;
 import kr.co.turtlelab.andowsignage.AndoWSignageApp;
 import kr.co.turtlelab.andowsignage.data.DataSyncManager;
 import kr.co.turtlelab.andowsignage.data.realm.RealmPlayer;
+import kr.co.turtlelab.andowsignage.data.update.UpdateFailurePolicy;
 import kr.co.turtlelab.andowsignage.data.update.UpdateQueueContract;
 import kr.co.turtlelab.andowsignage.dataproviders.LocalSettingsProvider;
 import kr.co.turtlelab.andowsignage.dataproviders.PlayerDataProvider;
@@ -691,18 +692,25 @@ public class RethinkDbClient {
             return;
         }
         String normalizedStatus = statusText == null ? "" : statusText.trim().toUpperCase(Locale.US);
-        if (UpdateQueueContract.Status.DONE.equalsIgnoreCase(normalizedStatus)
-                || UpdateQueueContract.Status.FAILED.equalsIgnoreCase(normalizedStatus)
-                || UpdateQueueContract.Status.CANCELLED.equalsIgnoreCase(normalizedStatus)) {
+        boolean failed = UpdateQueueContract.Status.FAILED.equalsIgnoreCase(normalizedStatus);
+        boolean completedOrCancelled = UpdateQueueContract.Status.DONE.equalsIgnoreCase(normalizedStatus)
+                || UpdateQueueContract.Status.CANCELLED.equalsIgnoreCase(normalizedStatus);
+        if (completedOrCancelled || failed) {
             try {
                 updateCommandHistoryByQueue(queueId,
                         normalizedStatus.toLowerCase(Locale.US),
                         errorCode,
                         errorMessage,
                         playerId,
-                        createdTicks);
+                        createdTicks,
+                        UpdateQueueContract.Status.FAILED.equalsIgnoreCase(normalizedStatus) ? Math.max(1, retryCount) : 0,
+                        UpdateQueueContract.Status.FAILED.equalsIgnoreCase(normalizedStatus)
+                                ? (UpdateFailurePolicy.isPermanent(errorCode) ? "permanent" : "transient_exhausted")
+                                : "");
             } catch (Exception ex) {
             Log.e(TAG, "RethinkDbClient: operation failed", ex); }
+        }
+        if (completedOrCancelled) {
             deleteQueueRecord(queueId, playerId);
             if (UpdateQueueContract.Status.DONE.equalsIgnoreCase(normalizedStatus)) {
                 clearPlayerUpdateFields(playerId);
@@ -1931,6 +1939,17 @@ public class RethinkDbClient {
                                             String errorMessage,
                                             String playerId,
                                             Long createdTicks) {
+        updateCommandHistoryByQueue(queueId, status, errorCode, errorMessage, playerId, createdTicks, 0, "");
+    }
+
+    public void updateCommandHistoryByQueue(String queueId,
+                                            String status,
+                                            String errorCode,
+                                            String errorMessage,
+                                            String playerId,
+                                            Long createdTicks,
+                                            int attemptCount,
+                                            String failureClass) {
         if (TextUtils.isEmpty(queueId)) {
             return;
         }
@@ -1947,11 +1966,18 @@ public class RethinkDbClient {
         update.put("status", normalized);
         update.put("errorCode", TextUtils.isEmpty(errorCode) ? "" : errorCode);
         update.put("errorMessage", TextUtils.isEmpty(errorMessage) ? "" : errorMessage);
+        if (attemptCount > 0) {
+            update.put("attemptCount", attemptCount);
+        }
+        if (!TextUtils.isEmpty(failureClass)) {
+            update.put("failureClass", failureClass);
+        }
         String owner = resolveOwnerPlayerId(playerId);
         String docId = buildCommandHistoryIdForQueue(owner, queueId, createdTicks);
         Map<String, Object> upsert = new HashMap<>(update);
         upsert.put("id", docId);
         upsert.put("playerId", TextUtils.isEmpty(owner) ? "" : owner);
+        upsert.put("command", "updatelist");
         upsert.put("refQueueId", queueId);
         upsert.put("createdAt", now);
         try {
