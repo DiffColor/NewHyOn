@@ -1632,7 +1632,19 @@ public class MediaView extends RelativeLayout {
             showStandbyVideoView(transitionTargetVideoView);
         } else {
             completionSuppressedVideoView = null;
-            showVideoOnScreen(transitionTargetVideoView);
+            MediaTransitionLayerOrder.stageVideoBehindOverlay(
+                    new Runnable() {
+                        @Override
+                        public void run() {
+                            showVideoOnScreen(transitionTargetVideoView);
+                        }
+                    },
+                    overlayToFade == null ? null : new Runnable() {
+                        @Override
+                        public void run() {
+                            overlayToFade.bringToFront();
+                        }
+                    });
         }
         transitionTargetVideoView.setMuted(muted);
         transitionTargetVideoView.setLoop(true);
@@ -1733,7 +1745,19 @@ public class MediaView extends RelativeLayout {
             }
         });
         if (readyForImmediateSwap) {
-            stageVideoBehindPreviousFrame(targetVideoView, previousVideoView);
+            MediaTransitionLayerOrder.stageVideoBehindOverlay(
+                    new Runnable() {
+                        @Override
+                        public void run() {
+                            stageVideoBehindPreviousFrame(targetVideoView, previousVideoView);
+                        }
+                    },
+                    overlayToFade == null ? null : new Runnable() {
+                        @Override
+                        public void run() {
+                            overlayToFade.bringToFront();
+                        }
+                    });
             markVideoPresentationStarted();
             preparedVideoStartedAtUptimeMs[0] = SystemClock.uptimeMillis();
             startVideoPlayback(targetVideoView, true, null);

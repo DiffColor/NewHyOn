@@ -1220,7 +1220,19 @@ public class MediaView extends RelativeLayout {
         }
 
         cancelVideoPresentationFallback();
-        videoView.setVisibility(View.VISIBLE);
+        MediaTransitionLayerOrder.stageVideoBehindOverlay(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        videoView.setVisibility(View.VISIBLE);
+                    }
+                },
+                overlayToFade == null ? null : new Runnable() {
+                    @Override
+                    public void run() {
+                        overlayToFade.bringToFront();
+                    }
+                });
         videoView.setMuted(muted);
         videoView.setMediaInfoListener(new MediaPlayer.OnInfoListener() {
             @Override
