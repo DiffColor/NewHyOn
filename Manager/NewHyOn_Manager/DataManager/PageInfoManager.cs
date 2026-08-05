@@ -353,6 +353,22 @@ namespace AndoW_Manager
             return clone;
         }
 
+        public List<PageInfoClass> GetPageDefinitionsByIds(IEnumerable<string> pageIds)
+        {
+            var ids = new HashSet<string>(
+                pageIds?.Where(x => string.IsNullOrWhiteSpace(x) == false)
+                    ?? Enumerable.Empty<string>(),
+                StringComparer.OrdinalIgnoreCase);
+            if (ids.Count == 0)
+            {
+                return new List<PageInfoClass>();
+            }
+
+            return LoadAllDocuments()
+                .Where(x => x != null && ids.Contains(x.PIC_GUID))
+                .ToList();
+        }
+
         public List<PageInfoClass> GetAllSavedPages()
         {
             var documents = LoadAllDocuments();

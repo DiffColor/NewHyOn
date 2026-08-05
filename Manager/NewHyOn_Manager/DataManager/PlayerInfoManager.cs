@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using TurtleTools;
 
@@ -703,17 +704,48 @@ namespace AndoW_Manager
             return HasValidLegacyAuthKey(player, authKey);
         }
 
-        public void RequestAuthValidationForAll(IEnumerable<PlayerInfoClass> players, bool forceRefresh = false)
+        public async Task<bool> RefreshAuthenticationStateAsync(
+            PlayerInfoClass player,
+            CancellationToken cancellationToken)
         {
-            if (players == null)
+            if (player == null)
             {
-                return;
+                return false;
             }
 
-            foreach (PlayerInfoClass player in players.ToList())
+            string playerId = player.PIF_GUID?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(playerId))
             {
-                RequestAuthValidation(player, forceRefresh);
+                return false;
             }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            PlayerInfoClass refreshedPlayer = await FindByIdAsync(playerId, cancellationToken);
+
+            cancellationToken.ThrowIfCancellationRequested();
+            if (refreshedPlayer == null)
+            {
+                return false;
+            }
+
+            PlayerInfoClass trackedPlayer = g_PlayerInfoClassList.FirstOrDefault(x =>
+                x != null &&
+                x.PIF_GUID == playerId);
+
+            cancellationToken.ThrowIfCancellationRequested();
+            if (trackedPlayer != null)
+            {
+                trackedPlayer.PIF_AuthKey = refreshedPlayer.PIF_AuthKey ?? string.Empty;
+                trackedPlayer.PIF_MacAddress = refreshedPlayer.PIF_MacAddress ?? string.Empty;
+            }
+
+            if (!ReferenceEquals(player, trackedPlayer))
+            {
+                player.PIF_AuthKey = refreshedPlayer.PIF_AuthKey ?? string.Empty;
+                player.PIF_MacAddress = refreshedPlayer.PIF_MacAddress ?? string.Empty;
+            }
+
+            return true;
         }
 
         public void RequestAuthValidation(PlayerInfoClass player, bool forceRefresh = false)

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -27,6 +28,7 @@ namespace AndoW_Manager
         public PageInfoClass g_CurrentSelectedPageInfo = new PageInfoClass();
 
         List<PageListNameElement> g_PageListNameElementList = new List<PageListNameElement>();
+        private readonly ObservableCollection<SavedPageElement2> _savedPageElements = new ObservableCollection<SavedPageElement2>();
 
         public PlayListBatchUpdateWindow g_BatchUpdateWnd = null;
 
@@ -42,6 +44,7 @@ namespace AndoW_Manager
 
             InitEventHandler();
             g_BatchUpdateWnd = new PlayListBatchUpdateWindow();
+            SavedPagesItemsControl.ItemsSource = _savedPageElements;
         }
 
         public bool HasAvailableUsb()
@@ -511,30 +514,9 @@ namespace AndoW_Manager
         }
 
 
-        //public void RefreshPageNameList()
-        //{
-        //    g_PageListNameElementList.Clear();
-        //    GC.Collect();
-        //    ContentsElementsStackPannel1.Children.Clear();
-        //    int idx = 1;
-
-        //    foreach (PageListInfoClass item in ILYCODEDataShop.Instance.g_PageListInfoManager.g_PageListInfoClassList)
-        //    {
-        //        PageListNameElement tmpElement = new PageListNameElement(this);
-        //        tmpElement.UpdateDataInfo(item);
-        //        tmpElement.TextBlockOrderingNumber.Text = string.Format("{0:D2}", idx);
-        //        tmpElement.Margin = new Thickness(0, 0, 0, 0);
-        //        ContentsElementsStackPannel1.Children.Add(tmpElement);
-        //        idx++;
-
-        //        g_PageListNameElementList.Add(tmpElement);
-        //    }
-        //}
-
         public void RefreshPageNameList()   // PlayList Refresh
         {
             g_PageListNameElementList.Clear();
-            GC.Collect();
             ContentsElementsStackPannel1.Children.Clear();
             int idx = 1;
 
@@ -584,12 +566,11 @@ namespace AndoW_Manager
 
         public void RefreshSavedPageList()
         {
-            wrapPanelTemplate.Children.Clear();
+            _savedPageElements.Clear();
 
             List<PageInfoClass> savedPages = DataShop.Instance.g_PageInfoManager.GetAllSavedPages();
             if (savedPages.Count == 0)
             {
-                ContentsListScrollViewer.ScrollToBottom();
                 return;
             }
 
@@ -611,17 +592,9 @@ namespace AndoW_Manager
 
                 tmpElement.Margin = new Thickness(7, 5, 7, 5);
 
-                BitmapSource preview = tmpElement.LoadPreviewImage();
-                if (preview != null)
-                {
-                    tmpElement.pagePreviewImge.Source = preview;
-                }
-
                 tmpElement.pageNameTextBlock.Text = pageInfo.PIC_PageName;
-                wrapPanelTemplate.Children.Add(tmpElement);
+                _savedPageElements.Add(tmpElement);
             }
-
-            ContentsListScrollViewer.ScrollToBottom();
         }
 
         public void AddPageToPageList(string paramPageName, PageInfoClass pageDefinition = null)

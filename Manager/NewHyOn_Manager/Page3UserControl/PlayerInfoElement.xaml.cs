@@ -4,6 +4,8 @@ using System.Data;
 using System.IO;
 using System.Linq;
 using System.Runtime.Serialization;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -27,6 +29,12 @@ namespace AndoW_Manager
        public PlayerInfoClass g_PlayerInfoClass = new PlayerInfoClass();
 
        public DataTableForAndroid g_DataTableForAndroid = new DataTableForAndroid();
+
+       private CancellationTokenSource _authenticationRefreshCts;
+       private HashSet<string> _singleScreenPlaylistNames =
+           new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+       private bool _selectionVisualInitialized;
+       private bool? _multiSelectionVisualState;
 
        bool _launcherEnabled = true;
        public bool LauncherEnabled
@@ -63,10 +71,10 @@ namespace AndoW_Manager
 
         public void InitEventHandler()
         {
-            this.PreviewMouseLeftButtonDown += new MouseButtonEventHandler(PageListElement_PreviewMouseLeftButtonDown);
             this.PreviewMouseRightButtonDown += PlayerInfoElement_PreviewMouseRightButtonDown;
             this.PreviewMouseMove += new MouseEventHandler(PageListElement_PreviewMouseMove);
             this.MouseLeave += new MouseEventHandler(PageListElement_MouseLeave);
+            this.Unloaded += PlayerInfoElement_Unloaded;
             
             ExitTextBlock.PreviewMouseMove += new MouseEventHandler(ExitTextBlock_PreviewMouseMove);
             ExitTextBlock.MouseLeave += new MouseEventHandler(ExitTextBlock_MouseLeave);
@@ -674,22 +682,37 @@ namespace AndoW_Manager
 
         public void ShowAndHideSelectedBorder(bool IsShow)
         {
+            if (g_IsSelected == IsShow && _selectionVisualInitialized)
+            {
+                return;
+            }
+
+            _selectionVisualInitialized = true;
             g_IsSelected = IsShow;
 
             if (IsShow == true)
             {
                 SelectBorder.Visibility = Visibility.Visible;
                 SelectBorder_Copy1.Visibility = System.Windows.Visibility.Visible;
-                SelectIcon.Visibility = Visibility.Visible;
                 TextBlockOrderingNumber_Copy.Foreground = ColorTools.GetSolidBrushByColorString("#FF88FF00");
             }
             else
             {
                 SelectBorder.Visibility = Visibility.Hidden;
                 SelectBorder_Copy1.Visibility = System.Windows.Visibility.Hidden;
-                SelectIcon.Visibility = Visibility.Hidden;
                 TextBlockOrderingNumber_Copy.Foreground = ColorTools.GetSolidBrushByColorString("#FFFFFFFF");
             }
+        }
+
+        public void SetMultiSelection(bool isSelected)
+        {
+            if (_multiSelectionVisualState == isSelected)
+            {
+                return;
+            }
+
+            _multiSelectionVisualState = isSelected;
+            SelectIcon.Visibility = isSelected ? Visibility.Visible : Visibility.Hidden;
         }
 
         void PlayerInfoElement_PreviewMouseDoubleClick(object sender, MouseButtonEventArgs e)
@@ -721,18 +744,26 @@ namespace AndoW_Manager
             ApplyUnauthenticatedOverlayLayout();
         }
 
-        public void UpdateDataInfo(PlayerInfoClass paramCls, List<PageListInfoClass> paramPageList)
+        public void UpdateDataInfo(
+            PlayerInfoClass paramCls,
+            List<PageListInfoClass> paramPageList,
+            ISet<string> singleScreenPlaylistNames)
         {
+            CancelAuthenticationRefresh();
             g_PlayerInfoClass.CopyData(paramCls);
+            _singleScreenPlaylistNames = new HashSet<string>(
+                singleScreenPlaylistNames ?? Enumerable.Empty<string>(),
+                StringComparer.CurrentCultureIgnoreCase);
 
             PlaylistCombo.Items.Clear();
 
             string direction = g_PlayerInfoClass.PIF_IsLandScape ? DeviceOrientation.Landscape.ToString() : DeviceOrientation.Portrait.ToString();
+            bool isTizenPlayer = TizenPlaylistUpdatePolicy.IsTizenPlayer(g_PlayerInfoClass);
 
             var pagelist = from page in paramPageList
                            where page.PLI_PageDirection == direction
-                           where TizenPlaylistUpdatePolicy.IsTizenPlayer(g_PlayerInfoClass) == false
-                                 || TizenPlaylistUpdatePolicy.IsSingleScreenPlaylist(page.PLI_PageListName)
+                           where isTizenPlayer == false
+                                 || _singleScreenPlaylistNames.Contains(page.PLI_PageListName)
                            select page;
 
             foreach (PageListInfoClass item in pagelist)
@@ -741,19 +772,100 @@ namespace AndoW_Manager
             }
 
             DisplayDataInfo();
+            _ = StartAuthenticationRefreshAsync();
         }
 
-        public void RefreshPlayListComboBox()
+        private async Task StartAuthenticationRefreshAsync()
+        {
+            var playerInfoManager = DataShop.Instance?.g_PlayerInfoManager;
+            if (playerInfoManager == null)
+            {
+                return;
+            }
+
+            CancellationTokenSource refreshCts = new CancellationTokenSource();
+            _authenticationRefreshCts = refreshCts;
+            CancellationToken cancellationToken = refreshCts.Token;
+
+            try
+            {
+                bool refreshed = await Task.Run(
+                    () => playerInfoManager.RefreshAuthenticationStateAsync(
+                        g_PlayerInfoClass,
+                        cancellationToken),
+                    cancellationToken);
+
+                cancellationToken.ThrowIfCancellationRequested();
+                if (refreshed && ReferenceEquals(_authenticationRefreshCts, refreshCts))
+                {
+                    RefreshAuthenticationOverlay();
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    Logger.WriteErrorLog($"플레이어 인증 상태 갱신 실패: {ex}", Logger.GetLogFileName());
+                }
+            }
+            finally
+            {
+                if (ReferenceEquals(_authenticationRefreshCts, refreshCts))
+                {
+                    _authenticationRefreshCts = null;
+                }
+
+                refreshCts.Dispose();
+            }
+        }
+
+        private void PlayerInfoElement_Unloaded(object sender, RoutedEventArgs e)
+        {
+            CancelAuthenticationRefresh();
+        }
+
+        public void CancelAuthenticationRefresh()
+        {
+            CancellationTokenSource refreshCts = _authenticationRefreshCts;
+            if (refreshCts == null)
+            {
+                return;
+            }
+
+            _authenticationRefreshCts = null;
+            try
+            {
+                if (!refreshCts.IsCancellationRequested)
+                {
+                    refreshCts.Cancel();
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
+
+        public void RefreshPlayListComboBox(ISet<string> singleScreenPlaylistNames = null)
         {
             SyncPlayerInfoFromManager();
+            if (singleScreenPlaylistNames != null)
+            {
+                _singleScreenPlaylistNames = new HashSet<string>(
+                    singleScreenPlaylistNames,
+                    StringComparer.CurrentCultureIgnoreCase);
+            }
             PlaylistCombo.Items.Clear();
 
             string direction = g_PlayerInfoClass.PIF_IsLandScape ? DeviceOrientation.Landscape.ToString() : DeviceOrientation.Portrait.ToString();
+            bool isTizenPlayer = TizenPlaylistUpdatePolicy.IsTizenPlayer(g_PlayerInfoClass);
 
             var pagelist = from page in DataShop.Instance.g_PageListInfoManager.g_PageListInfoClassList
                            where page.PLI_PageDirection == direction
-                           where TizenPlaylistUpdatePolicy.IsTizenPlayer(g_PlayerInfoClass) == false
-                                 || TizenPlaylistUpdatePolicy.IsSingleScreenPlaylist(page.PLI_PageListName)
+                           where isTizenPlayer == false
+                                 || _singleScreenPlaylistNames.Contains(page.PLI_PageListName)
                            select page;
 
             foreach (PageListInfoClass item in pagelist)
@@ -1014,12 +1126,6 @@ namespace AndoW_Manager
                 SelectBorder.Visibility = System.Windows.Visibility.Visible;
             }
         }
-
-        void PageListElement_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-        {
-            Page3.Instance.SelectPlayerInfo(g_PlayerInfoClass);    
-        }
-
 
         public void C2S_ReportingCurrentPage(string pageName)
         {

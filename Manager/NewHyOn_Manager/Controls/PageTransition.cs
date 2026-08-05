@@ -1,7 +1,7 @@
 using System;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media.Animation;
+
 
 namespace WpfPageTransitions
 {
@@ -81,43 +81,11 @@ namespace WpfPageTransitions
                 return;
             }
 
-            if (!_isLoaded || _currentPresenter.Content == null)
-            {
-                _currentPresenter.Content = content;
-                _currentPresenter.Opacity = 1;
-                _previousPresenter.Content = null;
-                return;
-            }
-
-            _previousPresenter.Content = _currentPresenter.Content;
-            _previousPresenter.Opacity = 1;
-
+            _currentPresenter.BeginAnimation(OpacityProperty, null);
+            _previousPresenter.BeginAnimation(OpacityProperty, null);
+            _previousPresenter.Content = null;
             _currentPresenter.Content = content;
-            _currentPresenter.Opacity = 0;
-
-            var fadeIn = CreateAnimation(0, 1);
-            var fadeOut = CreateAnimation(1, 0);
-            fadeOut.Completed += (_, __) => _previousPresenter.Content = null;
-
-            _currentPresenter.BeginAnimation(OpacityProperty, fadeIn);
-            _previousPresenter.BeginAnimation(OpacityProperty, fadeOut);
-        }
-
-        private DoubleAnimation CreateAnimation(double from, double to)
-        {
-            var duration = TransitionDuration;
-            if (duration <= TimeSpan.Zero)
-            {
-                duration = TimeSpan.FromMilliseconds(10);
-            }
-
-            return new DoubleAnimation
-            {
-                From = from,
-                To = to,
-                Duration = new Duration(duration),
-                EasingFunction = new QuadraticEase()
-            };
+            _currentPresenter.Opacity = 1;
         }
     }
 }

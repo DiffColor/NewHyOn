@@ -7,6 +7,8 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
+using System.Threading;
+using System.Threading.Tasks;
 
 using TurtleTools;
 
@@ -19,12 +21,15 @@ namespace AndoW_Manager
     {   
         public bool g_IsSelected = false;
         public string g_PreviewThumbBase64 = string.Empty;
+        private CancellationTokenSource _previewLoadCts;
 
         public SavedPageElement2()
         {
             InitializeComponent();
             InitEventHandler();
             SelectBorder.Visibility = System.Windows.Visibility.Hidden;
+            Loaded += SavedPageElement_Loaded;
+            Unloaded += SavedPageElement_Unloaded;
         }
 
         public void InitEventHandler()
@@ -93,6 +98,70 @@ namespace AndoW_Manager
         public BitmapSource LoadPreviewImage()
         {
             return MediaTools.CreateBitmapFromBase64(g_PreviewThumbBase64);
+        }
+
+        private async void SavedPageElement_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (pagePreviewImge.Source != null || string.IsNullOrWhiteSpace(g_PreviewThumbBase64))
+            {
+                return;
+            }
+
+            CancelPreviewLoad();
+            var previewLoadCts = new CancellationTokenSource();
+            _previewLoadCts = previewLoadCts;
+            CancellationToken cancellationToken = previewLoadCts.Token;
+            string previewThumbBase64 = g_PreviewThumbBase64;
+
+            try
+            {
+                BitmapSource preview = await Task.Run(
+                    () => MediaTools.CreateBitmapFromBase64(previewThumbBase64),
+                    cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (IsLoaded && preview != null)
+                {
+                    pagePreviewImge.Source = preview;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            finally
+            {
+                if (ReferenceEquals(_previewLoadCts, previewLoadCts))
+                {
+                    _previewLoadCts = null;
+                }
+                previewLoadCts.Dispose();
+            }
+        }
+
+        private void SavedPageElement_Unloaded(object sender, RoutedEventArgs e)
+        {
+            CancelPreviewLoad();
+        }
+
+        private void CancelPreviewLoad()
+        {
+            CancellationTokenSource previewLoadCts = _previewLoadCts;
+            if (previewLoadCts == null)
+            {
+                return;
+            }
+
+            _previewLoadCts = null;
+            try
+            {
+                if (previewLoadCts.IsCancellationRequested == false)
+                {
+                    previewLoadCts.Cancel();
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+            }
         }
 
         void UpdateUsbMenuVisibility()

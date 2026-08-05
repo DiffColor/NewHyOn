@@ -44,6 +44,47 @@ namespace AndoW_Manager
             return TryValidateSingleScreenPlaylist(playlistName, out invalidPages);
         }
 
+        public static HashSet<string> GetSingleScreenPlaylistNames(
+            IEnumerable<PageListInfoClass> playlists,
+            IEnumerable<PageInfoClass> pageDefinitions)
+        {
+            var definitionsById = (pageDefinitions ?? Enumerable.Empty<PageInfoClass>())
+                .Where(x => x != null && string.IsNullOrWhiteSpace(x.PIC_GUID) == false)
+                .GroupBy(x => x.PIC_GUID, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+            var names = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+
+            foreach (PageListInfoClass playlist in playlists ?? Enumerable.Empty<PageListInfoClass>())
+            {
+                if (playlist == null
+                    || string.IsNullOrWhiteSpace(playlist.PLI_PageListName)
+                    || playlist.PLI_Pages == null
+                    || playlist.PLI_Pages.Count == 0)
+                {
+                    continue;
+                }
+
+                bool isSingleScreen = true;
+                foreach (string pageId in playlist.PLI_Pages)
+                {
+                    if (string.IsNullOrWhiteSpace(pageId)
+                        || definitionsById.TryGetValue(pageId, out PageInfoClass page) == false
+                        || IsSingleScreenPage(page) == false)
+                    {
+                        isSingleScreen = false;
+                        break;
+                    }
+                }
+
+                if (isSingleScreen)
+                {
+                    names.Add(playlist.PLI_PageListName);
+                }
+            }
+
+            return names;
+        }
+
         public static bool TryValidatePlayerPlaylist(PlayerInfoClass player, string playlistName, out TizenPlaylistBlockResult blockResult)
         {
             blockResult = null;

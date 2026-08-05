@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 using TurtleTools;
 
 namespace AndoW_Manager
@@ -67,6 +69,17 @@ namespace AndoW_Manager
 
             var table = RethinkDbContext.Table(_databaseName, _tableName);
             return RethinkDbContext.RunSingleOrDefault<T>(table.Get(id));
+        }
+
+        protected Task<T> FindByIdAsync(object id, CancellationToken cancellationToken)
+        {
+            if (id == null)
+            {
+                return Task.FromResult(default(T));
+            }
+
+            var table = RethinkDbContext.Table(_databaseName, _tableName);
+            return RethinkDbContext.RunSingleOrDefaultAsync<T>(table.Get(id), cancellationToken);
         }
 
         protected void Upsert(T document)

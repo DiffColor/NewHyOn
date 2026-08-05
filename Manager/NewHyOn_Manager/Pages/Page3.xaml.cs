@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -46,6 +47,10 @@ namespace AndoW_Manager
         private Dictionary<string, PlayerInfoElement> _playerElementByName =
             new Dictionary<string, PlayerInfoElement>(StringComparer.OrdinalIgnoreCase);
         private bool _isPlayerInfoRefreshing;
+        private CancellationTokenSource _playerInfoListRefreshCts;
+        private CancellationTokenSource _playlistCompatibilityRefreshCts;
+        private HashSet<string> _singleScreenTizenPlaylistNames =
+            new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
         private readonly TimeSpan _minimumPlayerInfoRefreshIndicatorDuration = TimeSpan.FromMilliseconds(700);
 
         public bool g_isUpdating = false;
@@ -192,12 +197,23 @@ namespace AndoW_Manager
 
         private void PlayerListBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
+            DependencyObject source = e.OriginalSource as DependencyObject;
+            DependencyObject container = source == null
+                ? null
+                : ItemsControl.ContainerFromElement(PlayerListBox, source);
+            PlayerInfoElement clickedPlayer = container == null
+                ? null
+                : PlayerListBox.ItemContainerGenerator.ItemFromContainer(container) as PlayerInfoElement;
+
+            if (clickedPlayer?.g_PlayerInfoClass != null &&
+                !IsCurrentPlayerInfo(clickedPlayer.g_PlayerInfoClass))
+            {
+                SelectPlayerInfo(clickedPlayer.g_PlayerInfoClass);
+            }
+
             if (e.OriginalSource is ScrollViewer)
             {
                 PlayerListBox.SelectedItems.Clear();
-                g_CurrentSelectedPlayerInfoClass.CleanDataField();
-                UpdateSelectionVisuals();
-                UpdateGroupButtonState();
             }
         }
 
@@ -206,18 +222,41 @@ namespace AndoW_Manager
             if (PlayerListBox.SelectedItems.Count > 0)
             {
                 var last = PlayerListBox.SelectedItems[PlayerListBox.SelectedItems.Count - 1] as PlayerInfoElement;
-                if (last != null)
+                if (last?.g_PlayerInfoClass != null &&
+                    !IsCurrentPlayerInfo(last.g_PlayerInfoClass))
                 {
                     SelectPlayerInfo(last.g_PlayerInfoClass);
                 }
             }
             else
             {
-                g_CurrentSelectedPlayerInfoClass.CleanDataField();
+                ClearSelectedPlayerInfo();
             }
 
-            UpdateSelectionVisuals();
+            UpdateSelectionVisuals(e);
             UpdateGroupButtonState();
+        }
+
+        private bool IsCurrentPlayerInfo(PlayerInfoClass playerInfo)
+        {
+            if (playerInfo == null || g_CurrentSelectedPlayerInfoClass == null)
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrEmpty(playerInfo.PIF_GUID) &&
+                !string.IsNullOrEmpty(g_CurrentSelectedPlayerInfoClass.PIF_GUID))
+            {
+                return string.Equals(
+                    playerInfo.PIF_GUID,
+                    g_CurrentSelectedPlayerInfoClass.PIF_GUID,
+                    StringComparison.Ordinal);
+            }
+
+            return string.Equals(
+                playerInfo.PIF_PlayerName,
+                g_CurrentSelectedPlayerInfoClass.PIF_PlayerName,
+                StringComparison.CurrentCulture);
         }
 
         private void PlayerListBox_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -244,9 +283,12 @@ namespace AndoW_Manager
 
         private void UpdateSelectionVisuals()
         {
+            var selectedItems = new HashSet<PlayerInfoElement>(
+                PlayerListBox.SelectedItems.OfType<PlayerInfoElement>());
+
             foreach (PlayerInfoElement item in g_PlayerInfoElementList)
             {
-                bool isSelected = PlayerListBox.SelectedItems.Contains(item);
+                bool isSelected = selectedItems.Contains(item);
                 bool isCurrent =
                     g_CurrentSelectedPlayerInfoClass != null &&
                     item.g_PlayerInfoClass != null &&
@@ -256,9 +298,20 @@ namespace AndoW_Manager
                                   StringComparison.CurrentCulture);
 
                 item.ShowAndHideSelectedBorder(isCurrent);
+                item.SetMultiSelection(isSelected);
+            }
+        }
 
-                // 다중 선택된 모든 항목에 SelectIcon 표시
-                item.SelectIcon.Visibility = isSelected ? Visibility.Visible : Visibility.Hidden;
+        private static void UpdateSelectionVisuals(SelectionChangedEventArgs e)
+        {
+            foreach (PlayerInfoElement item in e.RemovedItems.OfType<PlayerInfoElement>())
+            {
+                item.SetMultiSelection(false);
+            }
+
+            foreach (PlayerInfoElement item in e.AddedItems.OfType<PlayerInfoElement>())
+            {
+                item.SetMultiSelection(true);
             }
         }
 
@@ -497,12 +550,42 @@ namespace AndoW_Manager
 
         public void SelectPlayerInfo(PlayerInfoClass paramCls)
         {
+            if (paramCls == null)
+            {
+                return;
+            }
+
+            PlayerInfoElement previousElement = FindPlayerElement(
+                g_CurrentSelectedPlayerInfoClass?.PIF_PlayerName);
+            PlayerInfoElement selectedElement = FindPlayerElement(paramCls.PIF_PlayerName);
+            bool selectionChanged = !string.Equals(
+                g_CurrentSelectedPlayerInfoClass?.PIF_GUID,
+                paramCls.PIF_GUID,
+                StringComparison.OrdinalIgnoreCase);
+
+            if (selectionChanged)
+            {
+                previousElement?.ShowAndHideSelectedBorder(false);
+            }
+
             g_CurrentSelectedPlayerInfoClass.CopyData(paramCls);
 
+            if (selectionChanged)
+            {
+                selectedElement?.ShowAndHideSelectedBorder(true);
+            }
+
             DisplaySelectedPlayerInfoData();
-            UpdateSelectionVisuals();
         }
 
+        private void ClearSelectedPlayerInfo()
+        {
+            PlayerInfoElement previousElement = FindPlayerElement(
+                g_CurrentSelectedPlayerInfoClass?.PIF_PlayerName);
+            previousElement?.ShowAndHideSelectedBorder(false);
+            g_CurrentSelectedPlayerInfoClass.CleanDataField();
+            DisplaySelectedPlayerInfoData();
+        }
 
         public void DisplaySelectedPlayerInfoData()
         {
@@ -516,59 +599,233 @@ namespace AndoW_Manager
 
         public void UpdatePListComboForPlayer()
         {
-            foreach (PlayerInfoElement item in g_PlayerInfoElementList)
+            _ = UpdatePListComboForPlayerAsync();
+        }
+
+        private async Task UpdatePListComboForPlayerAsync()
+        {
+            CancelPlaylistCompatibilityRefresh();
+            var refreshCts = new CancellationTokenSource();
+            _playlistCompatibilityRefreshCts = refreshCts;
+
+            try
             {
-                item.RefreshPlayListComboBox();
+                var orderedPlayers = DataShop.Instance.g_PlayerInfoManager.GetOrderedPlayers().ToList();
+                HashSet<string> names = await LoadSingleScreenPlaylistNamesAsync(
+                    orderedPlayers,
+                    refreshCts.Token);
+                refreshCts.Token.ThrowIfCancellationRequested();
+
+                _singleScreenTizenPlaylistNames = names;
+                foreach (PlayerInfoElement item in g_PlayerInfoElementList.ToList())
+                {
+                    item.RefreshPlayListComboBox(names);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog(
+                    $"플레이어 플레이리스트 호환성 갱신 실패: {ex}",
+                    Logger.GetLogFileName());
+            }
+            finally
+            {
+                if (ReferenceEquals(_playlistCompatibilityRefreshCts, refreshCts))
+                {
+                    _playlistCompatibilityRefreshCts = null;
+                }
+                refreshCts.Dispose();
             }
         }
 
         public void RefreshPlayerInfoList()
         {
-            Is_ComboBoxInit = true;
-
-            PlayerListBox.Items.Clear();
-            g_PlayerInfoElementList.Clear();
-            GC.Collect();
+            CancelPlayerInfoListRefresh();
+            PreparePlayerInfoListRefresh();
 
             var orderedPlayers = DataShop.Instance.g_PlayerInfoManager.GetOrderedPlayers();
-            if (orderedPlayers.Any())
+            int idx = 1;
+            foreach (PlayerInfoClass item in orderedPlayers)
             {
+                AddPlayerInfoElement(item, idx);
+                idx++;
+            }
+
+            CompletePlayerInfoListRefresh();
+        }
+
+        public async Task RefreshPlayerInfoListIncrementallyAsync()
+        {
+            CancelPlayerInfoListRefresh();
+            CancelPlaylistCompatibilityRefresh();
+            CancellationTokenSource refreshCts = new CancellationTokenSource();
+            _playerInfoListRefreshCts = refreshCts;
+            CancellationToken cancellationToken = refreshCts.Token;
+
+            try
+            {
+                PreparePlayerInfoListRefresh();
+
+                var orderedPlayers = DataShop.Instance.g_PlayerInfoManager.GetOrderedPlayers().ToList();
+                _singleScreenTizenPlaylistNames = await LoadSingleScreenPlaylistNamesAsync(
+                    orderedPlayers,
+                    cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+
                 int idx = 1;
                 foreach (PlayerInfoClass item in orderedPlayers)
                 {
-                    PlayerInfoElement tmpElement = new PlayerInfoElement();
-
-                    tmpElement.UpdateDataInfo(item, DataShop.Instance.g_PageListInfoManager.g_PageListInfoClassList);
-
-                    if (this.g_IsPlayerFolding == true)
-                    {
-                        tmpElement.Height = 40;
-                        tmpElement.IsShowMiniControlfSet(true);
-                    }
-                    else
-                    {
-                        tmpElement.Height = 241;
-                        tmpElement.IsShowMiniControlfSet(false);
-                    }
-
-                    tmpElement.TextBlockOrderingNumber.Text = string.Format("{0:D2}", idx);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    AddPlayerInfoElement(item, idx);
                     idx++;
-
-                    g_PlayerInfoElementList.Add(tmpElement);
-
-                    if (g_CurrentSelectedPlayerGroupClass == null ||
-                        g_CurrentSelectedPlayerGroupClass.PG_AssignedPlayerNames.Contains(item.PIF_PlayerName))
-                    {
-                        PlayerListBox.Items.Add(tmpElement);
-                    }
+                    await Dispatcher.Yield(DispatcherPriority.Background);
                 }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                CompletePlayerInfoListRefresh();
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            finally
+            {
+                if (ReferenceEquals(_playerInfoListRefreshCts, refreshCts))
+                {
+                    _playerInfoListRefreshCts = null;
+                }
+
+                refreshCts.Dispose();
+            }
+        }
+
+        private void CancelPlayerInfoListRefresh()
+        {
+            CancellationTokenSource refreshCts = _playerInfoListRefreshCts;
+            if (refreshCts == null)
+            {
+                return;
             }
 
-            RefreshPlayerElementLookup();
+            _playerInfoListRefreshCts = null;
+            try
+            {
+                if (!refreshCts.IsCancellationRequested)
+                {
+                    refreshCts.Cancel();
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
 
-            DataShop.Instance.g_PlayerInfoManager.RequestAuthValidationForAll(
-                g_PlayerInfoElementList.Select(x => x.g_PlayerInfoClass),
-                forceRefresh: true);
+        private void CancelPlaylistCompatibilityRefresh()
+        {
+            CancellationTokenSource refreshCts = _playlistCompatibilityRefreshCts;
+            if (refreshCts == null)
+            {
+                return;
+            }
+
+            _playlistCompatibilityRefreshCts = null;
+            try
+            {
+                if (!refreshCts.IsCancellationRequested)
+                {
+                    refreshCts.Cancel();
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
+
+        private async Task<HashSet<string>> LoadSingleScreenPlaylistNamesAsync(
+            IEnumerable<PlayerInfoClass> players,
+            CancellationToken cancellationToken)
+        {
+            if ((players ?? Enumerable.Empty<PlayerInfoClass>())
+                .Any(TizenPlaylistUpdatePolicy.IsTizenPlayer) == false)
+            {
+                return new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+            }
+
+            List<PageListInfoClass> pageLists = DataShop.Instance.g_PageListInfoManager
+                .g_PageListInfoClassList
+                .Where(x => x != null)
+                .Select(x => new PageListInfoClass
+                {
+                    PLI_PageListName = x.PLI_PageListName,
+                    PLI_PageDirection = x.PLI_PageDirection,
+                    PLI_Pages = x.PLI_Pages?.ToList() ?? new List<string>()
+                })
+                .ToList();
+            List<string> pageIds = pageLists
+                .SelectMany(x => x.PLI_Pages)
+                .Where(x => string.IsNullOrWhiteSpace(x) == false)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            return await Task.Run(() =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                List<PageInfoClass> pageDefinitions = DataShop.Instance.g_PageInfoManager
+                    .GetPageDefinitionsByIds(pageIds);
+                cancellationToken.ThrowIfCancellationRequested();
+                return TizenPlaylistUpdatePolicy.GetSingleScreenPlaylistNames(
+                    pageLists,
+                    pageDefinitions);
+            }, cancellationToken);
+        }
+
+        private void PreparePlayerInfoListRefresh()
+        {
+            Is_ComboBoxInit = true;
+
+            foreach (PlayerInfoElement element in g_PlayerInfoElementList.ToList())
+            {
+                element?.CancelAuthenticationRefresh();
+            }
+
+            PlayerListBox.Items.Clear();
+            g_PlayerInfoElementList.Clear();
+        }
+
+        private void AddPlayerInfoElement(PlayerInfoClass item, int idx)
+        {
+            PlayerInfoElement tmpElement = new PlayerInfoElement();
+            tmpElement.UpdateDataInfo(
+                item,
+                DataShop.Instance.g_PageListInfoManager.g_PageListInfoClassList,
+                _singleScreenTizenPlaylistNames);
+
+            if (this.g_IsPlayerFolding == true)
+            {
+                tmpElement.Height = 40;
+                tmpElement.IsShowMiniControlfSet(true);
+            }
+            else
+            {
+                tmpElement.Height = 241;
+                tmpElement.IsShowMiniControlfSet(false);
+            }
+
+            tmpElement.TextBlockOrderingNumber.Text = string.Format("{0:D2}", idx);
+            g_PlayerInfoElementList.Add(tmpElement);
+
+            if (g_CurrentSelectedPlayerGroupClass == null ||
+                g_CurrentSelectedPlayerGroupClass.PG_AssignedPlayerNames.Contains(item.PIF_PlayerName))
+            {
+                PlayerListBox.Items.Add(tmpElement);
+            }
+        }
+
+        private void CompletePlayerInfoListRefresh()
+        {
+            RefreshPlayerElementLookup();
 
             Is_ComboBoxInit = false;
             UpdateSelectionVisuals();
@@ -653,10 +910,7 @@ namespace AndoW_Manager
             }
 
             RefreshPlayerElementLookup();
-
-            DataShop.Instance.g_PlayerInfoManager.RequestAuthValidationForAll(
-                g_PlayerInfoElementList.Select(x => x.g_PlayerInfoClass),
-                forceRefresh: true);
+            RefreshPlayerAuthenticationOverlays();
 
             Is_ComboBoxInit = false;
             UpdateSelectionVisuals();
@@ -931,6 +1185,9 @@ namespace AndoW_Manager
 
         private void OnPageUnloaded(object sender, RoutedEventArgs e)
         {
+            CancelPlayerInfoListRefresh();
+            CancelPlaylistCompatibilityRefresh();
+
             if (_heartbeatDisposed)
             {
                 return;

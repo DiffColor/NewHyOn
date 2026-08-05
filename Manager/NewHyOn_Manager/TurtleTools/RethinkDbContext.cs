@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
 using RethinkDb.Driver;
 using RethinkDb.Driver.Ast;
 using RethinkDb.Driver.Net;
@@ -197,6 +199,47 @@ namespace TurtleTools
         public static T RunSingleOrDefault<T>(ReqlExpr expr)
         {
             return RunSingleOrDefaultInternal<T>(expr, false);
+        }
+
+        public static Task<T> RunSingleOrDefaultAsync<T>(
+            ReqlExpr expr,
+            CancellationToken cancellationToken)
+        {
+            return RunSingleOrDefaultInternalAsync<T>(expr, cancellationToken, false);
+        }
+
+        private static async Task<T> RunSingleOrDefaultInternalAsync<T>(
+            ReqlExpr expr,
+            CancellationToken cancellationToken,
+            bool retried)
+        {
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return await expr.RunAtomAsync<T>(GetConnection(), cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (ReqlNonExistenceError)
+            {
+                return default;
+            }
+            catch (Exception ex)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!retried && TryReconnect(ex))
+                {
+                    return await RunSingleOrDefaultInternalAsync<T>(
+                        expr,
+                        cancellationToken,
+                        true).ConfigureAwait(false);
+                }
+
+                Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
+                return default;
+            }
         }
 
         private static T RunSingleOrDefaultInternal<T>(ReqlExpr expr, bool retried)

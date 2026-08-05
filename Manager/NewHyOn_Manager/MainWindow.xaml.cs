@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using AndoW.Shared;
 using Newtonsoft.Json;
@@ -36,10 +37,6 @@ namespace AndoW_Manager
         public double g_wLandScale, g_hLandScale, g_wPortScale, g_hPortScale;
 
         public List<string> onlineList = new List<string>();
-
-        DispatcherTimer checkTimer = new DispatcherTimer();
-        private DateTime _nextAuthOverlayRefreshAt = DateTime.MinValue;
-        private bool _authOverlayRefreshQueued;
 
         public static MainWindow Instance { get; set; }
 
@@ -91,20 +88,21 @@ namespace AndoW_Manager
 
         public void InitPages()
         {
-            g_Page1 = new Page1();
-            g_Page2 = new Page2();
-            g_Page3 = new Page3();
-            g_Page5 = new Page5();
+            Stopwatch initPagesTimer = Stopwatch.StartNew();
 
-            DataShop.Instance.g_PlayerInfoManager.AuthValidationChanged -= PlayerInfoManager_AuthValidationChanged;
-            DataShop.Instance.g_PlayerInfoManager.AuthValidationChanged += PlayerInfoManager_AuthValidationChanged;
+            g_Page1 = new Page1();
+            LogStartupStage(initPagesTimer, "init-page1-created");
+            g_Page2 = new Page2();
+            LogStartupStage(initPagesTimer, "init-page2-created");
+            g_Page3 = new Page3();
+            LogStartupStage(initPagesTimer, "init-page3-created");
+            g_Page5 = new Page5();
+            LogStartupStage(initPagesTimer, "init-page5-created");
 
             RefreshSavedPageList();
+            LogStartupStage(initPagesTimer, "init-saved-pages-refreshed");
             g_Page2.RefreshPageNameList();
-            g_Page3.RefreshPlayerInfoList();
-            DataShop.Instance.g_PlayerInfoManager.RequestAuthValidationForAll(
-                DataShop.Instance.g_PlayerInfoManager.g_PlayerInfoClassList,
-                forceRefresh: true);
+            LogStartupStage(initPagesTimer, "init-page-names-refreshed");
         }
 
         public void RefreshSavedPageList()
@@ -228,9 +226,6 @@ namespace AndoW_Manager
 
         void MainWindow_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
-            if(checkTimer != null)
-                checkTimer.Stop();
-
             SignalRClientTools.StopSignalRClient();
 
             Process.GetCurrentProcess().Kill();
@@ -238,6 +233,7 @@ namespace AndoW_Manager
 
         async void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
+            Stopwatch startupTimer = Stopwatch.StartNew();
             LocalSettingsStore.EnsureSeeded();
             RethinkDbConfigurator.EnsureConfigured();
 
@@ -248,11 +244,14 @@ namespace AndoW_Manager
             await Dispatcher.Yield(DispatcherPriority.Background);
 
             await WaitForDatabaseReadyAsync(loadingWindow);
-            SignalRClientTools.StartSignalRClient();
-            await WaitForSignalRReadyAsync(loadingWindow);
+            LogStartupStage(startupTimer, "database-ready");
 
-            loadingWindow.Close();
+            SignalRClientTools.StartSignalRClient();
+
+            loadingWindow.SetStatus("데이터 준비", "초기 화면을 구성하고 있습니다.");
+            await Dispatcher.Yield(DispatcherPriority.Render);
             InitPages();
+            LogStartupStage(startupTimer, "pages-initialized");
 
             if (g_Page1 != null && g_Page1.g_CurrentPageInfo != null)
             {
@@ -276,44 +275,32 @@ namespace AndoW_Manager
             }
 
             GotoPageByName("Page3");
+            loadingWindow.Close();
+            await WaitForNextRenderingAsync();
+            LogStartupStage(startupTimer, "first-page-rendered");
 
-            checkTimer.Tick += new EventHandler(checkTimer_Tick);
-            checkTimer.Interval = new TimeSpan(0, 0, 4);
-            checkTimer.Start();
+            await g_Page3.RefreshPlayerInfoListIncrementallyAsync();
+            LogStartupStage(startupTimer, "player-cards-populated");
         }
 
-        private void checkTimer_Tick(object sender, EventArgs e)
+        private static Task WaitForNextRenderingAsync()
         {
-            if (DateTime.UtcNow < _nextAuthOverlayRefreshAt)
+            var completion = new TaskCompletionSource<bool>();
+            EventHandler renderingHandler = null;
+            renderingHandler = (sender, args) =>
             {
-                return;
-            }
-
-            _nextAuthOverlayRefreshAt = DateTime.UtcNow.AddSeconds(30);
-            DataShop.Instance.g_PlayerInfoManager.RequestAuthValidationForAll(
-                DataShop.Instance.g_PlayerInfoManager.g_PlayerInfoClassList,
-                forceRefresh: true);
-            ScheduleAuthOverlayRefresh();
+                CompositionTarget.Rendering -= renderingHandler;
+                completion.TrySetResult(true);
+            };
+            CompositionTarget.Rendering += renderingHandler;
+            return completion.Task;
         }
 
-        private void PlayerInfoManager_AuthValidationChanged(object sender, EventArgs e)
+        private static void LogStartupStage(Stopwatch startupTimer, string stage)
         {
-            ScheduleAuthOverlayRefresh();
-        }
-
-        private void ScheduleAuthOverlayRefresh()
-        {
-            if (_authOverlayRefreshQueued)
-            {
-                return;
-            }
-
-            _authOverlayRefreshQueued = true;
-            Dispatcher.BeginInvoke(new Action(() =>
-            {
-                _authOverlayRefreshQueued = false;
-                g_Page3?.RefreshPlayerAuthenticationOverlays();
-            }), DispatcherPriority.Background);
+            Logger.WriteLog(
+                $"Manager startup {stage}: {startupTimer.ElapsedMilliseconds}ms",
+                Logger.GetLogFileName());
         }
 
         public bool EnqueueCommandForPlayer(PlayerInfoClass player, string command, string payloadBase64 = "", bool pushSignalR = true)
@@ -517,7 +504,7 @@ namespace AndoW_Manager
                 ? "이름 없음"
                 : player.PIF_PlayerName;
             EnqueueSnackMsg($"미인증 플레이어 명령을 차단했습니다. ({playerName}, {GetCommandDisplayName(command)})");
-            ScheduleAuthOverlayRefresh();
+            g_Page3?.RefreshPlayerAuthenticationOverlays();
         }
 
         private static string GetCommandDisplayName(string command)
@@ -894,27 +881,6 @@ namespace AndoW_Manager
                 await Task.Delay(TimeSpan.FromSeconds(15));
             }
         }
-
-        private async Task WaitForSignalRReadyAsync(DbLoadingWindow loadingWindow)
-        {
-            loadingWindow?.SetStatus("실시간 연결 확인", "실시간 제어 서버에 연결 중입니다.");
-
-            while (!SignalRClientTools.IsConnected())
-            {
-                bool connected = await SignalRClientTools.EnsureConnectedAsync();
-                if (connected)
-                {
-                    return;
-                }
-
-                Logger.WriteErrorLog($"SignalR 연결 실패. 15초 후 재시도합니다. {SignalRClientTools.GetConnectionStatus()}", Logger.GetLogFileName());
-                loadingWindow?.SetStatus(
-                    "실시간 연결 실패",
-                    "실시간 제어 서버 연결이 필요합니다.\r\n설정 확인 후 15초마다 재시도합니다.");
-                await Task.Delay(TimeSpan.FromSeconds(15));
-            }
-        }
-
 
         string prevEnqueMsg = string.Empty;
         DateTime prevMsgDT = DateTime.MinValue;

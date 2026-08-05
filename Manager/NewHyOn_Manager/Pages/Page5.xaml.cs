@@ -12,6 +12,7 @@ using System.Linq;
 using System.Text;
 using System.Runtime.InteropServices.ComTypes;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -30,17 +31,20 @@ namespace AndoW_Manager
         internal readonly ObservableCollection<SpecialCtrl> sSpecialControls = new ObservableCollection<SpecialCtrl>();
         public Dictionary<string, SpecialScheduleInfoClass> sSpecialDics = new Dictionary<string, SpecialScheduleInfoClass>(StringComparer.CurrentCultureIgnoreCase);
         Queue<CancellationTokenSource> sCTSs = new Queue<CancellationTokenSource>();
+        private CancellationTokenSource _specialLoadCts;
 
         public Page5()
         {
             InitializeComponent();
             Instance = this;
             SpecialItemsControl.ItemsSource = sSpecialControls;
+            Unloaded += UserControl_Unloaded;
         }
 
 
         public void LoadAllSpecials()
         {
+            CancelSpecialLoad();
             try
             {
                 ShowProgress();
@@ -63,6 +67,88 @@ namespace AndoW_Manager
             finally
             {
                 ShowProgress(false);
+            }
+        }
+
+        private async Task LoadAllSpecialsAsync()
+        {
+            CancelSpecialLoad();
+            var loadCts = new CancellationTokenSource();
+            _specialLoadCts = loadCts;
+            CancellationToken cancellationToken = loadCts.Token;
+            ShowProgress();
+
+            try
+            {
+                List<SpecialScheduleInfoClass> schedules = await Task.Run(
+                    () => LoadAllScheduleSnapshot(cancellationToken),
+                    cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+
+                List<SpecialScheduleViewData> viewItems = await Task.Run(
+                    () => BuildSpecialViewItems(schedules),
+                    cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+
+                sSpecialControls.Clear();
+                sSpecialDics.Clear();
+                foreach (SpecialScheduleInfoClass schedule in schedules)
+                {
+                    if (string.IsNullOrWhiteSpace(schedule.GUID) == false)
+                    {
+                        sSpecialDics[schedule.GUID] = schedule;
+                    }
+                }
+
+                foreach (SpecialScheduleViewData viewItem in viewItems)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    sSpecialControls.Add(new SpecialCtrl(viewItem));
+                    await Dispatcher.Yield(DispatcherPriority.Background);
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                SortSpecialControls();
+                SelectAllSchChBox.IsChecked = false;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog(
+                    $"특별 스케줄 비동기 로드 실패: {ex}",
+                    Logger.GetLogFileName());
+            }
+            finally
+            {
+                if (ReferenceEquals(_specialLoadCts, loadCts))
+                {
+                    _specialLoadCts = null;
+                    ShowProgress(false);
+                }
+                loadCts.Dispose();
+            }
+        }
+
+        private void CancelSpecialLoad()
+        {
+            CancellationTokenSource loadCts = _specialLoadCts;
+            if (loadCts == null)
+            {
+                return;
+            }
+
+            _specialLoadCts = null;
+            try
+            {
+                if (loadCts.IsCancellationRequested == false)
+                {
+                    loadCts.Cancel();
+                }
+            }
+            catch (ObjectDisposedException)
+            {
             }
         }
 
@@ -694,11 +780,13 @@ namespace AndoW_Manager
 
             if (SpecialItemsControl.Items.Count < 1)
             {
-                LoadAllSpecials();
-                SortSpecialControls();
-
-                SelectAllSchChBox.IsChecked = false;
+                _ = LoadAllSpecialsAsync();
             }
+        }
+
+        private void UserControl_Unloaded(object sender, RoutedEventArgs e)
+        {
+            CancelSpecialLoad();
         }
 
         private void UserControl_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -1186,20 +1274,24 @@ namespace AndoW_Manager
 
         private List<SpecialScheduleInfoClass> LoadAllSchedules()
         {
-            List<SpecialScheduleInfoClass> result = new List<SpecialScheduleInfoClass>();
-            SpecialScheduleInfoManager manager = new SpecialScheduleInfoManager();
-            manager.LoadAllSchedules();
-            foreach (SpecialScheduleInfoClass schedule in manager.g_SpecialScheduleInfoClassList)
+            List<SpecialScheduleInfoClass> result = LoadAllScheduleSnapshot(CancellationToken.None);
+            foreach (SpecialScheduleInfoClass schedule in result)
             {
-                if (schedule == null)
-                    continue;
-
-                result.Add(schedule);
                 if (string.IsNullOrWhiteSpace(schedule.GUID) == false)
                     sSpecialDics[schedule.GUID] = schedule;
             }
 
             return result;
+        }
+
+        private static List<SpecialScheduleInfoClass> LoadAllScheduleSnapshot(CancellationToken cancellationToken)
+        {
+            SpecialScheduleInfoManager manager = new SpecialScheduleInfoManager();
+            manager.LoadAllSchedules();
+            cancellationToken.ThrowIfCancellationRequested();
+            return manager.g_SpecialScheduleInfoClassList
+                .Where(schedule => schedule != null)
+                .ToList();
         }
 
         private List<SpecialScheduleViewData> BuildSpecialViewItems(IEnumerable<SpecialScheduleInfoClass> schedules)

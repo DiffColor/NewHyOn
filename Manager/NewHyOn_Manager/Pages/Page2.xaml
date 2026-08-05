@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:wpftk="clr-namespace:WpfToolkit.Controls;assembly=VirtualizingWrapPanel"
               mc:Ignorable="d" 
              d:DesignHeight="607" d:DesignWidth="1080">
     <UserControl.Resources>
@@ -136,9 +137,17 @@
                     <TextBlock Margin="7,0,0,0"
 						VerticalAlignment="Center" Text="★ 선택된 리스트에서 재생하실 페이지를 추가하실 수 있습니다." TextWrapping="Wrap" HorizontalAlignment="Left" FontFamily="Malgun Gothic" FontSize="10.667" Foreground="{DynamicResource Color_font002}"/>
                 </StackPanel>
-                <ScrollViewer x:Name="ContentsListScrollViewer" Style="{StaticResource ModernScrollViewer}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" ScrollViewer.VerticalScrollBarVisibility="Auto" Grid.Row="1" Grid.RowSpan="2">
-                    <WrapPanel x:Name="wrapPanelTemplate" Grid.Column="2" Margin="8" Grid.Row="3" Grid.RowSpan="2" ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.CanContentScroll="True"/>
-                </ScrollViewer>
+                <wpftk:VirtualizingItemsControl
+                    x:Name="SavedPagesItemsControl"
+                    Grid.Row="1"
+                    Grid.RowSpan="2"
+                    Margin="8"
+                    VirtualizingPanel.CacheLength="1"
+                    VirtualizingPanel.CacheLengthUnit="Page"
+                    VirtualizingPanel.ScrollUnit="Pixel"
+                    VirtualizingPanel.VirtualizationMode="Recycling"
+                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto"/>
             </Grid>
             <Button x:Name="BtnWin_close" VerticalAlignment="Top" Style="{DynamicResource Btn_defaultSW}" HorizontalAlignment="Right" Click="BtnWin_close_Click" BorderThickness="1,1,1,2" Foreground="White" Grid.Column="1" Margin="0,5,7,0" Width="30" Height="30">
                 <StackPanel Orientation="Horizontal">
