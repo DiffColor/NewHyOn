@@ -1,0 +1,42 @@
+ext.resolveAppVersion = {
+    def explicitVersion = project.findProperty("APP_VERSION") ?: System.getenv("APP_VERSION")
+    if (explicitVersion != null && !explicitVersion.toString().trim().isEmpty()) {
+        return explicitVersion.toString().trim()
+    }
+
+    def exactTagOutput = new ByteArrayOutputStream()
+    try {
+        def exactTagResult = project.exec {
+            workingDir rootProject.projectDir
+            commandLine 'git', 'describe', '--tags', '--exact-match'
+            standardOutput = exactTagOutput
+            errorOutput = new ByteArrayOutputStream()
+            ignoreExitValue = true
+        }
+        def exactTag = exactTagOutput.toString('UTF-8').trim()
+        if (exactTagResult.exitValue == 0 && !exactTag.isEmpty()) {
+            return exactTag
+        }
+    } catch (Exception ignored) {
+        // Fall through to a descriptive development version.
+    }
+
+    def describedVersionOutput = new ByteArrayOutputStream()
+    try {
+        def describedVersionResult = project.exec {
+            workingDir rootProject.projectDir
+            commandLine 'git', 'describe', '--tags', '--always', '--dirty'
+            standardOutput = describedVersionOutput
+            errorOutput = new ByteArrayOutputStream()
+            ignoreExitValue = true
+        }
+        def describedVersion = describedVersionOutput.toString('UTF-8').trim()
+        if (describedVersionResult.exitValue == 0 && !describedVersion.isEmpty()) {
+            return describedVersion
+        }
+    } catch (Exception ignored) {
+        // Use a deterministic fallback when Git metadata is unavailable.
+    }
+
+    return '0.0.0'
+}

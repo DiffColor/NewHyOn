@@ -6,6 +6,47 @@ def keystorePath = System.getenv("ANDROID_KEYSTORE_PATH") ?: defaultKeystoreFile
 def keystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: "zbqj2636"
 def keyAliasValue = System.getenv("ANDROID_KEY_ALIAS") ?: "quber"
 def keyPasswordValue = System.getenv("ANDROID_KEY_PASSWORD") ?: "zbqj2636"
+def repoRootDir = rootProject.file("../../../..")
+
+def runGitCommand = { List<String> args ->
+    try {
+        def stdout = new ByteArrayOutputStream()
+        def stderr = new ByteArrayOutputStream()
+        def result = exec {
+            workingDir repoRootDir
+            commandLine args
+            standardOutput = stdout
+            errorOutput = stderr
+            ignoreExitValue true
+        }
+        if (result.exitValue != 0) {
+            return null
+        }
+        def output = stdout.toString().trim()
+        return output ? output : null
+    } catch (Exception ignored) {
+        return null
+    }
+}
+
+def resolveAppVersion = {
+    def propertyVersion = project.findProperty("APP_VERSION")?.toString()?.trim()
+    if (propertyVersion) {
+        return propertyVersion
+    }
+
+    def exactTag = runGitCommand(["git", "describe", "--tags", "--exact-match"])
+    if (exactTag) {
+        return exactTag
+    }
+
+    def gitDescribe = runGitCommand(["git", "describe", "--tags", "--always", "--dirty"])
+    if (gitDescribe) {
+        return gitDescribe
+    }
+
+    return "local"
+}.call()
 
 android {
     ndkVersion "26.1.10909125"
@@ -31,6 +72,8 @@ android {
         minSdk 21
         targetSdk 30
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+        versionName resolveAppVersion
+        resValue "string", "app_version", resolveAppVersion
     }
 
     buildTypes {

@@ -2,16 +2,25 @@
 
 set -euo pipefail
 
-if [[ $# -ne 3 ]]; then
-  echo "Usage: $0 <target> <artifact-prefix> <output-dir>" >&2
+if [[ $# -lt 3 || $# -gt 4 ]]; then
+  echo "Usage: $0 <target> <artifact-prefix> <output-dir> [app-version]" >&2
   exit 1
 fi
 
 target="$1"
 artifact_prefix="$2"
 output_dir="$3"
+app_version="${4:-${APP_VERSION:-${GITHUB_REF_NAME:-}}}"
 repo_root="$(pwd)"
 sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+
+if [[ -z "$app_version" ]]; then
+  app_version="$(git -C "$repo_root" describe --tags --exact-match 2>/dev/null || true)"
+fi
+
+if [[ -n "$app_version" ]]; then
+  export APP_VERSION="$app_version"
+fi
 
 if [[ -z "$sdk_root" ]]; then
   echo "ANDROID_SDK_ROOT or ANDROID_HOME must be set." >&2
@@ -40,6 +49,21 @@ abs_path() {
   local dir
   dir="$(cd "$(dirname "$rel")" && pwd)"
   printf '%s/%s\n' "$dir" "$(basename "$rel")"
+}
+
+verify_apk_version() {
+  local apk_path="$1"
+
+  if [[ -z "$app_version" ]]; then
+    return
+  fi
+
+  local badging
+  badging="$("$aapt" dump badging "$apk_path")"
+  if ! grep -Fq "versionName='$app_version'" <<< "$badging"; then
+    echo "APK versionName mismatch. Expected: $app_version ($apk_path)" >&2
+    exit 1
+  fi
 }
 
 build_gradle_release() {
@@ -75,6 +99,7 @@ build_gradle_release() {
   fi
 
   "$apksigner" verify --verbose "$apk_path"
+  verify_apk_version "$apk_path"
   cp "$apk_path" "$output_dir/$output_name"
 }
 
@@ -112,6 +137,7 @@ build_gradle_release_from_find() {
   fi
 
   "$apksigner" verify --verbose "$apk_path"
+  verify_apk_version "$apk_path"
   cp "$apk_path" "$output_dir/$output_name"
 }
 

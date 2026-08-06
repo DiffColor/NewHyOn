@@ -50,7 +50,11 @@ jobs:
           & ".github/scripts/set-dotnet-framework-assembly-version.ps1" `
             -Tag "${{ github.ref_name }}" `
             -ProjectTagPrefix "manager-windows" `
-            -AssemblyInfoPaths "Manager/NewHyOn_Manager/Properties/AssemblyInfo.cs"
+            -AssemblyInfoPaths @(
+              "Manager/NewHyOn_Manager/Properties/AssemblyInfo.cs",
+              "Manager/ContentViewer/Properties/AssemblyInfo.cs",
+              "Manager/PageViewer/Properties/AssemblyInfo.cs"
+            )
 
       - name: Restore NuGet packages
         run: nuget restore "Manager/NewHyOn_Manager.sln" -PackagesDirectory "Manager/packages" -NonInteractive

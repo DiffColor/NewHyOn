@@ -112,7 +112,11 @@ jobs:
           & ".github/scripts/set-dotnet-framework-assembly-version.ps1" `
             -Tag "${{ needs.prepare-release.outputs.tag }}" `
             -ProjectTagPrefix "manager-windows" `
-            -AssemblyInfoPaths "Manager/NewHyOn_Manager/Properties/AssemblyInfo.cs"
+            -AssemblyInfoPaths @(
+              "Manager/NewHyOn_Manager/Properties/AssemblyInfo.cs",
+              "Manager/ContentViewer/Properties/AssemblyInfo.cs",
+              "Manager/PageViewer/Properties/AssemblyInfo.cs"
+            )
 
       - name: Restore NuGet packages
         run: nuget restore "Manager/NewHyOn_Manager.sln" -PackagesDirectory "Manager/packages" -NonInteractive
@@ -341,7 +345,8 @@ jobs:
           bash ./.github/scripts/build-android-release-assets.sh \
             player \
             "player-android-${{ needs.prepare-release.outputs.artifact_suffix }}" \
-            "release-assets"
+            "release-assets" \
+            "${{ needs.prepare-release.outputs.tag }}"
 
       - name: Upload Player Android artifact
         uses: actions/upload-artifact@v4
@@ -401,7 +406,8 @@ jobs:
           bash ./.github/scripts/build-android-release-assets.sh \
             notifier \
             "player-notifier-android-${{ needs.prepare-release.outputs.artifact_suffix }}" \
-            "release-assets"
+            "release-assets" \
+            "${{ needs.prepare-release.outputs.tag }}"
 
       - name: Upload Notifier Android artifact
         uses: actions/upload-artifact@v4
@@ -461,7 +467,8 @@ jobs:
           bash ./.github/scripts/build-android-release-assets.sh \
             usbinstaller \
             "player-usbinstaller-android-${{ needs.prepare-release.outputs.artifact_suffix }}" \
-            "release-assets"
+            "release-assets" \
+            "${{ needs.prepare-release.outputs.tag }}"
 
       - name: Upload USBInstaller Android artifact
         uses: actions/upload-artifact@v4
@@ -537,7 +544,8 @@ jobs:
           bash ./.github/scripts/build-android-release-assets.sh \
             "${{ matrix.target }}" \
             "${{ matrix.output_id }}-${{ needs.prepare-release.outputs.artifact_suffix }}" \
-            "release-assets"
+            "release-assets" \
+            "${{ needs.prepare-release.outputs.tag }}"
 
       - name: Upload ${{ matrix.display_name }} artifact
         uses: actions/upload-artifact@v4
@@ -597,7 +605,8 @@ jobs:
           bash ./.github/scripts/build-android-release-assets.sh \
             launcher \
             "player-launcher-android-${{ needs.prepare-release.outputs.artifact_suffix }}" \
-            "release-assets"
+            "release-assets" \
+            "${{ needs.prepare-release.outputs.tag }}"
 
       - name: Upload TurtleLauncher Android artifact
         uses: actions/upload-artifact@v4
@@ -657,7 +666,8 @@ jobs:
           bash ./.github/scripts/build-android-release-assets.sh \
             watchdog \
             "player-watchdog-android-${{ needs.prepare-release.outputs.artifact_suffix }}" \
-            "release-assets"
+            "release-assets" \
+            "${{ needs.prepare-release.outputs.tag }}"
 
       - name: Upload WatchDog Android artifact
         uses: actions/upload-artifact@v4

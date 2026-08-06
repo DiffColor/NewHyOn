@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup Condition="'$(APP_VERSION)' != ''">
+    <NewHyOnVersionIsValid>$([System.Text.RegularExpressions.Regex]::IsMatch('$(APP_VERSION)', '^(?:[A-Za-z0-9._-]+-)?v\d+\.\d+\.\d+(?:\.\d+)?$'))</NewHyOnVersionIsValid>
+    <NewHyOnNumericVersion>$([System.Text.RegularExpressions.Regex]::Replace('$(APP_VERSION)', '^(?:[A-Za-z0-9._-]+-)?v', ''))</NewHyOnNumericVersion>
+    <Version>$(NewHyOnNumericVersion)</Version>
+    <AssemblyVersion>$(NewHyOnNumericVersion)</AssemblyVersion>
+    <FileVersion>$(NewHyOnNumericVersion)</FileVersion>
+    <InformationalVersion>$(APP_VERSION)</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+</Project>

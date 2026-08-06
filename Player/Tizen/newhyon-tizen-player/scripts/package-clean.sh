@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${PROJECT_ROOT}/../../.." && pwd)"
 DIST_DIR="${PROJECT_ROOT}/dist"
 OUTPUT_DIR="${PROJECT_ROOT}/Build"
 OUTPUT_NAME="${NEWHYON_TIZEN_OUTPUT_NAME:-NewHyOnTizenPlayer.wgt}"
@@ -12,6 +13,10 @@ CONTENT_PATH="${NEWHYON_TIZEN_CONTENT_PATH:-}"
 TMP_DIR="$(mktemp -d)"
 STAGE_DIR="${TMP_DIR}/NewHyOnTizenPlayer"
 TIZEN_PROJECT_FILE="${STAGE_DIR}/.project"
+VERSION_SCRIPT="${REPO_ROOT}/Shared/Versioning/resolve-app-version.sh"
+
+source "${VERSION_SCRIPT}"
+resolve_app_version "${REPO_ROOT}"
 
 resolve_tizen_cli() {
   if [[ -n "${TIZEN_CLI:-}" ]]; then
@@ -70,6 +75,15 @@ rsync -a \
   --exclude 'author-signature.xml' \
   --exclude 'signature*.xml' \
   "${DIST_DIR}/" "${STAGE_DIR}/"
+
+APP_VERSION_NUMERIC="${APP_VERSION_NUMERIC}" perl -0pi -e \
+  's{(<widget\b[^>]*\bversion=")[^"]+(")}{$1$ENV{APP_VERSION_NUMERIC}$2}' \
+  "${STAGE_DIR}/config.xml"
+
+if ! grep -Fq "version=\"${APP_VERSION_NUMERIC}\"" "${STAGE_DIR}/config.xml"; then
+  printf 'Tizen WGT 버전 적용에 실패했습니다: %s\n' "${APP_VERSION_NUMERIC}" >&2
+  exit 1
+fi
 
 if [[ -n "${CONTENT_PATH}" ]]; then
   if [[ ! "${CONTENT_PATH}" =~ ^[A-Za-z0-9._/-]+$ ]]; then

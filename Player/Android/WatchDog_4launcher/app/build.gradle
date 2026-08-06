@@ -1,5 +1,8 @@
 apply plugin: 'com.android.application'
 
+apply from: rootProject.file("../versioning.gradle")
+def appVersion = resolveAppVersion()
+
 def defaultKeystoreFile = rootProject.file("../_shared/platformkeys/quber/platform.jks")
 def keystorePath = System.getenv("ANDROID_KEYSTORE_PATH") ?: defaultKeystoreFile.path
 def keystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: "zbqj2636"
@@ -30,6 +33,7 @@ android {
         minSdkVersion 17
         //noinspection ExpiredTargetSdkVersion
         targetSdkVersion 17
+        versionName appVersion
     }
 
     buildTypes {

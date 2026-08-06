@@ -117,7 +117,11 @@ jobs:
           & ".github/scripts/set-dotnet-framework-assembly-version.ps1" `
             -Tag "${{ steps.release_meta.outputs.tag }}" `
             -ProjectTagPrefix "manager-windows" `
-            -AssemblyInfoPaths "Manager/NewHyOn_Manager/Properties/AssemblyInfo.cs"
+            -AssemblyInfoPaths @(
+              "Manager/NewHyOn_Manager/Properties/AssemblyInfo.cs",
+              "Manager/ContentViewer/Properties/AssemblyInfo.cs",
+              "Manager/PageViewer/Properties/AssemblyInfo.cs"
+            )
 
       - name: Restore NuGet packages
         run: nuget restore "Manager/NewHyOn_Manager.sln" -PackagesDirectory "Manager/packages" -NonInteractive
@@ -450,7 +454,8 @@ jobs:
           bash ./.github/scripts/build-android-release-assets.sh \
             "${{ steps.player_android_target.outputs.target }}" \
             "player-android-manual-${{ steps.release_meta.outputs.artifact_suffix }}" \
-            "release-assets"
+            "release-assets" \
+            "${{ steps.release_meta.outputs.tag }}"
 
       - name: Upload ${{ steps.player_android_target.outputs.display_name }} artifact
         uses: actions/upload-artifact@v4
@@ -554,7 +559,8 @@ jobs:
           bash ./.github/scripts/build-android-release-assets.sh \
             notifier \
             "player-notifier-android-manual-${{ steps.release_meta.outputs.artifact_suffix }}" \
-            "release-assets"
+            "release-assets" \
+            "${{ steps.release_meta.outputs.tag }}"
 
       - name: Upload Notifier Android artifact
         uses: actions/upload-artifact@v4
@@ -658,7 +664,8 @@ jobs:
           bash ./.github/scripts/build-android-release-assets.sh \
             usbinstaller \
             "player-usbinstaller-android-manual-${{ steps.release_meta.outputs.artifact_suffix }}" \
-            "release-assets"
+            "release-assets" \
+            "${{ steps.release_meta.outputs.tag }}"
 
       - name: Upload USBInstaller Android artifact
         uses: actions/upload-artifact@v4
@@ -792,7 +799,8 @@ jobs:
           bash ./.github/scripts/build-android-release-assets.sh \
             "${{ steps.quber4k_target.outputs.target }}" \
             "${{ steps.quber4k_target.outputs.output_id }}-manual-${{ steps.release_meta.outputs.artifact_suffix }}" \
-            "release-assets"
+            "release-assets" \
+            "${{ steps.release_meta.outputs.tag }}"
 
       - name: Upload ${{ steps.quber4k_target.outputs.display_name }} artifact
         uses: actions/upload-artifact@v4
@@ -896,7 +904,8 @@ jobs:
           bash ./.github/scripts/build-android-release-assets.sh \
             launcher \
             "player-launcher-android-manual-${{ steps.release_meta.outputs.artifact_suffix }}" \
-            "release-assets"
+            "release-assets" \
+            "${{ steps.release_meta.outputs.tag }}"
 
       - name: Upload TurtleLauncher Android artifact
         uses: actions/upload-artifact@v4
@@ -1000,7 +1009,8 @@ jobs:
           bash ./.github/scripts/build-android-release-assets.sh \
             watchdog \
             "player-watchdog-android-manual-${{ steps.release_meta.outputs.artifact_suffix }}" \
-            "release-assets"
+            "release-assets" \
+            "${{ steps.release_meta.outputs.tag }}"
 
       - name: Upload WatchDog Android artifact
         uses: actions/upload-artifact@v4

@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-	<string name="app_version">v2.56</string>
-	
     <string name="app_name">NewHyOn Signage</string>
 
 	<string name="settings1">기기 설정</string>

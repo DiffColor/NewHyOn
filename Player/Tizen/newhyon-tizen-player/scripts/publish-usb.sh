@@ -6,18 +6,32 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_ROOT="$(cd "${PROJECT_ROOT}/../../.." && pwd)"
 FTP_SERVICE_ROOT="${REPO_ROOT}/Player/Tizen/newhyon-ftp-downloader-service/NewHyOnFtpDownloader"
-FTP_SERVICE_PROJECT="${FTP_SERVICE_ROOT}/NewHyOnFtpDownloader.csproj"
+VERSION_SCRIPT="${REPO_ROOT}/Shared/Versioning/resolve-app-version.sh"
+
+source "${VERSION_SCRIPT}"
+resolve_app_version "${REPO_ROOT}"
+
 WEB_WGT="${PROJECT_ROOT}/Build/NewHyOnTizenPlayer.wgt"
 HYBRID_WEB_WGT="${PROJECT_ROOT}/Build/NewHyOnTizenPlayer.hybrid-source.wgt"
 HYBRID_WGT="${PROJECT_ROOT}/Build/NewHyOnTizenPlayer.hybrid.wgt"
 PUBLISH_DIR="${PROJECT_ROOT}/publish/SSSP"
 PUBLISH_WGT="${PUBLISH_DIR}/NewHyOnTizenPlayer.wgt"
-TPK_NAME="NewHyOnFtpD01-1.0.0"
-TPK_OUTPUT_DIR="${FTP_SERVICE_ROOT}/bin/Release/tizen50"
+TPK_NAME="NewHyOnFtpD01-${APP_VERSION_NUMERIC}"
+TPK_STAGE_ROOT="$(mktemp -d)"
+STAGED_TIZEN_ROOT="${TPK_STAGE_ROOT}/Player/Tizen"
+STAGED_FTP_SERVICE_ROOT="${STAGED_TIZEN_ROOT}/newhyon-ftp-downloader-service/NewHyOnFtpDownloader"
+STAGED_FTP_SERVICE_PROJECT="${STAGED_FTP_SERVICE_ROOT}/NewHyOnFtpDownloader.csproj"
+TPK_OUTPUT_DIR="${STAGED_FTP_SERVICE_ROOT}/bin/Release/tizen50"
 TPK_DEFAULT="${TPK_OUTPUT_DIR}/${TPK_NAME}.tpk"
 TPK_PARTNER_DIR="${TPK_OUTPUT_DIR}/partner"
 TPK_PARTNER="${TPK_PARTNER_DIR}/${TPK_NAME}.partner.tpk"
 PUBLISH_TPK="${PUBLISH_DIR}/${TPK_NAME}.partner.tpk"
+
+cleanup() {
+  rm -rf "${TPK_STAGE_ROOT}"
+}
+
+trap cleanup EXIT
 
 resolve_tizen_cli() {
   if [[ -n "${TIZEN_CLI:-}" ]]; then
@@ -65,7 +79,20 @@ NEWHYON_TIZEN_CONTENT_PATH="res/wgt/index.html" \
 NEWHYON_TIZEN_OUTPUT_NAME="$(basename "${HYBRID_WEB_WGT}")" \
 npm run package:wgt
 
-dotnet build "${FTP_SERVICE_PROJECT}" -c Release -v:minimal
+mkdir -p "${STAGED_FTP_SERVICE_ROOT}" "${STAGED_TIZEN_ROOT}/newhyon-tizen-player/public"
+rsync -a --exclude 'bin' --exclude 'obj' "${FTP_SERVICE_ROOT}/" "${STAGED_FTP_SERVICE_ROOT}/"
+cp "${PROJECT_ROOT}/public/newhyon-app-icon.png" "${STAGED_TIZEN_ROOT}/newhyon-tizen-player/public/newhyon-app-icon.png"
+
+APP_VERSION_NUMERIC="${APP_VERSION_NUMERIC}" perl -0pi -e \
+  's{(<manifest\b[^>]*\bversion=")[^"]+(")}{$1$ENV{APP_VERSION_NUMERIC}$2}' \
+  "${STAGED_FTP_SERVICE_ROOT}/tizen-manifest.xml"
+
+if ! grep -Fq "version=\"${APP_VERSION_NUMERIC}\"" "${STAGED_FTP_SERVICE_ROOT}/tizen-manifest.xml"; then
+  printf 'Tizen TPK 버전 적용에 실패했습니다: %s\n' "${APP_VERSION_NUMERIC}" >&2
+  exit 1
+fi
+
+dotnet build "${STAGED_FTP_SERVICE_PROJECT}" -c Release -v:minimal
 
 [[ -f "${TPK_DEFAULT}" ]] || {
   printf 'TPK 빌드 산출물을 찾지 못했습니다: %s\n' "${TPK_DEFAULT}" >&2

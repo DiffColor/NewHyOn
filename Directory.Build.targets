@@ -1,0 +1,6 @@
+<Project>
+  <Target Name="ValidateNewHyOnAppVersion" BeforeTargets="PrepareForBuild"
+          Condition="'$(APP_VERSION)' != '' and '$(NewHyOnVersionIsValid)' != 'True'">
+    <Error Text="Unsupported APP_VERSION '$(APP_VERSION)'. Expected v&lt;major&gt;.&lt;minor&gt;.&lt;build&gt;[.&lt;revision&gt;] or &lt;project&gt;-v&lt;major&gt;.&lt;minor&gt;.&lt;build&gt;[.&lt;revision&gt;]." />
+  </Target>
+</Project>

@@ -48,6 +48,11 @@ if ([string]::IsNullOrWhiteSpace($normalizedTag)) {
 $versionString = Resolve-VersionFromTag -InputTag $normalizedTag -ExpectedPrefix $ProjectTagPrefix
 [void][version]$versionString
 
+$env:APP_VERSION = $normalizedTag
+if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_ENV)) {
+    Add-Content -Path $env:GITHUB_ENV -Value "APP_VERSION=$normalizedTag" -Encoding utf8
+}
+
 $assemblyVersionLine = '[assembly: AssemblyVersion("{0}")]' -f $versionString
 $fileVersionLine = '[assembly: AssemblyFileVersion("{0}")]' -f $versionString
 $informationalLine = '[assembly: AssemblyInformationalVersion("{0}")]' -f $normalizedTag
