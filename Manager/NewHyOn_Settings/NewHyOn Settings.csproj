@@ -41,11 +41,4 @@
     <Content Include="NewHyon_M_256.ico" />
   </ItemGroup>
 
-  <ItemGroup>
-    <None Include="..\..\..\..\Installer\Prerequisites\icons\NewHyon_icon\NewHyon_Manager_TMl.png">
-      <Pack>True</Pack>
-      <PackagePath>\</PackagePath>
-    </None>
-  </ItemGroup>
-
 </Project>
