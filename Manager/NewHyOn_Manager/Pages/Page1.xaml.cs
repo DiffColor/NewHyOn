@@ -29,6 +29,20 @@ namespace AndoW_Manager
 
     public partial class Page1 : UserControl
     {
+        public sealed class SavedPageSnapshot
+        {
+            internal SavedPageSnapshot(WrapPanel panel, double verticalOffset, bool restoreScrollOffset)
+            {
+                Panel = panel;
+                VerticalOffset = verticalOffset;
+                RestoreScrollOffset = restoreScrollOffset;
+            }
+
+            internal WrapPanel Panel { get; }
+            internal double VerticalOffset { get; }
+            internal bool RestoreScrollOffset { get; }
+        }
+
         private const int TizenImageMinLongSide = 1920;
         private const int TizenImageTargetLongSide = 1920;
         private const double TizenImageAspectRatioTolerance = 0.01;
@@ -981,7 +995,7 @@ namespace AndoW_Manager
         {
             DepartuerAddGrid_Copy1.Visibility = Visibility.Visible;
             InitPageNamePlaceholder();
-            RefreshSavedPageList();
+            _ = MainWindow.Instance.EnsureSavedPagesLoadedAsync();
         }
         
         void BTN0DO_Copy22_Click(object sender, RoutedEventArgs e)  // 세로형 버튼
@@ -3386,19 +3400,21 @@ namespace AndoW_Manager
             return fallback;
         }
 
-        public void RefreshSavedPageList()
+        public SavedPageSnapshot CaptureSavedPageSnapshot()
         {
-            List<PageInfoClass> savedPages = DataShop.Instance.g_PageInfoManager.GetAllSavedPages();
-            ContentsElementsStackPannel2.Children.Clear();
+            Dispatcher.VerifyAccess();
+            return new SavedPageSnapshot(
+                ContentsElementsStackPannel2,
+                ContentsListScrollViewer2.VerticalOffset,
+                true);
+        }
 
-            if (savedPages.Count == 0)
-            {
-                ContentsListScrollViewer2.ScrollToBottom();
-                return;
-            }
-
+        public SavedPageSnapshot PrepareSavedPageSnapshot(List<PageInfoClass> savedPages)
+        {
+            Dispatcher.VerifyAccess();
+            List<SavedPageElement> newControls = new List<SavedPageElement>();
             int pageIdx = 1;
-            foreach (PageInfoClass pageInfo in savedPages)
+            foreach (PageInfoClass pageInfo in savedPages ?? new List<PageInfoClass>())
             {
                 string pageName = pageInfo.PIC_PageName;
 
@@ -3421,12 +3437,41 @@ namespace AndoW_Manager
 
                 tmpElement.pageNameTextBlock.Text = pageName;
                 tmpElement.pageNameTextBlock_Copy.Text = pageIdx.ToString();
-                ContentsElementsStackPannel2.Children.Add(tmpElement);
+                newControls.Add(tmpElement);
 
                 pageIdx++;
             }
 
-            ContentsListScrollViewer2.ScrollToBottom();
+            WrapPanel newPanel = new WrapPanel();
+            ScrollViewer.SetCanContentScroll(newPanel, true);
+            ScrollViewer.SetHorizontalScrollBarVisibility(newPanel, ScrollBarVisibility.Auto);
+            foreach (SavedPageElement control in newControls)
+            {
+                newPanel.Children.Add(control);
+            }
+
+            return new SavedPageSnapshot(newPanel, 0, false);
+        }
+
+        public void ApplySavedPageSnapshot(SavedPageSnapshot snapshot)
+        {
+            Dispatcher.VerifyAccess();
+            if (snapshot == null)
+            {
+                throw new ArgumentNullException(nameof(snapshot));
+            }
+
+            ContentsListScrollViewer2.Content = snapshot.Panel;
+            ContentsElementsStackPannel2 = snapshot.Panel;
+
+            if (snapshot.RestoreScrollOffset)
+            {
+                ContentsListScrollViewer2.ScrollToVerticalOffset(snapshot.VerticalOffset);
+            }
+            else
+            {
+                ContentsListScrollViewer2.ScrollToBottom();
+            }
         }
 
         public void HideDepartuerAddPanel()

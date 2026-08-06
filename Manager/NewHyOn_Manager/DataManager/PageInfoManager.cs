@@ -371,7 +371,16 @@ namespace AndoW_Manager
 
         public List<PageInfoClass> GetAllSavedPages()
         {
-            var documents = LoadAllDocuments();
+            return BuildSavedPageSnapshot(LoadAllDocuments());
+        }
+
+        public List<PageInfoClass> GetAllSavedPagesOrThrow()
+        {
+            return BuildSavedPageSnapshot(LoadAllDocumentsOrThrow());
+        }
+
+        private List<PageInfoClass> BuildSavedPageSnapshot(List<PageInfoClass> documents)
+        {
             if (documents == null || documents.Count == 0)
             {
                 return new List<PageInfoClass>();

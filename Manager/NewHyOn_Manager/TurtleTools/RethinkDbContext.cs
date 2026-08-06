@@ -171,6 +171,11 @@ namespace TurtleTools
             return RunListInternal<T>(expr, false);
         }
 
+        public static List<T> RunListOrThrow<T>(ReqlExpr expr)
+        {
+            return RunListOrThrowInternal<T>(expr, false);
+        }
+
         private static List<T> RunListInternal<T>(ReqlExpr expr, bool retried)
         {
             try
@@ -193,6 +198,27 @@ namespace TurtleTools
 
                 Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
                 return new List<T>();
+            }
+        }
+
+        private static List<T> RunListOrThrowInternal<T>(ReqlExpr expr, bool retried)
+        {
+            try
+            {
+                using (var cursor = expr.RunCursor<T>(GetConnection()))
+                {
+                    return cursor?.ToList() ?? new List<T>();
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!retried && TryReconnect(ex))
+                {
+                    return RunListOrThrowInternal<T>(expr, true);
+                }
+
+                Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
+                throw;
             }
         }
 

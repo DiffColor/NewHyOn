@@ -45,6 +45,11 @@ namespace AndoW_Manager
         public Page3 g_Page3 = null;
         public Page5 g_Page5 = null;
 
+        private bool _hasSavedPagesSnapshot;
+        private Task _savedPageLoadTask;
+        private CancellationTokenSource _savedPageLoadCts;
+        private readonly SemaphoreSlim _savedPageReadGate = new SemaphoreSlim(1, 1);
+
         public Dictionary<string, List<string>> g_fontsDic;
 
         public MainWindow()
@@ -99,16 +104,165 @@ namespace AndoW_Manager
             g_Page5 = new Page5();
             LogStartupStage(initPagesTimer, "init-page5-created");
 
-            RefreshSavedPageList();
-            LogStartupStage(initPagesTimer, "init-saved-pages-refreshed");
+            _ = EnsureSavedPagesLoadedAsync();
+            LogStartupStage(initPagesTimer, "init-saved-pages-load-started");
             g_Page2.RefreshPageNameList();
             LogStartupStage(initPagesTimer, "init-page-names-refreshed");
         }
 
         public void RefreshSavedPageList()
         {
-            g_Page1.RefreshSavedPageList();
-            g_Page2.RefreshSavedPageList();
+            Dispatcher.VerifyAccess();
+            CancelSavedPageLoad();
+            _ = StartSavedPageLoad();
+        }
+
+        public Task EnsureSavedPagesLoadedAsync()
+        {
+            Dispatcher.VerifyAccess();
+            if (_hasSavedPagesSnapshot)
+            {
+                return Task.CompletedTask;
+            }
+
+            if (_savedPageLoadTask != null && _savedPageLoadTask.IsCompleted == false)
+            {
+                return _savedPageLoadTask;
+            }
+
+            return StartSavedPageLoad();
+        }
+
+        private Task StartSavedPageLoad()
+        {
+            Dispatcher.VerifyAccess();
+            CancellationTokenSource loadCts = new CancellationTokenSource();
+            _savedPageLoadCts = loadCts;
+            Task loadTask = LoadSavedPageSnapshotAsync(loadCts);
+            _savedPageLoadTask = loadTask;
+            return loadTask;
+        }
+
+        private async Task LoadSavedPageSnapshotAsync(CancellationTokenSource loadCts)
+        {
+            await Task.Yield();
+
+            bool ownsReadGate = false;
+            try
+            {
+                CancellationToken token = loadCts.Token;
+                await _savedPageReadGate.WaitAsync(token);
+                ownsReadGate = true;
+
+                List<PageInfoClass> savedPages = await Task.Run(
+                    () => DataShop.Instance.g_PageInfoManager.GetAllSavedPagesOrThrow(),
+                    token);
+                token.ThrowIfCancellationRequested();
+
+                if (ReferenceEquals(_savedPageLoadCts, loadCts) == false)
+                {
+                    return;
+                }
+
+                PublishSavedPageSnapshot(savedPages);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog(
+                    $"저장 화면구성 비동기 로드 실패: {ex.Message}",
+                    Logger.GetLogFileName());
+            }
+            finally
+            {
+                if (ownsReadGate)
+                {
+                    _savedPageReadGate.Release();
+                }
+
+                if (ReferenceEquals(_savedPageLoadCts, loadCts))
+                {
+                    _savedPageLoadCts = null;
+                    _savedPageLoadTask = null;
+                }
+
+                loadCts.Dispose();
+            }
+        }
+
+        private void PublishSavedPageSnapshot(List<PageInfoClass> savedPages)
+        {
+            Dispatcher.VerifyAccess();
+
+            Page1.SavedPageSnapshot previousPage1Snapshot = g_Page1.CaptureSavedPageSnapshot();
+            Page2.SavedPageSnapshot previousPage2Snapshot = g_Page2.CaptureSavedPageSnapshot();
+            bool previousHasSavedPagesSnapshot = _hasSavedPagesSnapshot;
+
+            Page1.SavedPageSnapshot nextPage1Snapshot = g_Page1.PrepareSavedPageSnapshot(savedPages);
+            Page2.SavedPageSnapshot nextPage2Snapshot = g_Page2.PrepareSavedPageSnapshot(savedPages);
+
+            try
+            {
+                g_Page1.ApplySavedPageSnapshot(nextPage1Snapshot);
+                g_Page2.ApplySavedPageSnapshot(nextPage2Snapshot);
+                _hasSavedPagesSnapshot = true;
+            }
+            catch
+            {
+                RestoreSavedPageSnapshots(
+                    previousPage1Snapshot,
+                    previousPage2Snapshot,
+                    previousHasSavedPagesSnapshot);
+                throw;
+            }
+        }
+
+        private void RestoreSavedPageSnapshots(
+            Page1.SavedPageSnapshot previousPage1Snapshot,
+            Page2.SavedPageSnapshot previousPage2Snapshot,
+            bool previousHasSavedPagesSnapshot)
+        {
+            try
+            {
+                g_Page1.ApplySavedPageSnapshot(previousPage1Snapshot);
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog(
+                    $"화면구성 Page1 snapshot 복원 실패: {ex.Message}",
+                    Logger.GetLogFileName());
+            }
+
+            try
+            {
+                g_Page2.ApplySavedPageSnapshot(previousPage2Snapshot);
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog(
+                    $"화면구성 Page2 snapshot 복원 실패: {ex.Message}",
+                    Logger.GetLogFileName());
+            }
+
+            _hasSavedPagesSnapshot = previousHasSavedPagesSnapshot;
+        }
+
+        private void CancelSavedPageLoad()
+        {
+            Dispatcher.VerifyAccess();
+            CancellationTokenSource loadCts = _savedPageLoadCts;
+            try
+            {
+                if (loadCts != null && loadCts.IsCancellationRequested == false)
+                {
+                    loadCts.Cancel();
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+            }
         }
 
 

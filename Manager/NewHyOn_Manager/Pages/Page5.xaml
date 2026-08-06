@@ -158,7 +158,7 @@
                             ScrollViewer.VerticalScrollBarVisibility="{Binding VerticalScrollBarVisibility, Mode=OneWay}"/>
 
 
-                        <Grid x:Name="ProgressGrid" Grid.Row="1" >
+                        <Grid x:Name="ProgressGrid" Grid.Row="1" Visibility="Collapsed">
                             <Grid />
                             <ProgressBar x:Name="ProgressBar" Width="50" Height="50" Style="{StaticResource MaterialDesignCircularProgressBar}" Value="0" IsIndeterminate="False" Visibility="Visible" />
                         </Grid>

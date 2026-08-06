@@ -44,6 +44,12 @@ namespace AndoW_Manager
             return RethinkDbContext.RunList<T>(table);
         }
 
+        protected List<T> LoadAllDocumentsOrThrow()
+        {
+            var table = RethinkDbContext.Table(_databaseName, _tableName);
+            return RethinkDbContext.RunListOrThrow<T>(table);
+        }
+
         protected List<T> Find(Func<T, bool> predicate)
         {
             var documents = LoadAllDocuments();

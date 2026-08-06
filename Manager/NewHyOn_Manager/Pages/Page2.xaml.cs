@@ -19,6 +19,20 @@ namespace AndoW_Manager
     /// </summary>
     public partial class Page2 : UserControl
     {
+        public sealed class SavedPageSnapshot
+        {
+            internal SavedPageSnapshot(
+                ObservableCollection<SavedPageElement2> elements,
+                System.Collections.IEnumerable itemsSource)
+            {
+                Elements = elements;
+                ItemsSource = itemsSource;
+            }
+
+            internal ObservableCollection<SavedPageElement2> Elements { get; }
+            internal System.Collections.IEnumerable ItemsSource { get; }
+        }
+
         public bool g_IsSelected = false;
      
         public int g_Idx = 0;
@@ -28,7 +42,7 @@ namespace AndoW_Manager
         public PageInfoClass g_CurrentSelectedPageInfo = new PageInfoClass();
 
         List<PageListNameElement> g_PageListNameElementList = new List<PageListNameElement>();
-        private readonly ObservableCollection<SavedPageElement2> _savedPageElements = new ObservableCollection<SavedPageElement2>();
+        private ObservableCollection<SavedPageElement2> _savedPageElements = new ObservableCollection<SavedPageElement2>();
 
         public PlayListBatchUpdateWindow g_BatchUpdateWnd = null;
 
@@ -246,7 +260,7 @@ namespace AndoW_Manager
 
             DataShop.Instance.g_PageListInfoManager.AddPageListInfoClass(newList);
             DataShop.Instance.g_PageListInfoManager.LoadDataFromDatabase();
-            RefreshSavedPageList();
+            MainWindow.Instance.RefreshSavedPageList();
         }
 
         public void RemovePageAndList(string pagename)
@@ -564,17 +578,17 @@ namespace AndoW_Manager
             return;
         }
 
-        public void RefreshSavedPageList()
+        public SavedPageSnapshot CaptureSavedPageSnapshot()
         {
-            _savedPageElements.Clear();
+            Dispatcher.VerifyAccess();
+            return new SavedPageSnapshot(_savedPageElements, SavedPagesItemsControl.ItemsSource);
+        }
 
-            List<PageInfoClass> savedPages = DataShop.Instance.g_PageInfoManager.GetAllSavedPages();
-            if (savedPages.Count == 0)
-            {
-                return;
-            }
-
-            foreach (PageInfoClass pageInfo in savedPages)
+        public SavedPageSnapshot PrepareSavedPageSnapshot(List<PageInfoClass> savedPages)
+        {
+            Dispatcher.VerifyAccess();
+            ObservableCollection<SavedPageElement2> newElements = new ObservableCollection<SavedPageElement2>();
+            foreach (PageInfoClass pageInfo in savedPages ?? new List<PageInfoClass>())
             {
                 SavedPageElement2 tmpElement = new SavedPageElement2();
                 tmpElement.g_PreviewThumbBase64 = pageInfo.PIC_Thumb;
@@ -593,8 +607,22 @@ namespace AndoW_Manager
                 tmpElement.Margin = new Thickness(7, 5, 7, 5);
 
                 tmpElement.pageNameTextBlock.Text = pageInfo.PIC_PageName;
-                _savedPageElements.Add(tmpElement);
+                newElements.Add(tmpElement);
             }
+
+            return new SavedPageSnapshot(newElements, newElements);
+        }
+
+        public void ApplySavedPageSnapshot(SavedPageSnapshot snapshot)
+        {
+            Dispatcher.VerifyAccess();
+            if (snapshot == null)
+            {
+                throw new ArgumentNullException(nameof(snapshot));
+            }
+
+            SavedPagesItemsControl.ItemsSource = snapshot.ItemsSource;
+            _savedPageElements = snapshot.Elements;
         }
 
         public void AddPageToPageList(string paramPageName, PageInfoClass pageDefinition = null)

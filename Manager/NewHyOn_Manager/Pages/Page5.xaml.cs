@@ -28,58 +28,59 @@ namespace AndoW_Manager
     {
         public static Page5 Instance { get; private set; }
 
-        internal readonly ObservableCollection<SpecialCtrl> sSpecialControls = new ObservableCollection<SpecialCtrl>();
+        internal ObservableCollection<SpecialCtrl> sSpecialControls = new ObservableCollection<SpecialCtrl>();
         public Dictionary<string, SpecialScheduleInfoClass> sSpecialDics = new Dictionary<string, SpecialScheduleInfoClass>(StringComparer.CurrentCultureIgnoreCase);
         Queue<CancellationTokenSource> sCTSs = new Queue<CancellationTokenSource>();
         private CancellationTokenSource _specialLoadCts;
+        private Task _specialLoadTask;
+        private bool _hasLoadedSpecials;
+        private bool _isSchedulePageInitialized;
 
         public Page5()
         {
             InitializeComponent();
             Instance = this;
             SpecialItemsControl.ItemsSource = sSpecialControls;
-            Unloaded += UserControl_Unloaded;
         }
 
-
-        public void LoadAllSpecials()
+        private Task EnsureSpecialsLoadedAsync()
         {
-            CancelSpecialLoad();
-            try
-            {
-                ShowProgress();
-
-                sSpecialControls.Clear();
-                sSpecialDics.Clear();
-
-                RefreshGroupSources();
-
-                List<SpecialScheduleInfoClass> schedules = LoadAllSchedules();
-                List<SpecialScheduleViewData> viewItems = BuildSpecialViewItems(schedules);
-
-                foreach (SpecialScheduleViewData viewItem in viewItems)
-                {
-                    SpecialCtrl ctrl = new SpecialCtrl(viewItem);
-                    sSpecialControls.Add(ctrl);
-                }
-            }
-            catch (Exception e) { }
-            finally
+            if (_hasLoadedSpecials)
             {
                 ShowProgress(false);
+                return Task.FromResult<object>(null);
             }
+
+            if (_specialLoadTask != null && _specialLoadTask.IsCompleted == false)
+                return _specialLoadTask;
+
+            _specialLoadTask = null;
+            return StartSpecialLoad(true);
         }
 
-        private async Task LoadAllSpecialsAsync()
+        private Task StartSpecialLoad(bool showProgress)
         {
             CancelSpecialLoad();
             var loadCts = new CancellationTokenSource();
             _specialLoadCts = loadCts;
+
+            if (showProgress)
+                ShowProgress();
+
+            Task loadTask = LoadAllSpecialsAsync(loadCts, showProgress);
+            _specialLoadTask = loadTask;
+            return loadTask;
+        }
+
+        private async Task LoadAllSpecialsAsync(CancellationTokenSource loadCts, bool showProgress)
+        {
             CancellationToken cancellationToken = loadCts.Token;
-            ShowProgress();
 
             try
             {
+                await Task.Yield();
+                cancellationToken.ThrowIfCancellationRequested();
+
                 List<SpecialScheduleInfoClass> schedules = await Task.Run(
                     () => LoadAllScheduleSnapshot(cancellationToken),
                     cancellationToken);
@@ -90,26 +91,7 @@ namespace AndoW_Manager
                     cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
 
-                sSpecialControls.Clear();
-                sSpecialDics.Clear();
-                foreach (SpecialScheduleInfoClass schedule in schedules)
-                {
-                    if (string.IsNullOrWhiteSpace(schedule.GUID) == false)
-                    {
-                        sSpecialDics[schedule.GUID] = schedule;
-                    }
-                }
-
-                foreach (SpecialScheduleViewData viewItem in viewItems)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    sSpecialControls.Add(new SpecialCtrl(viewItem));
-                    await Dispatcher.Yield(DispatcherPriority.Background);
-                }
-
-                cancellationToken.ThrowIfCancellationRequested();
-                SortSpecialControls();
-                SelectAllSchChBox.IsChecked = false;
+                ApplySpecialSnapshot(schedules, viewItems);
             }
             catch (OperationCanceledException)
             {
@@ -125,9 +107,60 @@ namespace AndoW_Manager
                 if (ReferenceEquals(_specialLoadCts, loadCts))
                 {
                     _specialLoadCts = null;
-                    ShowProgress(false);
+                    _specialLoadTask = null;
+                    if (showProgress)
+                        ShowProgress(false);
                 }
                 loadCts.Dispose();
+            }
+        }
+
+        private void ApplySpecialSnapshot(List<SpecialScheduleInfoClass> schedules, List<SpecialScheduleViewData> viewItems)
+        {
+            Dispatcher.VerifyAccess();
+            ObservableCollection<SpecialCtrl> nextControls = new ObservableCollection<SpecialCtrl>(
+                viewItems.Select(viewItem => new SpecialCtrl(viewItem)));
+            Dictionary<string, SpecialScheduleInfoClass> nextSchedules = new Dictionary<string, SpecialScheduleInfoClass>(StringComparer.CurrentCultureIgnoreCase);
+
+            foreach (SpecialScheduleInfoClass schedule in schedules)
+            {
+                if (string.IsNullOrWhiteSpace(schedule.GUID) == false)
+                    nextSchedules[schedule.GUID] = schedule;
+            }
+
+            DateTime? selectedDate = SearchDatePicker.SelectedDate;
+            string groupName = SearchGroupNameCombo.SelectedItem as string;
+            string listName = SearchListNameCombo.SelectedItem as string;
+            string playerName = SearchPlayerNameCombo.SelectedItem as string;
+            Dictionary<string, List<string>> playerGroupMap = null;
+            if (string.IsNullOrWhiteSpace(groupName) == false && string.Equals(groupName, "All", StringComparison.CurrentCultureIgnoreCase) == false)
+                playerGroupMap = BuildPlayerGroupMap();
+
+            ApplySpecialFiltersToControls(nextControls, selectedDate, groupName, listName, playerName, playerGroupMap);
+
+            ObservableCollection<SpecialCtrl> previousControls = sSpecialControls;
+            Dictionary<string, SpecialScheduleInfoClass> previousSchedules = sSpecialDics;
+            var previousItemsSource = SpecialItemsControl.ItemsSource;
+            bool previousHasLoadedSpecials = _hasLoadedSpecials;
+            bool? previousSelectAll = SelectAllSchChBox.IsChecked;
+
+            try
+            {
+                sSpecialControls = nextControls;
+                sSpecialDics = nextSchedules;
+                _hasLoadedSpecials = true;
+                SpecialItemsControl.ItemsSource = nextControls;
+                SelectAllSchChBox.IsChecked = false;
+                ScheduleSelectionChanged();
+            }
+            catch
+            {
+                sSpecialControls = previousControls;
+                sSpecialDics = previousSchedules;
+                _hasLoadedSpecials = previousHasLoadedSpecials;
+                SpecialItemsControl.ItemsSource = previousItemsSource;
+                SelectAllSchChBox.IsChecked = previousSelectAll;
+                throw;
             }
         }
 
@@ -139,7 +172,6 @@ namespace AndoW_Manager
                 return;
             }
 
-            _specialLoadCts = null;
             try
             {
                 if (loadCts.IsCancellationRequested == false)
@@ -772,21 +804,18 @@ namespace AndoW_Manager
             }), _new_cts);
         }
 
-        private void UserControl_Loaded(object sender, RoutedEventArgs e)
+        private async void UserControl_Loaded(object sender, RoutedEventArgs e)
         {
-            InitTargetListBox();
-            UpdatePlaylistCombo();
-            ShowTargetPanel(GroupRadio.IsChecked == true);
-
-            if (SpecialItemsControl.Items.Count < 1)
+            if (_isSchedulePageInitialized == false)
             {
-                _ = LoadAllSpecialsAsync();
+                InitTargetListBox();
+                UpdatePlaylistCombo();
+                _isSchedulePageInitialized = true;
             }
-        }
 
-        private void UserControl_Unloaded(object sender, RoutedEventArgs e)
-        {
-            CancelSpecialLoad();
+            ShowTargetPanel(GroupRadio.IsChecked == true);
+            await Dispatcher.Yield(DispatcherPriority.ContextIdle);
+            await EnsureSpecialsLoadedAsync();
         }
 
         private void UserControl_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -1050,8 +1079,13 @@ namespace AndoW_Manager
 
         private void ReloadSpecials()
         {
-            LoadAllSpecials();
-            SortSpecialControls();
+            if (Dispatcher.CheckAccess() == false)
+            {
+                Dispatcher.BeginInvoke(new Action(ReloadSpecials), DispatcherPriority.Background);
+                return;
+            }
+
+            StartSpecialLoad(_hasLoadedSpecials == false);
         }
 
         private void RefreshGroupSources()
@@ -1270,18 +1304,6 @@ namespace AndoW_Manager
                 return false;
 
             return schedule.PlayerNames.Any(player => string.Equals(player, playerName, StringComparison.CurrentCultureIgnoreCase));
-        }
-
-        private List<SpecialScheduleInfoClass> LoadAllSchedules()
-        {
-            List<SpecialScheduleInfoClass> result = LoadAllScheduleSnapshot(CancellationToken.None);
-            foreach (SpecialScheduleInfoClass schedule in result)
-            {
-                if (string.IsNullOrWhiteSpace(schedule.GUID) == false)
-                    sSpecialDics[schedule.GUID] = schedule;
-            }
-
-            return result;
         }
 
         private static List<SpecialScheduleInfoClass> LoadAllScheduleSnapshot(CancellationToken cancellationToken)
@@ -1656,13 +1678,17 @@ namespace AndoW_Manager
             if (string.IsNullOrWhiteSpace(groupName) == false && string.Equals(groupName, "All", StringComparison.CurrentCultureIgnoreCase) == false)
                 playerGroupMap = BuildPlayerGroupMap();
 
-            foreach (SpecialCtrl ctrl in sSpecialControls)
+            ApplySpecialFiltersToControls(sSpecialControls, selectedDate, groupName, listName, playerName, playerGroupMap);
+            ScheduleSelectionChanged();
+        }
+
+        private static void ApplySpecialFiltersToControls(IEnumerable<SpecialCtrl> controls, DateTime? selectedDate, string groupName, string listName, string playerName, Dictionary<string, List<string>> playerGroupMap)
+        {
+            foreach (SpecialCtrl ctrl in controls)
             {
                 bool visible = IsVisibleForFilter(ctrl.sSS, selectedDate, groupName, listName, playerName, playerGroupMap);
                 ctrl.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
             }
-
-            ScheduleSelectionChanged();
         }
 
         private static bool IsVisibleForFilter(SpecialScheduleViewData data, DateTime? selectedDate, string groupName, string listName, string playerName, Dictionary<string, List<string>> playerGroupMap)
