@@ -124,8 +124,6 @@ namespace AndoW_Manager
                     PlayerInfoClass _pinfo = new PlayerInfoClass();
                     _pinfo.CopyData(item.g_PlayerInfoClass);
                     _pinfo.PIF_Order = order++;
-                    _pinfo.PIF_IPAddress = DataShop.Instance.g_PlayerInfoManager.GetPlayerIP(_pinfo.PIF_PlayerName);
-                    _pinfo.PIF_MacAddress = DataShop.Instance.g_PlayerInfoManager.GetPlayerMAC(_pinfo.PIF_PlayerName);
                     pinfos.Add(_pinfo);
                 }
 
