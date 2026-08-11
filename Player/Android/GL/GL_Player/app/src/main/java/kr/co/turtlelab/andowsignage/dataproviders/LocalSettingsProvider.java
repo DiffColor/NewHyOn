@@ -1,5 +1,6 @@
 package kr.co.turtlelab.andowsignage.dataproviders;
 
+import android.content.SharedPreferences;
 import android.text.TextUtils;
 import android.util.Log;
 
@@ -20,6 +21,9 @@ public class LocalSettingsProvider {
     private static final String TAG = "LocalSettingsProvider";
     private static final String LOCAL_SETTINGS_ID = "local_settings";
     private static final String BACKUP_FILE_NAME = "local_settings.properties";
+    private static final String PIF_AUTH_PREFERENCES = "pif_auth_info";
+    private static final String KEY_PIF_AUTH_KEY = "auth_key";
+    private static final String KEY_PIF_FINGERPRINT = "fingerprint";
     private static final int DEFAULT_SIGNALR_PORT = 5000;
     private static final String DEFAULT_SIGNALR_HUB_PATH = "/Data";
     private static final int DEFAULT_FTP_PORT = 10021;
@@ -299,32 +303,23 @@ public class LocalSettingsProvider {
     }
 
     public static boolean updatePifAuthInfo(String authKey, String fingerprint) {
-        Realm realm = Realm.getDefaultInstance();
-        try {
-            realm.executeTransaction(r -> {
-                RealmLocalSettings settings = rWhere(r);
-                if (settings == null) settings = r.createObject(RealmLocalSettings.class, LOCAL_SETTINGS_ID);
-                settings.setUsbAuthKey(authKey == null ? "" : authKey);
-            });
-            persistCurrentSettings();
-            return true;
-        } finally {
-            realm.close();
-        }
+        return getPifAuthPreferences().edit()
+                .putString(KEY_PIF_AUTH_KEY, authKey == null ? "" : authKey)
+                .putString(KEY_PIF_FINGERPRINT, fingerprint == null ? "" : fingerprint)
+                .commit();
     }
 
     public static String getPifAuthKey() {
-        Realm realm = Realm.getDefaultInstance();
-        try {
-            RealmLocalSettings settings = rWhere(realm);
-            return settings == null || settings.getUsbAuthKey() == null ? "" : settings.getUsbAuthKey();
-        } finally {
-            realm.close();
-        }
+        return getPifAuthPreferences().getString(KEY_PIF_AUTH_KEY, "");
     }
 
     public static String getPifFingerprint() {
-        return "";
+        return getPifAuthPreferences().getString(KEY_PIF_FINGERPRINT, "");
+    }
+
+    private static SharedPreferences getPifAuthPreferences() {
+        return AndoWSignageApp.getApplication()
+                .getSharedPreferences(PIF_AUTH_PREFERENCES, android.content.Context.MODE_PRIVATE);
     }
 
     public static String getManagerIp() {

@@ -82,9 +82,11 @@ public class PlayerDataProvider {
     }
 
     public static boolean updatePlayerAuthInfo(String authKey, String fingerprint) {
+        if (!LocalSettingsProvider.updatePifAuthInfo(authKey, fingerprint)) {
+            return false;
+        }
         Realm realm = Realm.getDefaultInstance();
         try {
-            LocalSettingsProvider.updatePlayerAuthKey(authKey);
             realm.executeTransaction(r -> {
                 RealmPlayer player = r.where(RealmPlayer.class).findFirst();
                 if (player != null) {
@@ -119,6 +121,10 @@ public class PlayerDataProvider {
     }
 
     public static String getPlayerAuthFingerprint() {
+        String stored = LocalSettingsProvider.getPifFingerprint();
+        if (!TextUtils.isEmpty(stored)) {
+            return stored;
+        }
         Realm realm = Realm.getDefaultInstance();
         try {
             RealmPlayer player = realm.where(RealmPlayer.class).findFirst();
