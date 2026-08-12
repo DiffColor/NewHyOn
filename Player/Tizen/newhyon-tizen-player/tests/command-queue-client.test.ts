@@ -25,7 +25,7 @@ describe('CommandQueueClient', () => {
     horizonFactory.mockReset();
   });
 
-  it('플레이어 대상 최신 pending 및 오래된 sent 명령만 가져오고 교체/만료 명령은 제외한다', async () => {
+  it('플레이어 대상 pending 및 오래된 sent 명령을 CreatedAt ASC, 동률 ID ASC로 가져오고 교체/만료 명령은 제외한다', async () => {
     const rows = [
       {
         id: 'cmd-new-sent',
@@ -59,19 +59,26 @@ describe('CommandQueueClient', () => {
         CreatedAt: '2026-06-22 10:15:00',
       },
       {
-        id: 'cmd-pending',
-        PlayerIds: ['PLAYER-GUID-1'],
-        Command: 'getmac',
-        Status: { 'player-guid-1': 'pending' },
-        CreatedAt: '2026-06-22 09:00:00',
-      },
-      {
         id: 'cmd-old-sent',
         PlayerIds: ['player-guid-1'],
         Command: 'check',
         Status: { 'player-guid-1': 'sent' },
         CreatedAt: '2026-06-22 08:00:00',
         UpdatedAt: '2026-06-22 08:00:01',
+      },
+      {
+        id: 'cmd-pending-b',
+        PlayerIds: ['PLAYER-GUID-1'],
+        Command: 'getmac',
+        Status: { 'player-guid-1': 'pending' },
+        CreatedAt: '2026-06-22 09:00:00',
+      },
+      {
+        id: 'cmd-pending-a',
+        PlayerIds: ['PLAYER-GUID-1'],
+        Command: 'getmac',
+        Status: { 'player-guid-1': 'pending' },
+        CreatedAt: '2026-06-22 09:00:00',
       },
       {
         id: 'cmd-other-player',
@@ -82,9 +89,14 @@ describe('CommandQueueClient', () => {
       },
     ];
     const fetch = vi.fn(() => createObservable(rows));
+    const orderedFetch = vi.fn(() => createObservable(rows));
+    const orderedLimit = vi.fn(() => ({ fetch }));
+    const order = vi.fn(() => ({ fetch: orderedFetch, limit: orderedLimit }));
+    const collectionLimit = vi.fn(() => ({ fetch }));
     const collection = vi.fn(() => ({
-      order: vi.fn(() => ({ limit: vi.fn(() => ({ fetch })) })),
-      limit: vi.fn(() => ({ fetch })),
+      order,
+      limit: collectionLimit,
+      fetch,
       find: vi.fn(),
       update: vi.fn(),
     }));
@@ -93,7 +105,16 @@ describe('CommandQueueClient', () => {
     const client = new CommandQueueClient('turtlesrv.ddns.net');
     const commands = await client.fetchPendingCommands('player-guid-1');
 
-    expect(commands.map((entry) => entry.id)).toEqual(['cmd-latest', 'cmd-pending', 'cmd-old-sent']);
+    expect(order).toHaveBeenCalledWith(['CreatedAt', 'id'], 'ascending');
+    expect(orderedFetch).toHaveBeenCalledOnce();
+    expect(orderedLimit).not.toHaveBeenCalled();
+    expect(collectionLimit).not.toHaveBeenCalled();
+    expect(commands.map((entry) => entry.id)).toEqual([
+      'cmd-old-sent',
+      'cmd-pending-a',
+      'cmd-pending-b',
+      'cmd-latest',
+    ]);
   });
 
   it('플레이어별 Status를 ack로 갱신한다', async () => {
@@ -123,5 +144,36 @@ describe('CommandQueueClient', () => {
         other: 'pending',
       },
     }));
+  });
+
+  it('가장 오래된 sent 명령이 재시도 대기 중이면 더 최신 pending 명령을 반환하지 않는다', async () => {
+    const rows = [
+      {
+        id: 'cmd-later-pending',
+        PlayerIds: ['player-guid-1'],
+        Command: 'getmac',
+        Status: { 'player-guid-1': 'pending' },
+        CreatedAt: '2026-06-22 09:05:00',
+      },
+      {
+        id: 'cmd-earlier-retry-wait',
+        PlayerIds: ['player-guid-1'],
+        Command: 'updatelist',
+        Status: { 'player-guid-1': 'sent' },
+        CreatedAt: '2026-06-22 09:00:00',
+        UpdatedAt: new Date().toISOString(),
+      },
+    ];
+    const collection = vi.fn(() => ({
+      order: vi.fn(() => ({ fetch: vi.fn(() => createObservable(rows)) })),
+      fetch: vi.fn(() => createObservable(rows)),
+      find: vi.fn(),
+      update: vi.fn(),
+    }));
+    horizonFactory.mockReturnValue(Object.assign(collection, { disconnect: vi.fn() }));
+
+    const client = new CommandQueueClient('turtlesrv.ddns.net');
+
+    await expect(client.fetchNextPending('player-guid-1')).resolves.toBeNull();
   });
 });

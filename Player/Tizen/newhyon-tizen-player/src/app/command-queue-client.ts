@@ -9,7 +9,7 @@ import {
 const COMMAND_QUEUE_TABLE = 'CommandQueue';
 const HORIZON_TIMEOUT_MS = 10000;
 const SENT_RETRY_DELAY_MS = 15000;
-const DEFAULT_FETCH_LIMIT = 100;
+
 
 export interface CommandQueueEntry {
   readonly id?: string;
@@ -39,8 +39,10 @@ export interface CommandQueueEntry {
 
 interface HorizonCollection {
   find(idOrObject: unknown): { fetch(): HorizonObservable<unknown> };
-  order(field: string): { limit(size: number): { fetch(): HorizonObservable<unknown> } };
-  limit(size: number): { fetch(): HorizonObservable<unknown> };
+  order(fields: string | string[], direction?: 'ascending' | 'descending'): {
+    fetch(): HorizonObservable<unknown>;
+  };
+  fetch(): HorizonObservable<unknown>;
   update(document: unknown): HorizonObservable<unknown>;
 }
 
@@ -66,17 +68,13 @@ export class CommandQueueClient {
   }
 
   async fetchNextPending(playerGuid: string): Promise<CommandQueueEntry | null> {
-    const entries = await this.fetchPendingCommands(playerGuid);
-    return entries[0] ?? null;
-  }
-
-  async fetchCommandById(commandId: string): Promise<CommandQueueEntry | null> {
-    const id = commandId.trim();
-    if (!id) {
+    const normalizedPlayerId = normalizePlayerId(playerGuid);
+    if (!normalizedPlayerId) {
       return null;
     }
 
-    return this.fetchById(id);
+    const oldest = (await this.fetchCurrentCommands(normalizedPlayerId))[0];
+    return oldest && isActionableStatus(oldest, normalizedPlayerId) ? oldest : null;
   }
 
   async fetchPendingCommands(playerGuid: string): Promise<CommandQueueEntry[]> {
@@ -85,13 +83,18 @@ export class CommandQueueClient {
       return [];
     }
 
+    return (await this.fetchCurrentCommands(normalizedPlayerId))
+      .filter((entry) => isActionableStatus(entry, normalizedPlayerId));
+  }
+
+  private async fetchCurrentCommands(normalizedPlayerId: string): Promise<CommandQueueEntry[]> {
     const rows = await this.fetchRecentRows();
     return rows
       .filter((entry) =>
         hasPlayer(entry, normalizedPlayerId)
         && isCurrentCommand(entry)
-        && isActionableStatus(entry, normalizedPlayerId))
-      .sort(compareCreatedAtDescending);
+        && isUnsettledStatus(entry, normalizedPlayerId))
+      .sort(compareCreatedAtAscending);
   }
 
   async markAttempt(commandId: string): Promise<void> {
@@ -160,13 +163,13 @@ export class CommandQueueClient {
     let value: unknown;
     try {
       value = await waitForObservable(
-        collection.order('CreatedAt').limit(DEFAULT_FETCH_LIMIT).fetch(),
+        collection.order(['CreatedAt', 'id'], 'ascending').fetch(),
         HORIZON_TIMEOUT_MS,
         'Horizon CommandQueue 조회 시간이 초과되었습니다.',
       );
     } catch {
       value = await waitForObservable(
-        collection.limit(DEFAULT_FETCH_LIMIT).fetch(),
+        collection.fetch(),
         HORIZON_TIMEOUT_MS,
         'Horizon CommandQueue 조회 시간이 초과되었습니다.',
       );
@@ -226,6 +229,11 @@ function isActionableStatus(entry: CommandQueueEntry, normalizedPlayerId: string
   return isSentDeliveryStale(entry);
 }
 
+function isUnsettledStatus(entry: CommandQueueEntry, normalizedPlayerId: string): boolean {
+  const status = (readStatusMap(entry)[normalizedPlayerId] ?? '').toLowerCase();
+  return status === 'pending' || status === 'sent';
+}
+
 export function isCurrentCommand(entry: CommandQueueEntry): boolean {
   if (readText(entry.ReplacedBy ?? entry.replacedBy)) {
     return false;
@@ -258,14 +266,14 @@ function readStatusMap(entry: CommandQueueEntry): Record<string, string> {
   );
 }
 
-function compareCreatedAtDescending(left: CommandQueueEntry, right: CommandQueueEntry): number {
+function compareCreatedAtAscending(left: CommandQueueEntry, right: CommandQueueEntry): number {
   const leftTime = parseTimestamp(left.CreatedAt ?? left.createdAt);
   const rightTime = parseTimestamp(right.CreatedAt ?? right.createdAt);
   if (leftTime !== rightTime) {
-    return rightTime - leftTime;
+    return leftTime - rightTime;
   }
 
-  return (right.id ?? '').localeCompare(left.id ?? '');
+  return (left.id ?? '').localeCompare(right.id ?? '');
 }
 
 function readText(value: string | undefined): string {

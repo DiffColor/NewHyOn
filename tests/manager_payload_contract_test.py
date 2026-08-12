@@ -5,6 +5,45 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ManagerPayloadContractTests(unittest.TestCase):
+    def test_command_queue_bootstraps_update_infrastructure_without_superseding_fifo(self):
+        source = (
+            ROOT / "Manager/NewHyOn_Manager/DataManager/CommandQueueManager.cs"
+        ).read_text(encoding="utf-8-sig")
+        enqueue = source.split(
+            "public CommandQueueEntry EnqueueCommand", 1
+        )[1].split("public void SupersedePending", 1)[0]
+        main_window = (
+            ROOT / "Manager/NewHyOn_Manager/MainWindow.xaml.cs"
+        ).read_text(encoding="utf-8-sig")
+        enqueue_window = main_window.split(
+            "public bool EnqueueCommandForPlayer", 1
+        )[1].split("private static bool RequiresAuthenticatedPlayer", 1)[0]
+
+        self.assertIn("EnsureUpdateInfrastructure();", enqueue)
+        self.assertIn('EnsureTable(databaseName, "UpdateLease", "id")', enqueue)
+        self.assertIn("UpdateThrottleSettingsManager().LoadSettings()", enqueue)
+        self.assertIn("UpdateLeaseManager.CleanupInvalidLeases", enqueue)
+        self.assertIn('EnsureTable(databaseName, "UpdateQueue", "id")', enqueue)
+        self.assertIn('EnsureTable(databaseName, "CommandHistory", "id")', enqueue)
+        self.assertIn("RethinkDbContext.RunOrThrow(insert);", enqueue)
+        self.assertNotIn("Upsert(entry);", enqueue)
+        self.assertIn(".ThenBy(x => x.Id)", source)
+        self.assertNotIn("SupersedePending", enqueue_window)
+        self.assertNotIn('MarkStatus(entry.Id, playerId, "sent")', enqueue_window)
+
+    def test_rethink_context_exposes_retrying_exception_propagating_write(self):
+        source = (
+            ROOT / "Manager/NewHyOn_Manager/TurtleTools/RethinkDbContext.cs"
+        ).read_text(encoding="utf-8-sig")
+
+        self.assertIn("public static void RunOrThrow(ReqlExpr expr)", source)
+        self.assertIn("private static void RunOrThrowInternal(ReqlExpr expr, bool retried)", source)
+        run_or_throw = source.split(
+            "private static void RunOrThrowInternal", 1
+        )[1].split("public static Connection GetRawConnection", 1)[0]
+        self.assertIn("RunOrThrowInternal(expr, true);", run_or_throw)
+        self.assertIn("throw;", run_or_throw)
+
     def test_regular_playlist_payload_omits_contract_and_prepares_pages(self):
         source = (
             ROOT / "Manager/NewHyOn_Manager/DataManager/UpdatePayloadBuilder.cs"

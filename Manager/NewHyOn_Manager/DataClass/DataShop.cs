@@ -49,6 +49,9 @@ namespace AndoW_Manager
 
         private DataShop()
         {
+            string dataDatabaseName = RethinkDbConfigurator.GetDataDatabaseName();
+            RethinkDbContext.EnsureTable(dataDatabaseName, "UpdateLease", "id");
+            g_UpdateThrottleSettingsManager.LoadSettings();
         }
     }
 

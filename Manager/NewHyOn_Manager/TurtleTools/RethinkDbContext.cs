@@ -295,6 +295,11 @@ namespace TurtleTools
             RunInternal(expr, false);
         }
 
+        public static void RunOrThrow(ReqlExpr expr)
+        {
+            RunOrThrowInternal(expr, false);
+        }
+
         private static void RunInternal(ReqlExpr expr, bool retried)
         {
             try
@@ -310,6 +315,25 @@ namespace TurtleTools
                 }
 
                 Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
+            }
+        }
+
+        private static void RunOrThrowInternal(ReqlExpr expr, bool retried)
+        {
+            try
+            {
+                expr.Run(GetConnection());
+            }
+            catch (Exception ex)
+            {
+                if (!retried && TryReconnect(ex))
+                {
+                    RunOrThrowInternal(expr, true);
+                    return;
+                }
+
+                Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
+                throw;
             }
         }
 

@@ -1,6 +1,5 @@
 import {
   CommandQueueClient,
-  isCurrentCommand,
   readCommand,
   readPayloadBase64,
   type CommandQueueEntry,
@@ -15,7 +14,7 @@ import {
   hasUsableUpdatePayload,
   type UpdatePayload,
 } from './update-payload';
-import type { SignalRCommandEnvelope, SignalRMessage } from './signalr-hub-client';
+import type { SignalRMessage } from './signalr-hub-client';
 
 const DEFAULT_COMMAND_POLL_INTERVAL_MS = 5000;
 
@@ -114,23 +113,12 @@ export class RemoteCommandService {
       return;
     }
 
-    const dataType = readMessageField(message, 'dataType').toLowerCase();
+    const dataType = String(message.dataType ?? message.DataType ?? '').toLowerCase();
     if (dataType === 'statemessage') {
       return;
     }
 
-    if (dataType === 'commandqueue') {
-      const envelope = extractCommandEnvelope(message);
-      if (envelope) {
-        void this.handleSignalRCommandEnvelope(envelope);
-      }
-      return;
-    }
-
-    const command = extractCommand(message);
-    if (command) {
-      void this.handleSignalRCommand(command);
-    }
+    void this.checkNow();
   }
 
   dispose(): void {
@@ -141,65 +129,6 @@ export class RemoteCommandService {
     }
     this.commandQueueClient.dispose();
     this.commandHistoryClient.dispose();
-  }
-
-  private async handleSignalRCommandEnvelope(envelope: SignalRCommandEnvelope): Promise<void> {
-    await this.enqueue(async () => {
-      const command = readEnvelopeField(envelope, 'command').trim().toLowerCase();
-      const commandId = readEnvelopeField(envelope, 'commandId').trim();
-      if (!command && !commandId) {
-        return;
-      }
-
-      const queueEntry = commandId ? await this.resolveCurrentCommandEntry(commandId) : null;
-      if (commandId && !queueEntry) {
-        return;
-      }
-      if (queueEntry?.id) {
-        await this.commandQueueClient.markAttempt(queueEntry.id);
-      }
-      const envelopePayload = readEnvelopeField(envelope, 'payloadJson');
-      const mergedEntry = queueEntry
-        ? {
-          ...queueEntry,
-          Command: readCommand(queueEntry) || command,
-          payloadJson: readPayloadBase64(queueEntry) || envelopePayload,
-        }
-        : null;
-      const result = queueEntry
-        ? await this.handleCommandEntry(mergedEntry!, readEnvelopeBoolean(envelope, 'isUrgent'))
-        : await this.handleCommand(
-          command,
-          decodeUpdatePayload(envelopePayload),
-          readEnvelopeBoolean(envelope, 'isUrgent'),
-          commandId || null,
-        );
-      const statusCommandId = queueEntry?.id ?? commandId;
-      if (!statusCommandId) {
-        return;
-      }
-
-      if (result.handled) {
-        await this.commandQueueClient.markAck(statusCommandId, this.options.playerGuid);
-        this.options.onStatus?.('ack', statusCommandId);
-        runAfterAck(result.afterAck, this.options.onStatus);
-      } else if (shouldRetryCommand(queueEntry ? readCommand(queueEntry) : command, result)) {
-        await this.commandQueueClient.markRetry(statusCommandId, this.options.playerGuid);
-        this.options.onStatus?.('retry', `${statusCommandId}:${result.errorCode ?? 'COMMAND_FAILED'}`);
-      } else {
-        await this.commandQueueClient.markFailed(statusCommandId, this.options.playerGuid);
-        this.options.onStatus?.('failed', `${statusCommandId}:${result.errorCode ?? 'COMMAND_FAILED'}`);
-      }
-    });
-  }
-
-  private async handleSignalRCommand(command: string): Promise<void> {
-    await this.enqueue(async () => {
-      const result = await this.handleCommand(command.trim().toLowerCase(), null, false, null);
-      if (result.handled) {
-        runAfterAck(result.afterAck, this.options.onStatus);
-      }
-    });
   }
 
   private async handleCommandEntry(entry: CommandQueueEntry, isUrgent: boolean): Promise<CommandHandleResult> {
@@ -328,14 +257,6 @@ export class RemoteCommandService {
     await next;
   }
 
-  private async resolveCurrentCommandEntry(commandId: string): Promise<CommandQueueEntry | null> {
-    const queueEntry = await this.commandQueueClient.fetchCommandById(commandId);
-    if (queueEntry && isCurrentCommand(queueEntry)) {
-      return queueEntry;
-    }
-
-    return this.commandQueueClient.fetchNextPending(this.options.playerGuid);
-  }
 }
 
 function toResult(result: RemoteCommandCallbackResult): CommandHandleResult {
@@ -372,66 +293,4 @@ function formatError(error: unknown): string {
   }
 
   return String(error);
-}
-
-function extractCommand(message: SignalRMessage): string {
-  let command = readMessageField(message, 'command');
-  const dataCommand = typeof readMessageData(message) === 'string' ? String(readMessageData(message)) : '';
-  if (command.toLowerCase() === 'update') {
-    command = dataCommand.trim() || 'updatelist';
-  }
-
-  return command.trim().toLowerCase();
-}
-
-function extractCommandEnvelope(message: SignalRMessage): SignalRCommandEnvelope | null {
-  const data = readMessageData(message);
-  if (!data) {
-    return null;
-  }
-
-  if (typeof data === 'string') {
-    const raw = data.trim();
-    if (!raw) {
-      return null;
-    }
-    const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === 'object' ? parsed as SignalRCommandEnvelope : null;
-  }
-
-  return typeof data === 'object' ? data as SignalRCommandEnvelope : null;
-}
-
-function readMessageField(message: SignalRMessage, field: 'command' | 'dataType'): string {
-  if (field === 'command') {
-    return String(message.command ?? message.Command ?? '');
-  }
-
-  return String(message.dataType ?? message.DataType ?? '');
-}
-
-function readMessageData(message: SignalRMessage): unknown {
-  return message.data ?? message.Data;
-}
-
-function readEnvelopeField(
-  envelope: SignalRCommandEnvelope,
-  field: 'commandId' | 'command' | 'payloadJson',
-): string {
-  if (field === 'commandId') {
-    return String(envelope.commandId ?? envelope.CommandId ?? '');
-  }
-  if (field === 'command') {
-    return String(envelope.command ?? envelope.Command ?? '');
-  }
-
-  return String(envelope.payloadJson ?? envelope.PayloadJson ?? '');
-}
-
-function readEnvelopeBoolean(envelope: SignalRCommandEnvelope, field: 'isUrgent'): boolean {
-  if (field === 'isUrgent') {
-    return Boolean(envelope.isUrgent ?? envelope.IsUrgent);
-  }
-
-  return false;
 }

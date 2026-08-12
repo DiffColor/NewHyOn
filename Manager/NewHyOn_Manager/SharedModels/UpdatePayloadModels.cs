@@ -281,6 +281,10 @@ namespace AndoW.Shared
 
         public string QueueId { get; set; } = string.Empty;
 
+        public string OwnerToken { get; set; } = string.Empty;
+
+        public string State { get; set; } = string.Empty;
+
         public string LeaseExpiresAt { get; set; } = string.Empty;
 
         public string LastRenewAt { get; set; } = string.Empty;

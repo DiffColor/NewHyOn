@@ -412,6 +412,7 @@
     <Compile Include="DataManager\UpdatePayloadBuilder.cs" />
     <Compile Include="DataManager\ContentDetailsManager.cs" />
     <Compile Include="DataManager\UpdateThrottleSettingsManager.cs" />
+    <Compile Include="DataManager\UpdateLeaseManager.cs" />
     <Compile Include="DataManager\ServerSettingsManager.cs" />
     <Compile Include="DataManager\WeeklyInfoManagerClass.cs" />
     <Compile Include="DataManager\SpecialScheduleInfoManager.cs" />

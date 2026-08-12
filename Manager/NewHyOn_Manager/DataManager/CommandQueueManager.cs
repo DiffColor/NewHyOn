@@ -17,6 +17,8 @@ namespace AndoW_Manager
 
         public CommandQueueEntry EnqueueCommand(string playerId, string command, string payloadBase64, string source, string expiresAt = "")
         {
+            EnsureUpdateInfrastructure();
+
             string normalizedPlayerId = NormalizePlayerId(playerId);
             if (string.IsNullOrWhiteSpace(normalizedPlayerId) || string.IsNullOrWhiteSpace(command))
             {
@@ -40,8 +42,23 @@ namespace AndoW_Manager
                 ReplacedBy = string.Empty
             };
 
-            Upsert(entry);
+            var insert = RethinkDbContext.Table(
+                    RethinkDbConfigurator.GetDataDatabaseName(),
+                    TableName)
+                .Insert(entry)
+                .OptArg("conflict", "replace");
+            RethinkDbContext.RunOrThrow(insert);
             return entry;
+        }
+
+        private static void EnsureUpdateInfrastructure()
+        {
+            string databaseName = RethinkDbConfigurator.GetDataDatabaseName();
+            RethinkDbContext.EnsureTable(databaseName, "UpdateQueue", "id");
+            RethinkDbContext.EnsureTable(databaseName, "UpdateLease", "id");
+            RethinkDbContext.EnsureTable(databaseName, "CommandHistory", "id");
+            var settings = new UpdateThrottleSettingsManager().LoadSettings();
+            UpdateLeaseManager.CleanupInvalidLeases(settings?.LeaseTtlSeconds ?? 3600);
         }
 
         public void SupersedePending(string playerId, string replacedById)
@@ -85,6 +102,7 @@ namespace AndoW_Manager
             return Find(x => HasPlayer(x, normalizedPlayerId)
                              && IsStatus(x, normalizedPlayerId, "pending"))
                 .OrderBy(x => x.CreatedAt)
+                .ThenBy(x => x.Id)
                 .ToList();
         }
 

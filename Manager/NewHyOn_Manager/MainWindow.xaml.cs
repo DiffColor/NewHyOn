@@ -496,8 +496,6 @@ namespace AndoW_Manager
                 return false;
             }
 
-            queueManager.SupersedePending(playerId, entry.Id);
-
             if (pushSignalR && SignalRClientTools.IsConnected())
             {
                 var envelope = new SignalRCommandEnvelope
@@ -509,10 +507,7 @@ namespace AndoW_Manager
                     CreatedAt = entry.CreatedAt
                 };
 
-                if (SignalRClientTools.TrySendCommandToClient(playerId, envelope))
-                {
-                    queueManager.MarkStatus(entry.Id, playerId, "sent");
-                }
+                SignalRClientTools.TrySendCommandToClient(playerId, envelope);
             }
 
             return true;
@@ -567,23 +562,8 @@ namespace AndoW_Manager
                 return false;
             }
 
-            if (!SignalRClientTools.IsConnected())
-            {
-                return false;
-            }
-
             string payloadBase64 = DataShop.Instance.g_UpdatePayloadBuilder.BuildPayloadBase64(player);
-            var envelope = new SignalRCommandEnvelope
-            {
-                CommandId = Guid.NewGuid().ToString(),
-                Command = RP_ORDER.updatelist.ToString(),
-                PlayerId = player.PIF_GUID,
-                PayloadJson = payloadBase64,
-                CreatedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
-                IsUrgent = true
-            };
-
-            return SignalRClientTools.TrySendCommandToClient(player.PIF_GUID, envelope);
+            return EnqueueCommandForPlayer(player, RP_ORDER.updatelist.ToString(), payloadBase64, true);
         }
 
         public void NotifyContentPeriodChanged(IEnumerable<string> contentGuids)
@@ -633,17 +613,7 @@ namespace AndoW_Manager
                     continue;
                 }
 
-                var envelope = new SignalRCommandEnvelope
-                {
-                    CommandId = Guid.NewGuid().ToString(),
-                    Command = "updatecontentperiod",
-                    PlayerId = player.PIF_GUID,
-                    PayloadJson = payloadJson,
-                    CreatedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
-                    IsUrgent = true
-                };
-
-                SignalRClientTools.TrySendCommandToClient(player.PIF_GUID, envelope);
+                EnqueueCommandForPlayer(player, "updatecontentperiod", payloadJson, true);
             }
 
             if (blockedCount > 0)

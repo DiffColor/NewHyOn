@@ -51,7 +51,7 @@ describe('RemoteCommandService', () => {
     const horizonCollection = vi.fn((name: string) => {
       if (name === 'CommandQueue') {
         return {
-          order: vi.fn(() => ({ limit: vi.fn(() => ({ fetch: vi.fn(() => createObservable([command])) })) })),
+          order: vi.fn(() => ({ fetch: vi.fn(() => createObservable([command])) })),
           limit: vi.fn(() => ({ fetch: vi.fn(() => createObservable([command])) })),
           find: vi.fn(() => ({ fetch: vi.fn(() => createObservable(command)) })),
           update: updateQueue,
@@ -121,7 +121,7 @@ describe('RemoteCommandService', () => {
     const horizonCollection = vi.fn((name: string) => {
       if (name === 'CommandQueue') {
         return {
-          order: vi.fn(() => ({ limit: vi.fn(() => ({ fetch: vi.fn(() => createObservable([command])) })) })),
+          order: vi.fn(() => ({ fetch: vi.fn(() => createObservable([command])) })),
           limit: vi.fn(() => ({ fetch: vi.fn(() => createObservable([command])) })),
           find: vi.fn(() => ({ fetch: vi.fn(() => createObservable(command)) })),
           update: updateQueue,
@@ -186,7 +186,7 @@ describe('RemoteCommandService', () => {
     const horizonCollection = vi.fn((name: string) => {
       if (name === 'CommandQueue') {
         return {
-          order: vi.fn(() => ({ limit: vi.fn(() => ({ fetch: vi.fn(() => createObservable([command])) })) })),
+          order: vi.fn(() => ({ fetch: vi.fn(() => createObservable([command])) })),
           limit: vi.fn(() => ({ fetch: vi.fn(() => createObservable([command])) })),
           find: vi.fn(() => ({ fetch: vi.fn(() => createObservable(command)) })),
           update: updateQueue,
@@ -234,7 +234,7 @@ describe('RemoteCommandService', () => {
     }));
   });
 
-  it('여러 업데이트 명령이 있으면 최신 명령을 먼저 처리한다', async () => {
+  it('여러 업데이트 명령이 있으면 가장 오래된 명령을 먼저 처리한다', async () => {
     const updateQueue = vi.fn(() => createObservable({ replaced: 1 }));
     const upsertHistory = vi.fn(() => createObservable({ inserted: 1 }));
     const updateHistory = vi.fn(() => createObservable({ replaced: 1 }));
@@ -263,7 +263,7 @@ describe('RemoteCommandService', () => {
     const horizonCollection = vi.fn((name: string) => {
       if (name === 'CommandQueue') {
         return {
-          order: vi.fn(() => ({ limit: vi.fn(() => ({ fetch: vi.fn(() => createObservable([oldCommand, latestCommand])) })) })),
+          order: vi.fn(() => ({ fetch: vi.fn(() => createObservable([oldCommand, latestCommand])) })),
           limit: vi.fn(() => ({ fetch: vi.fn(() => createObservable([oldCommand, latestCommand])) })),
           find: vi.fn((id: string) => ({ fetch: vi.fn(() => createObservable(id === 'cmd-latest' ? latestCommand : oldCommand)) })),
           update: updateQueue,
@@ -291,24 +291,37 @@ describe('RemoteCommandService', () => {
     await service.checkNow();
 
     expect(onUpdateList).toHaveBeenCalledWith(expect.objectContaining({
-      PageList: { PLI_PageListName: 'latest-list' },
-    }), false, 'cmd-latest');
+      PageList: { PLI_PageListName: 'old-list' },
+    }), false, 'cmd-old');
   });
 
-  it('SignalR CommandQueue envelope도 같은 처리 경로로 ack한다', async () => {
+  it('SignalR CommandQueue 알림은 특정 commandId를 직접 실행하지 않고 poller를 깨워 선행 명령부터 처리한다', async () => {
     const updateQueue = vi.fn(() => createObservable({ replaced: 1 }));
     const upsertHistory = vi.fn(() => createObservable({ inserted: 1 }));
     const updateHistory = vi.fn(() => createObservable({ replaced: 1 }));
-    const command = {
-      id: 'cmd-2',
-      Status: { 'player-guid-1': 'sent' },
+    const earlierCommand = {
+      id: 'cmd-earlier',
+      PlayerIds: ['player-guid-1'],
+      Command: 'check',
+      Status: { 'player-guid-1': 'pending' },
+      CreatedAt: '2026-06-22 09:00:00',
     };
+    const signaledCommand = {
+      id: 'cmd-latest',
+      PlayerIds: ['player-guid-1'],
+      Command: 'getmac',
+      Status: { 'player-guid-1': 'pending' },
+      CreatedAt: '2026-06-22 09:05:00',
+    };
+    const find = vi.fn(() => ({ fetch: vi.fn(() => createObservable(signaledCommand)) }));
     const horizonCollection = vi.fn((name: string) => {
       if (name === 'CommandQueue') {
         return {
-          order: vi.fn(),
-          limit: vi.fn(),
-          find: vi.fn(() => ({ fetch: vi.fn(() => createObservable(command)) })),
+          order: vi.fn(() => ({
+            fetch: vi.fn(() => createObservable([signaledCommand, earlierCommand])),
+          })),
+          limit: vi.fn(() => ({ fetch: vi.fn(() => createObservable([signaledCommand, earlierCommand])) })),
+          find,
           update: updateQueue,
         };
       }
@@ -320,13 +333,14 @@ describe('RemoteCommandService', () => {
     });
     horizonFactory.mockReturnValue(Object.assign(horizonCollection, { disconnect: vi.fn() }));
     const onCheck = vi.fn(async () => true);
+    const onGetMac = vi.fn(async () => true);
     const service = new RemoteCommandService({
       managerAddress: 'turtlesrv.ddns.net',
       playerGuid: 'player-guid-1',
       playerName: 'tizen',
       onUpdateList: vi.fn(async () => true),
       onCheck,
-      onGetMac: vi.fn(async () => true),
+      onGetMac,
       onReboot: vi.fn(async () => true),
       onPowerOff: vi.fn(async () => true),
     });
@@ -334,21 +348,64 @@ describe('RemoteCommandService', () => {
     service.handleSignalRMessage({
       dataType: 'CommandQueue',
       data: {
-        commandId: 'cmd-2',
-        command: 'check',
+        commandId: 'cmd-latest',
+        command: 'getmac',
       },
     });
     await vi.waitFor(() => expect(onCheck).toHaveBeenCalledTimes(1));
 
+    expect(onGetMac).not.toHaveBeenCalled();
+    expect(find).not.toHaveBeenCalledWith('cmd-latest');
     expect(updateQueue).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'cmd-2',
+      id: 'cmd-earlier',
       Status: {
         'player-guid-1': 'ack',
       },
     }));
   });
 
-  it('SignalR CommandQueue 알림에 payload가 없어도 Queue row를 다시 읽어 updatelist를 처리한다', async () => {
+  it('일반 SignalR command envelope도 명령을 직접 실행하지 않고 durable queue poller만 깨운다', async () => {
+    const horizonCollection = vi.fn((name: string) => {
+      if (name === 'CommandQueue') {
+        return {
+          order: vi.fn(() => ({ fetch: vi.fn(() => createObservable([])) })),
+          fetch: vi.fn(() => createObservable([])),
+          update: vi.fn(() => createObservable({ replaced: 1 })),
+        };
+      }
+
+      return {
+        upsert: vi.fn(() => createObservable({ inserted: 1 })),
+        update: vi.fn(() => createObservable({ replaced: 1 })),
+      };
+    });
+    horizonFactory.mockReturnValue(Object.assign(horizonCollection, { disconnect: vi.fn() }));
+    const onGetMac = vi.fn(async () => true);
+    const service = new RemoteCommandService({
+      managerAddress: 'turtlesrv.ddns.net',
+      playerGuid: 'player-guid-1',
+      playerName: 'tizen',
+      onUpdateList: vi.fn(async () => true),
+      onCheck: vi.fn(async () => true),
+      onGetMac,
+      onReboot: vi.fn(async () => true),
+      onPowerOff: vi.fn(async () => true),
+    });
+    const checkNow = vi.spyOn(service, 'checkNow').mockResolvedValue();
+
+    service.handleSignalRMessage({
+      dataType: 'command',
+      data: {
+        command: 'getmac',
+      },
+    });
+    await Promise.resolve();
+
+    expect(checkNow).toHaveBeenCalledTimes(1);
+    expect(onGetMac).not.toHaveBeenCalled();
+  });
+
+  it('SignalR CommandQueue 알림에 payload가 없어도 poller가 Queue row payload로 updatelist를 처리한다', async () => {
     const updateQueue = vi.fn(() => createObservable({ replaced: 1 }));
     const upsertHistory = vi.fn(() => createObservable({ inserted: 1 }));
     const updateHistory = vi.fn(() => createObservable({ replaced: 1 }));
@@ -367,12 +424,13 @@ describe('RemoteCommandService', () => {
       Status: { 'player-guid-1': 'sent' },
       CreatedAt: '2026-06-22 09:00:00',
     };
+    const find = vi.fn(() => ({ fetch: vi.fn(() => createObservable(command)) }));
     const horizonCollection = vi.fn((name: string) => {
       if (name === 'CommandQueue') {
         return {
-          order: vi.fn(),
-          limit: vi.fn(),
-          find: vi.fn(() => ({ fetch: vi.fn(() => createObservable(command)) })),
+          order: vi.fn(() => ({ fetch: vi.fn(() => createObservable([command])) })),
+          limit: vi.fn(() => ({ fetch: vi.fn(() => createObservable([command])) })),
+          find,
           update: updateQueue,
         };
       }
@@ -419,7 +477,7 @@ describe('RemoteCommandService', () => {
     }));
   });
 
-  it('교체된 SignalR CommandQueue 알림이 오면 최신 pending 명령을 처리한다', async () => {
+  it('교체된 SignalR CommandQueue 알림도 poller를 깨워 가장 오래된 현재 pending 명령을 처리한다', async () => {
     const updateQueue = vi.fn(() => createObservable({ replaced: 1 }));
     const upsertHistory = vi.fn(() => createObservable({ inserted: 1 }));
     const updateHistory = vi.fn(() => createObservable({ replaced: 1 }));
@@ -449,7 +507,7 @@ describe('RemoteCommandService', () => {
     const horizonCollection = vi.fn((name: string) => {
       if (name === 'CommandQueue') {
         return {
-          order: vi.fn(() => ({ limit: vi.fn(() => ({ fetch: vi.fn(() => createObservable([replacedCommand, latestCommand])) })) })),
+          order: vi.fn(() => ({ fetch: vi.fn(() => createObservable([replacedCommand, latestCommand])) })),
           limit: vi.fn(() => ({ fetch: vi.fn(() => createObservable([replacedCommand, latestCommand])) })),
           find: vi.fn((id: string) => ({ fetch: vi.fn(() => createObservable(id === 'cmd-replaced' ? replacedCommand : latestCommand)) })),
           update: updateQueue,
@@ -521,7 +579,7 @@ describe('RemoteCommandService', () => {
     const horizonCollection = vi.fn((name: string) => {
       if (name === 'CommandQueue') {
         return {
-          order: vi.fn(() => ({ limit: vi.fn(() => ({ fetch: vi.fn(() => createObservable([command])) })) })),
+          order: vi.fn(() => ({ fetch: vi.fn(() => createObservable([command])) })),
           limit: vi.fn(() => ({ fetch: vi.fn(() => createObservable([command])) })),
           find: vi.fn(() => ({ fetch: vi.fn(() => createObservable(command)) })),
           update: updateQueue,
