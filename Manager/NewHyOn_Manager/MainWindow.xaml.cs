@@ -739,13 +739,12 @@ namespace AndoW_Manager
 
                     pageManager.LoadPagesForList(pageList.PLI_PageListName);
                     var pages = pageManager.g_PageInfoClassList?.ToList() ?? new List<PageInfoClass>();
-                    var contract = builder.BuildContractPayload(player, pageList, pages);
+                    builder.PreparePagesForPayload(pages);
                     playlistPayloads.Add(new SchedulePlaylistPayload
                     {
                         PlaylistName = pageList.PLI_PageListName,
                         PageList = pageList,
-                        Pages = pages,
-                        Contract = contract
+                        Pages = pages
                     });
                 }
             }
