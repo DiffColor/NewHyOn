@@ -21,6 +21,7 @@ StartApps/
 ├─ ViewModels/             # MVVM ViewModel 계층
 ├─ Views/                  # MainWindow 및 설정 다이얼로그
 ├─ publish-single-file.bat # 단일 EXE 게시 스크립트
+├─ publish-single-file.ps1 # 프로필별 게시 스크립트
 ├─ StartApps.csproj
 └─ .github/workflows/      # CI/CD 파이프라인 (release.yml 등)
 ```
@@ -78,10 +79,18 @@ dotnet publish StartApps.csproj \
 publish-single-file.bat
 ```
 
+`.NET 10 SDK`가 필요합니다. Windows ARM64처럼 아키텍처별 .NET 설치가 함께 있는 환경에서도 스크립트가 .NET 10 SDK를 가진 `dotnet`을 찾아 사용합니다. 저장소의 `global.json`과 설치된 SDK 기능 밴드가 달라도 StartApps 게시에는 발견된 .NET 10 SDK를 정확히 고정하여 사용합니다.
+
 배치 실행 후 아래 3개가 생성됩니다.
-- `StartApps.exe`
-- `StartApps.Manager.exe`
-- `StartApps.Player.exe`
+- `bin\publish\default\StartApps.exe`
+- `bin\publish\manager\StartApps.Manager.exe`
+- `bin\publish\player\StartApps.Player.exe`
+
+PowerShell 스크립트로 프로필 하나만 게시할 수도 있습니다.
+
+```powershell
+.\publish-single-file.ps1 -StartAppsProfile manager
+```
 
 ## 🔁 GitHub Actions (release.yml)
 태그(`v*`)를 푸시하면 워크플로가 실행되어 다음을 수행합니다.
