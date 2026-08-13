@@ -35,6 +35,10 @@ func newRotatingFileWriter(path string, maxBytes int64, backups int) (*rotatingF
 }
 
 func openOperationalLog(path string, maxMiB int64, backups int) (*rotatingFileWriter, string, error) {
+	return openOperationalLogWithFallback(path, maxMiB, backups, startupFallbackLogPath())
+}
+
+func openOperationalLogWithFallback(path string, maxMiB int64, backups int, fallbackPath string) (*rotatingFileWriter, string, error) {
 	if path == "" {
 		return nil, "", nil
 	}
@@ -49,7 +53,6 @@ func openOperationalLog(path string, maxMiB int64, backups int) (*rotatingFileWr
 		setupError = err
 	}
 
-	fallbackPath := startupFallbackLogPath()
 	fallback, fallbackError := newRotatingFileWriter(fallbackPath, 1024*1024, 2)
 	if fallbackError != nil {
 		return nil, fallbackPath, fmt.Errorf("%v; open fallback log: %w", setupError, fallbackError)

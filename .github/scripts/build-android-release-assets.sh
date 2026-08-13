@@ -272,6 +272,11 @@ case "$target" in
       "Player/Android/Quber4k/USBInstaller_4launcher" \
       "${artifact_prefix}-quber4k.apk"
     ;;
+  ntpsettings)
+    build_quber_release \
+      "Player/Android/Quber/QuberNtpSettings" \
+      "${artifact_prefix}.apk"
+    ;;
   launcher)
     build_gradle_release_from_find \
       "Player/Android/TurtleLauncher" \

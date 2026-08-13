@@ -1,0 +1,72 @@
+apply plugin: 'com.android.application'
+
+apply from: rootProject.file("../../versioning.gradle")
+def appVersion = resolveAppVersion()
+
+def signingEnvironmentNames = [
+        "ANDROID_KEYSTORE_PATH",
+        "ANDROID_KEYSTORE_PASSWORD",
+        "ANDROID_KEY_ALIAS",
+        "ANDROID_KEY_PASSWORD"
+]
+def signingEnvironment = signingEnvironmentNames.collectEntries { name ->
+    [(name): System.getenv(name)]
+}
+def releaseSigningAvailable = signingEnvironment.values().every { it }
+
+android {
+    compileSdkVersion 28
+    buildToolsVersion "30.0.3"
+
+    signingConfigs {
+        if (releaseSigningAvailable) {
+            release {
+                storeFile file(signingEnvironment.ANDROID_KEYSTORE_PATH)
+                storePassword signingEnvironment.ANDROID_KEYSTORE_PASSWORD
+                keyAlias signingEnvironment.ANDROID_KEY_ALIAS
+                keyPassword signingEnvironment.ANDROID_KEY_PASSWORD
+            }
+        }
+    }
+
+    lintOptions {
+        // This app targets the QUBER Android 9 firmware contract (API 28).
+        disable 'OldTargetApi'
+    }
+
+    defaultConfig {
+        applicationId "kr.co.turtlelab.quber.ntpsettings"
+        minSdkVersion 21
+        targetSdkVersion 28
+        versionCode 1
+        versionName appVersion
+    }
+
+    buildTypes {
+        release {
+            if (releaseSigningAvailable) {
+                signingConfig signingConfigs.release
+            }
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+}
+
+gradle.taskGraph.whenReady { graph ->
+    def releaseTaskRequested = graph.allTasks.any {
+        it.name.toLowerCase(Locale.ROOT).contains("release")
+    }
+    if (releaseTaskRequested && !releaseSigningAvailable) {
+        def missing = signingEnvironment.findAll { !it.value }.keySet().join(", ")
+        throw new GradleException("Release signing environment is incomplete: $missing")
+    }
+}

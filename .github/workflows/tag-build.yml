@@ -6,6 +6,7 @@ on:
       - 'manager-windows-v*'
       - 'player-windows-v*'
       - 'player-android-v*'
+      - 'player-ntpsettings-android-v*'
       - 'player-gl-android-v*'
       - 'player-notifier-android-v*'
       - 'player-usbinstaller-android-v*'
@@ -238,7 +239,7 @@ jobs:
           overwrite_files: true
 
   build-player-android:
-    if: startsWith(github.ref_name, 'player-android-v') || startsWith(github.ref_name, 'player-gl-android-v')
+    if: startsWith(github.ref_name, 'player-android-v') || startsWith(github.ref_name, 'player-ntpsettings-android-v') || startsWith(github.ref_name, 'player-gl-android-v')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -255,6 +256,12 @@ jobs:
               echo "artifact_id=player-android" >> "$GITHUB_OUTPUT"
               echo "artifact_prefix=player-android-${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
               echo "display_name=Player Android" >> "$GITHUB_OUTPUT"
+              ;;
+            player-ntpsettings-android-v*)
+              echo "target=ntpsettings" >> "$GITHUB_OUTPUT"
+              echo "artifact_id=player-ntpsettings-android" >> "$GITHUB_OUTPUT"
+              echo "artifact_prefix=player-ntpsettings-android-${GITHUB_REF_NAME#player-ntpsettings-android-}" >> "$GITHUB_OUTPUT"
+              echo "display_name=Player NTP Settings Android" >> "$GITHUB_OUTPUT"
               ;;
             player-gl-android-v*)
               echo "target=gl-player" >> "$GITHUB_OUTPUT"
@@ -285,14 +292,14 @@ jobs:
           /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --version
           yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses || true
           /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" \
-            "platform-tools" "platforms;android-22" "platforms;android-30" "build-tools;29.0.2" "build-tools;30.0.3"
+            "platform-tools" "platforms;android-22" "platforms;android-28" "platforms;android-30" "build-tools;29.0.2" "build-tools;30.0.3"
           echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
 
-      - name: Setup JDK 17 for Gradle
+      - name: Setup JDK for Gradle
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: ${{ startsWith(github.ref_name, 'player-ntpsettings-android-v') && '11' || '17' }}
 
       - name: Build ${{ steps.player_android_target.outputs.display_name }} release assets
         run: |
@@ -305,7 +312,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.player_android_target.outputs.artifact_id }}-${{ github.ref_name }}
-          path: release-assets/${{ steps.player_android_target.outputs.artifact_prefix }}-*.apk
+          path: release-assets/${{ steps.player_android_target.outputs.artifact_prefix }}*.apk
           if-no-files-found: warn
 
       - name: Attach ${{ steps.player_android_target.outputs.display_name }} APK to GitHub Release
@@ -313,7 +320,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
-          files: release-assets/${{ steps.player_android_target.outputs.artifact_prefix }}-*.apk
+          files: release-assets/${{ steps.player_android_target.outputs.artifact_prefix }}*.apk
           overwrite_files: true
 
   build-player-notifier-android:

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">QUBER NTP 설정</string>
+    <string name="title">QUBER NTP 서버 설정</string>
+    <string name="description">QUBER Signage Agent API로 시스템 NTP 서버를 조회하고 변경합니다.</string>
+    <string name="current_server_label">현재 NTP 서버</string>
+    <string name="loading">조회 중…</string>
+    <string name="not_configured">미설정</string>
+    <string name="server_hint">예: 192.168.50.240 또는 ntp.example.com</string>
+    <string name="refresh">현재 값 다시 읽기</string>
+    <string name="apply">NTP 서버 적용</string>
+    <string name="open_date_settings">Android 날짜 및 시간 설정 열기</string>
+    <string name="auto_time_on">자동 날짜 및 시간: 켜짐</string>
+    <string name="auto_time_off">자동 날짜 및 시간: 꺼짐 — 설정에서 켜야 동기화됩니다.</string>
+    <string name="status_connecting">QUBER Agent 연결 중…</string>
+    <string name="status_reading">현재 NTP 서버 조회 중…</string>
+    <string name="status_sending">NTP 서버 설정 요청 전송 중…</string>
+    <string name="status_rebooting">설정 요청을 전송했습니다. 장비가 곧 재부팅됩니다.</string>
+    <string name="status_send_failed">설정 요청 전송에 실패했습니다. QUBER Agent 상태를 확인하세요.</string>
+    <string name="invalid_server">IPv4 주소 또는 유효한 호스트 이름을 입력하세요. 포트와 URL 형식은 사용할 수 없습니다.</string>
+    <string name="confirm_title">NTP 서버를 변경할까요?</string>
+    <string name="confirm_message">NTP 서버를 %1$s(으)로 변경합니다. QUBER Agent가 설정 직후 장비를 재부팅합니다.</string>
+    <string name="apply_and_reboot">적용하고 재부팅</string>
+</resources>

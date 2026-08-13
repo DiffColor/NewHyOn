@@ -257,17 +257,20 @@ func TestLogOutputWritesFileWhenStdoutFails(t *testing.T) {
 
 func TestOpenOperationalLogFallsBackForStartupDiagnostics(t *testing.T) {
 	tempDir := t.TempDir()
-	t.Setenv("TMPDIR", tempDir)
 	blockedPath := filepath.Join(tempDir, "blocked-log-path")
 	if err := os.Mkdir(blockedPath, 0o755); err != nil {
 		t.Fatalf("create blocked log path: %v", err)
 	}
-	writer, fallbackPath, setupError := openOperationalLog(blockedPath, 10, 3)
+	fallbackPath := filepath.Join(tempDir, "startup.log")
+	writer, actualFallbackPath, setupError := openOperationalLogWithFallback(blockedPath, 10, 3, fallbackPath)
 	if setupError == nil {
 		t.Fatal("unusable requested log path did not report a setup error")
 	}
 	if writer == nil {
 		t.Fatal("fallback startup log writer was not created")
+	}
+	if actualFallbackPath != fallbackPath {
+		t.Fatalf("fallback path = %q, want %q", actualFallbackPath, fallbackPath)
 	}
 	message := []byte("startup failure diagnostic")
 	if _, err := writer.Write(message); err != nil {

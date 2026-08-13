@@ -1,6 +1,6 @@
 # NtpServer
 
-폐쇄망에서 Windows 호스트의 시스템 시각을 NTPv3/NTPv4로 배포하는 경량 UDP 서버입니다. StartApps Manager에는 RDB·FTP와 같은 **NtpServer 기본 앱 카드**로 등록됩니다.
+폐쇄망에서 호스트의 시스템 시각을 NTPv3/NTPv4로 배포하는 경량 UDP 서버입니다. StartApps Manager에는 Windows용 바이너리가 RDB·FTP와 같은 **NtpServer 기본 앱 카드**로 등록됩니다.
 
 > 이 서버는 호스트 시각을 배포할 뿐 호스트 시각을 보정하지 않습니다. 정확한 RTC, GNSS, 제한된 상위 NTP 또는 관리자 기준으로 Windows 호스트 시각을 먼저 유지해야 합니다.
 
@@ -28,19 +28,30 @@
 
 ## 빌드
 
-Go 1.23 이상이 설치된 환경에서:
+Go 1.23 이상이 설치된 환경에서 Windows 배치파일 또는 macOS/Linux 셸 스크립트를 실행합니다.
 
-```powershell
-./build-windows.ps1
+```bat
+build.bat 1.0.0
 ```
 
-생성 파일:
+```bash
+./build.sh 1.0.0
+```
+
+버전을 생략하면 `1.0.0`을 사용합니다. 두 스크립트 모두 테스트를 먼저 실행한 뒤 CGO 없는 x64/ARM64 바이너리 6개를 생성합니다.
 
 ```text
-bin/NtpServer.exe
+bin/windows-amd64/NtpServer.exe
+bin/windows-arm64/NtpServer.exe
+bin/linux-amd64/NtpServer
+bin/linux-arm64/NtpServer
+bin/macos-amd64/NtpServer
+bin/macos-arm64/NtpServer
 ```
 
-배포본을 갱신할 때 `build-windows.ps1`로 CGO 없는 Windows x64 EXE를 만든 뒤, 생성된 `bin/NtpServer.exe` 하나를 `StartApps/ntpserver.zip`에 넣습니다. StartApps 빌드와 publish는 Go 도구chain 없이 프로젝트 소스의 ZIP을 그대로 내장합니다.
+Windows x64 하나만 기존 경로로 빌드해야 할 때는 `build-windows.ps1`을 사용할 수 있습니다.
+
+배포본을 갱신할 때는 `bin/windows-amd64/NtpServer.exe` 하나를 `StartApps/ntpserver.zip`에 넣습니다. StartApps 빌드와 publish는 Go 도구chain 없이 프로젝트 소스의 ZIP을 그대로 내장합니다.
 
 ## StartApps Manager 기본값
 
@@ -80,6 +91,8 @@ NtpServer.exe -restore-host
 원복은 managed firewall rule을 삭제하고 저장된 W32Time startup type/실행 상태를 복구한 다음 저장 상태를 제거합니다.
 
 `prepare-host.ps1`, `configure-firewall.ps1`, `restore-host.ps1`은 수동 진단·복구용 보조 도구입니다. StartApps NTP 카드의 runtime 의존성이 아닙니다.
+
+Linux와 macOS에서는 NTP serving 자체는 동작하지만 host 자동 준비와 원복은 수행하지 않습니다. UDP/123 권한, 기존 NTP daemon 충돌 해소 및 방화벽 설정은 각 OS에서 별도로 구성해야 합니다.
 
 ## 방화벽 remote address
 

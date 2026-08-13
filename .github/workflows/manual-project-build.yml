@@ -11,6 +11,7 @@ on:
           - manager-windows
           - player-windows
           - player-android
+          - player-ntpsettings-android
           - player-gl-android
           - player-notifier-android
           - player-usbinstaller-android
@@ -352,7 +353,7 @@ jobs:
           overwrite_files: true
 
   build-player-android:
-    if: ${{ contains(fromJSON('["player-android","player-gl-android"]'), inputs.project) }}
+    if: ${{ contains(fromJSON('["player-android","player-ntpsettings-android","player-gl-android"]'), inputs.project) }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -369,11 +370,19 @@ jobs:
             player-android)
               echo "target=player" >> "$GITHUB_OUTPUT"
               echo "artifact_id=player-android" >> "$GITHUB_OUTPUT"
+              echo "output_id=player-android" >> "$GITHUB_OUTPUT"
               echo "display_name=Player Android" >> "$GITHUB_OUTPUT"
+              ;;
+            player-ntpsettings-android)
+              echo "target=ntpsettings" >> "$GITHUB_OUTPUT"
+              echo "artifact_id=player-ntpsettings-android" >> "$GITHUB_OUTPUT"
+              echo "output_id=player-ntpsettings-android" >> "$GITHUB_OUTPUT"
+              echo "display_name=Player NTP Settings Android" >> "$GITHUB_OUTPUT"
               ;;
             player-gl-android)
               echo "target=gl-player" >> "$GITHUB_OUTPUT"
               echo "artifact_id=player-gl-android" >> "$GITHUB_OUTPUT"
+              echo "output_id=player-android" >> "$GITHUB_OUTPUT"
               echo "display_name=Player GL Android" >> "$GITHUB_OUTPUT"
               ;;
           esac
@@ -440,20 +449,20 @@ jobs:
           /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --version
           yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses || true
           /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root="$ANDROID_SDK_ROOT" \
-            "platform-tools" "platforms;android-22" "platforms;android-30" "build-tools;29.0.2" "build-tools;30.0.3"
+            "platform-tools" "platforms;android-22" "platforms;android-28" "platforms;android-30" "build-tools;29.0.2" "build-tools;30.0.3"
           echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
 
-      - name: Setup JDK 17 for Gradle
+      - name: Setup JDK for Gradle
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: ${{ inputs.project == 'player-ntpsettings-android' && '11' || '17' }}
 
       - name: Build ${{ steps.player_android_target.outputs.display_name }} release assets
         run: |
           bash ./.github/scripts/build-android-release-assets.sh \
             "${{ steps.player_android_target.outputs.target }}" \
-            "player-android-manual-${{ steps.release_meta.outputs.artifact_suffix }}" \
+            "${{ steps.player_android_target.outputs.output_id }}-manual-${{ steps.release_meta.outputs.artifact_suffix }}" \
             "release-assets" \
             "${{ steps.release_meta.outputs.tag }}"
 
@@ -461,7 +470,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.player_android_target.outputs.artifact_id }}-manual-${{ steps.release_meta.outputs.artifact_suffix }}
-          path: release-assets/player-android-manual-${{ steps.release_meta.outputs.artifact_suffix }}-*.apk
+          path: release-assets/${{ steps.player_android_target.outputs.output_id }}-manual-${{ steps.release_meta.outputs.artifact_suffix }}*.apk
           if-no-files-found: warn
 
       - name: Attach ${{ steps.player_android_target.outputs.display_name }} APK to GitHub Release
@@ -471,7 +480,7 @@ jobs:
           name: ${{ steps.release_meta.outputs.name }}
           target_commitish: ${{ inputs.source_ref }}
           prerelease: ${{ inputs.prerelease }}
-          files: release-assets/player-android-manual-${{ steps.release_meta.outputs.artifact_suffix }}-*.apk
+          files: release-assets/${{ steps.player_android_target.outputs.output_id }}-manual-${{ steps.release_meta.outputs.artifact_suffix }}*.apk
           overwrite_files: true
 
   build-player-notifier-android:
