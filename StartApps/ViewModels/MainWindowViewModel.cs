@@ -88,6 +88,21 @@ public partial class MainWindowViewModel : ObservableObject
         {
             definitions.AddRange(_dependencyService.CreateDefaultAppDefinitions());
             await _appManager.SaveAsync(definitions);
+            if (string.Equals(_profile.Id, AppProfile.ManagerId, StringComparison.OrdinalIgnoreCase))
+            {
+                await _appManager.MarkManagerNtpMigrationAsync();
+            }
+        }
+        else if (string.Equals(_profile.Id, AppProfile.ManagerId, StringComparison.OrdinalIgnoreCase)
+                 && !await _appManager.HasManagerNtpMigrationAsync())
+        {
+            if (definitions.All(definition => definition.Type != AppType.Ntp))
+            {
+                definitions.Add(_dependencyService.CreateDefaultAppDefinitions()
+                    .Single(definition => definition.Type == AppType.Ntp));
+                await _appManager.SaveAsync(definitions);
+            }
+            await _appManager.MarkManagerNtpMigrationAsync();
         }
 
         var ordered = definitions
@@ -485,6 +500,24 @@ public partial class MainWindowViewModel : ObservableObject
                 definition.WorkingDirectory = Path.GetDirectoryName(_dependencyService.GetExecutablePath(AppType.Rdb));
             }
         }
+        else if (definition.Type == AppType.Ntp)
+        {
+            changed |= ApplyRunAsAdministratorDefault(definition, defaultValue: true);
+            if (string.IsNullOrWhiteSpace(definition.Name)
+                || string.Equals(definition.Name, "NTP", StringComparison.OrdinalIgnoreCase))
+            {
+                definition.Name = "NtpServer";
+                changed = true;
+            }
+            definition.Port = 123;
+            definition.Arguments = string.IsNullOrWhiteSpace(definition.Arguments)
+                ? "-listen :123 -firewall-remote-address Any -stratum 10 -ref-id LOCL -root-dispersion 1s -log-interval 10m -log-file logs\\ntp-server.log"
+                : definition.Arguments;
+            definition.ShowWindow = false;
+            definition.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
+            definition.ExecutablePath = _dependencyService.GetExecutablePath(AppType.Ntp);
+            definition.WorkingDirectory = Path.GetDirectoryName(definition.ExecutablePath);
+        }
         else if (definition.Type == AppType.App)
         {
             changed |= ApplyRunAsAdministratorDefault(definition, defaultValue: false);
@@ -824,7 +857,9 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     private static bool RequiresExternalProcessCheck(AppDefinition definition) =>
-        definition.Type == AppType.Rdb || definition.Type == AppType.Ftp;
+        definition.Type == AppType.Rdb
+        || definition.Type == AppType.Ftp
+        || definition.Type == AppType.Ntp;
 
     private void OnRuntimeStateChanged(object? sender, AppRuntimeState e)
     {

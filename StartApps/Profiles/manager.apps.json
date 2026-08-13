@@ -8,6 +8,17 @@
     "port": 28015
   },
   {
+    "name": "NtpServer",
+    "type": "Ntp",
+    "zone": "Parallel",
+    "isEnabled": true,
+    "runAsAdministrator": true,
+    "port": 123,
+    "arguments": "-listen :123 -firewall-remote-address Any -stratum 10 -ref-id LOCL -root-dispersion 1s -log-interval 10m -log-file logs\\ntp-server.log",
+    "showWindow": false,
+    "windowStyle": "Hidden"
+  },
+  {
     "name": "SignalR10",
     "type": "Msg10",
     "zone": "Parallel",

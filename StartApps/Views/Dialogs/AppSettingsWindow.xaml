@@ -108,6 +108,12 @@
                     </StackPanel>
                 </StackPanel>
 
+                <StackPanel Visibility="{Binding Type, Converter={StaticResource AppTypeVisibilityConverter}, ConverterParameter=Ntp}" Margin="0,16,0,0">
+                    <TextBlock Text="NtpServer 설정" FontSize="18" FontWeight="SemiBold" />
+                    <TextBlock Text="UDP 123과 Windows 방화벽 remote address Any를 사용합니다. NtpServer가 Windows Time 충돌과 방화벽을 자동 준비합니다."
+                               Margin="0,8,0,0" TextWrapping="Wrap" Foreground="#FFB8C5D6" />
+                </StackPanel>
+
                 <StackPanel Visibility="{Binding Type, Converter={StaticResource AppTypeVisibilityConverter}, ConverterParameter=Ftp}" Margin="0,16,0,0">
                     <TextBlock Text="FileZilla 서버 설정" FontSize="18" FontWeight="SemiBold" />
                     <StackPanel Orientation="Horizontal" Margin="0,8,0,0">

@@ -7,6 +7,8 @@ public class AppDataStore : IDisposable
 {
     private const string DatabaseFileName = "startapps.db";
     private const string CollectionName = "apps";
+    private const string MigrationCollectionName = "migrations";
+    private const string ManagerNtpMigrationId = "manager-ntp-v1";
 
     private readonly LiteDatabase _database;
     private readonly ILiteCollection<AppDefinition> _collection;
@@ -54,6 +56,23 @@ public class AppDataStore : IDisposable
                 throw;
             }
         });
+    }
+
+    public Task<bool> HasManagerNtpMigrationAsync()
+    {
+        var migrations = _database.GetCollection<BsonDocument>(MigrationCollectionName);
+        return Task.FromResult(migrations.Exists(Query.EQ("_id", ManagerNtpMigrationId)));
+    }
+
+    public Task MarkManagerNtpMigrationAsync()
+    {
+        var migrations = _database.GetCollection<BsonDocument>(MigrationCollectionName);
+        migrations.Upsert(new BsonDocument
+        {
+            ["_id"] = ManagerNtpMigrationId,
+            ["completedAt"] = DateTime.UtcNow
+        });
+        return Task.CompletedTask;
     }
 
     private static AppDefinition CloneDefinition(AppDefinition source)

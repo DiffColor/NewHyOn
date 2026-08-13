@@ -25,6 +25,9 @@ public class AppDependencyService
     private const string SignalrNet10FolderName = "signalr10";
     private const string SignalrNet472ExeName = "SignalR_Net472.exe";
     private const string SignalrNet10ExeName = "signalr_net10linux.exe";
+    private const string NtpServerArchiveName = "ntpserver.zip";
+    private const string NtpServerExeName = "NtpServer.exe";
+    private const string NtpServerFolderName = "NtpServer";
     private const string DefaultWorkspaceFolderName = "Turtle Lab";
     private const string DefaultNewHyOnFolderName = "NewHyOn Manager";
     private const string DefaultDataFolderName = "Data";
@@ -60,6 +63,7 @@ public class AppDependencyService
             AppType.Msg => Path.Combine(StorageRoot, SignalrNet472FolderName, SignalrNet472ExeName),
             AppType.Msg472 => Path.Combine(StorageRoot, SignalrNet472FolderName, SignalrNet472ExeName),
             AppType.Msg10 => Path.Combine(StorageRoot, SignalrNet10FolderName, SignalrNet10ExeName),
+            AppType.Ntp => Path.Combine(StorageRoot, NtpServerFolderName, NtpServerExeName),
             _ => string.Empty
         };
 
@@ -137,6 +141,14 @@ public class AppDependencyService
             if (!File.Exists(executablePath))
             {
                 await ExtractEmbeddedZipAsync(SignalrNet10ArchiveName, Path.Combine(StorageRoot, SignalrNet10FolderName), cancellationToken);
+            }
+        }
+        else if (type == AppType.Ntp)
+        {
+            var executablePath = GetExecutablePath(AppType.Ntp);
+            if (!File.Exists(executablePath))
+            {
+                await ExtractEmbeddedZipAsync(NtpServerArchiveName, Path.Combine(StorageRoot, NtpServerFolderName), cancellationToken);
             }
         }
     }

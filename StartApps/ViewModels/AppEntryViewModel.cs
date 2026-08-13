@@ -23,6 +23,7 @@ public partial class AppEntryViewModel : ObservableObject
     public string TypeLabel => Definition.Type switch
     {
         AppType.Rdb => "RDB",
+        AppType.Ntp => "NtpServer",
         AppType.Ftp => "FTP",
         AppType.Msg => "MSG",
         AppType.Msg472 => "MSG472",

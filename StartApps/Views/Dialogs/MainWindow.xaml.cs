@@ -782,6 +782,15 @@ public partial class MainWindow : FluentWindow
             case AppType.Rdb:
                 definition.Port = definition.Port ?? 28015;
                 break;
+            case AppType.Ntp:
+                definition.Name = "NtpServer";
+                definition.IsEnabled = true;
+                definition.RunAsAdministrator = true;
+                definition.Port = 123;
+                definition.Arguments = "-listen :123 -firewall-remote-address Any -stratum 10 -ref-id LOCL -root-dispersion 1s -log-interval 10m -log-file logs\\ntp-server.log";
+                definition.ShowWindow = false;
+                definition.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
+                break;
             case AppType.Ftp:
                 if (definition.Port is null or 21)
                 {

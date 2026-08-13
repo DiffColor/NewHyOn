@@ -36,6 +36,7 @@ public partial class AppSettingsWindow : FluentWindow
 
         if (string.IsNullOrWhiteSpace(_workingCopy.ExecutablePath)
             && (_workingCopy.Type == AppType.Rdb
+                || _workingCopy.Type == AppType.Ntp
                 || _workingCopy.Type == AppType.Ftp
                 || _workingCopy.Type == AppType.Msg
                 || _workingCopy.Type == AppType.Msg472

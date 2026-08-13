@@ -57,6 +57,10 @@
             <GradientStop Color="#FF3B8DFF" Offset="0"/>
             <GradientStop Color="#FF214EAA" Offset="1"/>
         </LinearGradientBrush>
+        <LinearGradientBrush x:Key="AppCardGradientNtp" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#FF7C4DFF" Offset="0"/>
+            <GradientStop Color="#FF4527A0" Offset="1"/>
+        </LinearGradientBrush>
         <LinearGradientBrush x:Key="AppCardGradientFtp" StartPoint="0,0" EndPoint="1,1">
             <GradientStop Color="#FF4DD0E1" Offset="0"/>
             <GradientStop Color="#FF00796B" Offset="1"/>
@@ -95,6 +99,9 @@
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding Definition.Type}" Value="Rdb">
                                 <Setter Property="Background" Value="{StaticResource AppCardGradientRdb}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Definition.Type}" Value="Ntp">
+                                <Setter Property="Background" Value="{StaticResource AppCardGradientNtp}" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding Definition.Type}" Value="Ftp">
                                 <Setter Property="Background" Value="{StaticResource AppCardGradientFtp}" />
@@ -243,6 +250,11 @@
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
                             <Button Content="RDB" Padding="18,6" Margin="0,0,12,0" Tag="Rdb"
+                                    Click="TypeButton_Click"
+                                    PreviewMouseLeftButtonDown="TypeButton_PreviewMouseLeftButtonDown"
+                                    PreviewMouseMove="TypeButton_PreviewMouseMove"
+                                    PreviewMouseLeftButtonUp="TypeButton_PreviewMouseLeftButtonUp" />
+                            <Button Content="NtpServer" Padding="18,6" Margin="0,0,12,0" Tag="Ntp"
                                     Click="TypeButton_Click"
                                     PreviewMouseLeftButtonDown="TypeButton_PreviewMouseLeftButtonDown"
                                     PreviewMouseMove="TypeButton_PreviewMouseMove"

@@ -27,6 +27,10 @@ public class AppManager
 
     public Task SaveAsync(IEnumerable<AppDefinition> definitions) => _dataStore.SaveAsync(definitions);
 
+    public Task<bool> HasManagerNtpMigrationAsync() => _dataStore.HasManagerNtpMigrationAsync();
+
+    public Task MarkManagerNtpMigrationAsync() => _dataStore.MarkManagerNtpMigrationAsync();
+
     public async Task StartAsync(AppDefinition definition, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -212,7 +216,9 @@ public class AppManager
 
     public IReadOnlyList<ExternalProcessInfo> FindExternalInstanceProcesses(AppDefinition definition)
     {
-        if (definition.Type != AppType.Rdb && definition.Type != AppType.Ftp)
+        if (definition.Type != AppType.Rdb
+            && definition.Type != AppType.Ftp
+            && definition.Type != AppType.Ntp)
         {
             return Array.Empty<ExternalProcessInfo>();
         }
@@ -224,6 +230,7 @@ public class AppManager
         }
 
         var normalizedTargetPath = Path.GetFullPath(executablePath);
+        var matchesAnyExecutablePath = definition.Type == AppType.Ntp;
         var processName = Path.GetFileNameWithoutExtension(normalizedTargetPath);
         if (string.IsNullOrWhiteSpace(processName))
         {
@@ -235,21 +242,32 @@ public class AppManager
         {
             try
             {
-                var processPath = process.MainModule?.FileName;
-                if (string.IsNullOrWhiteSpace(processPath))
-                {
-                    continue;
-                }
-
-                var normalizedProcessPath = Path.GetFullPath(processPath);
                 if (IsTrackedProcess(process.Id))
                 {
                     continue;
                 }
 
-                if (string.Equals(normalizedProcessPath, normalizedTargetPath, StringComparison.OrdinalIgnoreCase))
+                string? normalizedProcessPath = null;
+                try
                 {
-                    external.Add(new ExternalProcessInfo(process.Id, process.ProcessName, normalizedProcessPath));
+                    var processPath = process.MainModule?.FileName;
+                    if (!string.IsNullOrWhiteSpace(processPath))
+                    {
+                        normalizedProcessPath = Path.GetFullPath(processPath);
+                    }
+                }
+                catch when (matchesAnyExecutablePath)
+                {
+                    // Elevated or service-owned NtpServer processes can hide their executable path.
+                }
+
+                if (matchesAnyExecutablePath
+                    || string.Equals(normalizedProcessPath, normalizedTargetPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    external.Add(new ExternalProcessInfo(
+                        process.Id,
+                        process.ProcessName,
+                        normalizedProcessPath ?? $"{process.ProcessName}.exe (경로 확인 불가)"));
                 }
             }
             catch
@@ -372,6 +390,7 @@ public class AppManager
             AppType.Msg => _dependencyService.GetExecutablePath(AppType.Msg),
             AppType.Msg472 => _dependencyService.GetExecutablePath(AppType.Msg472),
             AppType.Msg10 => _dependencyService.GetExecutablePath(AppType.Msg10),
+            AppType.Ntp => _dependencyService.GetExecutablePath(AppType.Ntp),
             _ => string.Empty
         };
     }
