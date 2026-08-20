@@ -948,7 +948,7 @@ namespace NewHyOnPlayer.PlaybackModes
                     return;
                 }
 
-                if (currentItems == null || currentItems.Length <= 1 || currentPlaylistIndex < 0)
+                if (currentItems == null || currentItems.Length == 0 || currentPlaylistIndex < 0)
                 {
                     return;
                 }
