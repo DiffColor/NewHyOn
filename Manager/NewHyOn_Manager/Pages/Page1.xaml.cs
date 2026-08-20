@@ -3947,16 +3947,59 @@ namespace AndoW_Manager
 
         public void UpdateContentsListToSelectedElement(ContentsInfoClass temInfoClass)
         {
-            if (g_CurrentSelectedObjName != string.Empty)
+            if (temInfoClass == null || string.IsNullOrWhiteSpace(temInfoClass.CIF_StrGUID))
             {
-                foreach (DisplayElementForEditor item in g_DspElmtList)
-	            {
-                    if (item.g_ElementInfoClass.EIF_Name == g_CurrentSelectedObjName)
-                    {
-                        item.AddContentInfoCls(temInfoClass);
-                        break;  
-                    }
-	            }
+                return;
+            }
+
+            DisplayElementForEditor targetElement = GetSelectedDisplayElementForContentMutation();
+            if (!ContentListProjectionsAreSynchronized(targetElement)
+                || targetElement.g_ElementInfoClass.EIF_ContentsInfoClassList.Any(item => item.CIF_StrGUID == temInfoClass.CIF_StrGUID)
+                || g_SelectedCurElement.EIF_ContentsInfoClassList.Any(item => item.CIF_StrGUID == temInfoClass.CIF_StrGUID)
+                || MediaListBox.Items.OfType<ContentInfoElement>().Any(item => item.g_ContentsInfoClass.CIF_StrGUID == temInfoClass.CIF_StrGUID))
+            {
+                return;
+            }
+
+            ContentsInfoClass draftContent = new ContentsInfoClass();
+            draftContent.CopyData(temInfoClass);
+            ContentsInfoClass selectedContent = new ContentsInfoClass();
+            selectedContent.CopyData(temInfoClass);
+            ContentInfoElement contentElement = CreateContentInfoElement(temInfoClass, MediaListBox.Items.Count + 1);
+
+            bool draftAdded = false;
+            bool selectedAdded = false;
+            bool uiAdded = false;
+            try
+            {
+                targetElement.g_ElementInfoClass.EIF_ContentsInfoClassList.Add(draftContent);
+                draftAdded = true;
+                g_SelectedCurElement.EIF_ContentsInfoClassList.Add(selectedContent);
+                selectedAdded = true;
+                MediaListBox.Items.Add(contentElement);
+                uiAdded = true;
+
+                targetElement.DisplayContentsListCount();
+                UpdateContentListEmptyState();
+                MediaListScrollViewer.ScrollToBottom();
+            }
+            catch (Exception ex)
+            {
+                if (uiAdded)
+                {
+                    MediaListBox.Items.Remove(contentElement);
+                }
+                if (selectedAdded)
+                {
+                    g_SelectedCurElement.EIF_ContentsInfoClassList.Remove(selectedContent);
+                }
+                if (draftAdded)
+                {
+                    targetElement.g_ElementInfoClass.EIF_ContentsInfoClassList.Remove(draftContent);
+                }
+
+                Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
+                RestoreContentListVisualState(targetElement, MediaListBox.Items.Count);
             }
         }
 
@@ -4051,39 +4094,177 @@ namespace AndoW_Manager
             RefreshScrollTextInfoList();
         }
 
-        public void DeleteContentsList(ContentsInfoClass paramcls)
+        public void DeleteContentsList(ContentInfoElement contentElement)
         {
-            int idx = 0;
-            foreach (ContentsInfoClass item in this.g_SelectedCurElement.EIF_ContentsInfoClassList)
+            string contentGuid = contentElement?.g_ContentsInfoClass?.CIF_StrGUID;
+            DisplayElementForEditor targetElement = GetSelectedDisplayElementForContentMutation();
+            if (!ContentListProjectionsAreSynchronized(targetElement) || string.IsNullOrWhiteSpace(contentGuid))
             {
-                if (item.CIF_StrGUID == paramcls.CIF_StrGUID)
-                {
-                    break;
-                }
-                idx++;
+                return;
             }
 
-            if (this.g_SelectedCurElement.EIF_ContentsInfoClassList.Count > 0)
+            List<ContentsInfoClass> draftContents = targetElement.g_ElementInfoClass.EIF_ContentsInfoClassList;
+            List<ContentsInfoClass> selectedContents = g_SelectedCurElement.EIF_ContentsInfoClassList;
+            int draftIndex = draftContents.FindIndex(item => item.CIF_StrGUID == contentGuid);
+            int selectedIndex = selectedContents.FindIndex(item => item.CIF_StrGUID == contentGuid);
+            int uiIndex = MediaListBox.Items.IndexOf(contentElement);
+
+            if (draftIndex < 0
+                || selectedIndex < 0
+                || uiIndex < 0
+                || draftContents.Count(item => item.CIF_StrGUID == contentGuid) != 1
+                || selectedContents.Count(item => item.CIF_StrGUID == contentGuid) != 1
+                || MediaListBox.Items.OfType<ContentInfoElement>().Count(item => item.g_ContentsInfoClass.CIF_StrGUID == contentGuid) != 1)
             {
+                return;
+            }
 
-                if (idx == 0 || idx < this.g_SelectedCurElement.EIF_ContentsInfoClassList.Count)
+            ContentsInfoClass draftContent = draftContents[draftIndex];
+            ContentsInfoClass selectedContent = selectedContents[selectedIndex];
+            bool draftRemoved = false;
+            bool selectedRemoved = false;
+            bool uiRemoved = false;
+            try
+            {
+                draftContents.RemoveAt(draftIndex);
+                draftRemoved = true;
+                selectedContents.RemoveAt(selectedIndex);
+                selectedRemoved = true;
+                MediaListBox.Items.RemoveAt(uiIndex);
+                uiRemoved = true;
+
+                UpdateContentOrderingNumbers(uiIndex);
+                targetElement.DisplayContentsListCount();
+                UpdateContentListEmptyState();
+
+                if (g_CurSelContentsInfoClass.CIF_StrGUID == contentGuid)
                 {
-                    this.g_SelectedCurElement.EIF_ContentsInfoClassList.RemoveAt(idx);
-
-                    foreach (DisplayElementForEditor item in g_DspElmtList)
-                    {
-                        if (item.g_ElementInfoClass.EIF_Name == this.g_SelectedCurElement.EIF_Name)
-                        {
-                            item.g_ElementInfoClass.EIF_ContentsInfoClassList.RemoveAt(idx);
-                            item.DisplayContentsListCount();
-                            break;
-                        }                        
-                    }
+                    g_CurSelContentsInfoClass = new ContentsInfoClass();
+                    g_CurSelListType = DisplayType.None;
                 }
             }
-           
+            catch (Exception ex)
+            {
+                if (uiRemoved)
+                {
+                    MediaListBox.Items.Insert(uiIndex, contentElement);
+                }
+                if (selectedRemoved)
+                {
+                    selectedContents.Insert(selectedIndex, selectedContent);
+                }
+                if (draftRemoved)
+                {
+                    draftContents.Insert(draftIndex, draftContent);
+                }
 
-            RefreshContentInfoList();
+                Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
+                RestoreContentListVisualState(targetElement, uiIndex);
+            }
+        }
+
+        private DisplayElementForEditor GetSelectedDisplayElementForContentMutation()
+        {
+            if (string.IsNullOrWhiteSpace(g_CurrentSelectedObjName)
+                || string.IsNullOrWhiteSpace(g_SelectedCurElement?.EIF_Name))
+            {
+                return null;
+            }
+
+            DisplayElementForEditor targetElement = g_DspElmtList.FirstOrDefault(item =>
+                item?.g_ElementInfoClass != null
+                && item.g_ElementInfoClass.EIF_Name == g_CurrentSelectedObjName);
+
+            if (targetElement == null
+                || targetElement.g_ElementInfoClass.EIF_Name != g_SelectedCurElement.EIF_Name)
+            {
+                return null;
+            }
+
+            return targetElement;
+        }
+
+        private bool ContentListProjectionsAreSynchronized(DisplayElementForEditor targetElement)
+        {
+            if (targetElement?.g_ElementInfoClass?.EIF_ContentsInfoClassList == null
+                || g_SelectedCurElement?.EIF_ContentsInfoClassList == null
+                || MediaListBox == null)
+            {
+                return false;
+            }
+
+            List<ContentsInfoClass> draftContents = targetElement.g_ElementInfoClass.EIF_ContentsInfoClassList;
+            List<ContentsInfoClass> selectedContents = g_SelectedCurElement.EIF_ContentsInfoClassList;
+            List<ContentInfoElement> visibleContents = MediaListBox.Items.OfType<ContentInfoElement>().ToList();
+            if (draftContents.Count != selectedContents.Count
+                || draftContents.Count != visibleContents.Count
+                || MediaListBox.Items.Count != visibleContents.Count)
+            {
+                return false;
+            }
+
+            for (int index = 0; index < draftContents.Count; index++)
+            {
+                string draftGuid = draftContents[index]?.CIF_StrGUID;
+                string selectedGuid = selectedContents[index]?.CIF_StrGUID;
+                string visibleGuid = visibleContents[index]?.g_ContentsInfoClass?.CIF_StrGUID;
+                if (!string.Equals(draftGuid, selectedGuid, StringComparison.OrdinalIgnoreCase)
+                    || !string.Equals(draftGuid, visibleGuid, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private ContentInfoElement CreateContentInfoElement(ContentsInfoClass content, int order)
+        {
+            ContentInfoElement contentElement = new ContentInfoElement(content);
+            contentElement.Width = 360;
+            contentElement.Height = double.NaN;
+            contentElement.MinHeight = 30;
+            contentElement.ShowPeriodInfo = true;
+            contentElement.DisplayThisElementInfo();
+            contentElement.TextBlockOrderingNumber.Text = string.Format("{0:D2}", order);
+            contentElement.Margin = new Thickness();
+            return contentElement;
+        }
+
+        private void UpdateContentListEmptyState()
+        {
+            if (ContentsBgIcon != null)
+            {
+                ContentsBgIcon.Visibility = MediaListBox.Items.Count == 0
+                    ? Visibility.Visible
+                    : Visibility.Hidden;
+            }
+        }
+
+        private void UpdateContentOrderingNumbers(int startIndex)
+        {
+            int safeStartIndex = Math.Max(0, startIndex);
+            for (int index = safeStartIndex; index < MediaListBox.Items.Count; index++)
+            {
+                if (MediaListBox.Items[index] is ContentInfoElement item)
+                {
+                    item.TextBlockOrderingNumber.Text = string.Format("{0:D2}", index + 1);
+                }
+            }
+        }
+
+        private void RestoreContentListVisualState(DisplayElementForEditor targetElement, int startIndex)
+        {
+            try
+            {
+                UpdateContentOrderingNumbers(startIndex);
+                targetElement?.DisplayContentsListCount();
+                UpdateContentListEmptyState();
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteErrorLog(ex.ToString(), Logger.GetLogFileName());
+            }
         }
 
         public void RefreshContentInfoList()
@@ -4096,14 +4277,7 @@ namespace AndoW_Manager
                 int idx = 1;
                 foreach (ContentsInfoClass item in this.g_SelectedCurElement.EIF_ContentsInfoClassList)
                 {
-                    ContentInfoElement tmpElement = new ContentInfoElement(item);
-                    tmpElement.Width = 360;
-                    tmpElement.Height = double.NaN;
-                    tmpElement.MinHeight = 30;
-                    tmpElement.ShowPeriodInfo = true;
-                    tmpElement.DisplayThisElementInfo();
-                    tmpElement.TextBlockOrderingNumber.Text = string.Format("{0:D2}", idx);
-                    tmpElement.Margin = new Thickness();
+                    ContentInfoElement tmpElement = CreateContentInfoElement(item, idx);
                     MediaListBox.Items.Add(tmpElement);
                     idx++;
                 }
@@ -4112,11 +4286,7 @@ namespace AndoW_Manager
             SelectedContentInfo(g_CurSelContentsInfoClass, g_CurSelListType);
 
             // 배경 아이콘 표시/숨김
-            if (ContentsBgIcon != null)
-            {
-                ContentsBgIcon.Visibility =
-                    MediaListBox.Items.Count == 0 ? Visibility.Visible : Visibility.Hidden;
-            }
+            UpdateContentListEmptyState();
         }
 
         public void EditContentsPlayTime(ContentsInfoClass paramCls)

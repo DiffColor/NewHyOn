@@ -233,7 +233,7 @@ namespace AndoW_Manager
 
         void DeletContents_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
-            Page1.Instance.DeleteContentsList(this.g_ContentsInfoClass);
+            Page1.Instance.DeleteContentsList(this);
         }
 
         void PageListElement_MouseLeave(object sender, MouseEventArgs e)
