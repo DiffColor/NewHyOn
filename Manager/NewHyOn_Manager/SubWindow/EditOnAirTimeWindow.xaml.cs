@@ -6,6 +6,8 @@ using Newtonsoft.Json;
 using System;
 using TurtleTools;
 using System.Windows.Shapes;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace AndoW_Manager
 {
@@ -16,13 +18,20 @@ namespace AndoW_Manager
     {
          public WeeklyInfoManagerClass g_WeeklyInfoManagerClass = new WeeklyInfoManagerClass();
          public PlayerInfoClass g_CurrentSelectedPlayerInfoClass = new PlayerInfoClass();
+         private readonly PlayerGroupClass g_CurrentSelectedPlayerGroupClass;
 
          public EditOnAirTimeWindow(PlayerInfoClass paramCls)
         {
             InitializeComponent();
             g_CurrentSelectedPlayerInfoClass.CopyData(paramCls);
+            if (Page3.Instance?.g_CurrentSelectedPlayerGroupClass != null)
+            {
+                g_CurrentSelectedPlayerGroupClass = new PlayerGroupClass();
+                g_CurrentSelectedPlayerGroupClass.CopyData(Page3.Instance.g_CurrentSelectedPlayerGroupClass);
+            }
             InitEventHandler();
             InitWeeklyInfoEventHandler();
+            UpdateBatchApplyButtonLabel();
 
             TextAngleGrade1_Copy1.Text = paramCls.PIF_PlayerName;
         }
@@ -323,20 +332,70 @@ namespace AndoW_Manager
         {
             SyncWeeklyInfoFromUI();
 
-            foreach (PlayerInfoClass item in DataShop.Instance.g_PlayerInfoManager.g_PlayerInfoClassList)
+            List<PlayerInfoClass> targetPlayers = GetBatchTargetPlayers();
+            if (targetPlayers.Count == 0)
             {
-                g_WeeklyInfoManagerClass.SaveWeeklySchedule(item.PIF_GUID, item.PIF_PlayerName);
+                MessageTools.ShowMessageBox("일괄 적용할 플레이어가 없습니다.", "확인");
+                return;
+            }
 
+            int successCount = 0;
+            int failedCount = 0;
+            foreach (PlayerInfoClass item in targetPlayers)
+            {
                 try
                 {
-                    MainWindow.Instance.EnqueueCommandForPlayer(item, RP_ORDER.updateweekly.ToString(), pushSignalR: true);
+                    g_WeeklyInfoManagerClass.SaveWeeklySchedule(item.PIF_GUID, item.PIF_PlayerName);
+                    if (MainWindow.Instance.EnqueueCommandForPlayer(item, RP_ORDER.updateweekly.ToString(), pushSignalR: true))
+                    {
+                        successCount++;
+                    }
+                    else
+                    {
+                        failedCount++;
+                    }
                 }
                 catch (Exception)
                 {
+                    failedCount++;
                 }
             }
 
-            MessageTools.ShowMessageBox("모든 플레이어에 적용했습니다.", "확인");
+            string targetName = g_CurrentSelectedPlayerGroupClass == null
+                ? "모든 플레이어"
+                : $"'{g_CurrentSelectedPlayerGroupClass.PG_GroupName}' 그룹";
+            string resultMessage = failedCount == 0
+                ? $"{targetName} {successCount}대에 방송시간 적용을 요청했습니다."
+                : $"{targetName} 방송시간 적용 요청: 성공 {successCount}대, 실패 {failedCount}대";
+            MessageTools.ShowMessageBox(resultMessage, "확인");
+        }
+
+        private List<PlayerInfoClass> GetBatchTargetPlayers()
+        {
+            List<PlayerInfoClass> allPlayers = DataShop.Instance.g_PlayerInfoManager.g_PlayerInfoClassList
+                .Where(player => player != null)
+                .ToList();
+            if (g_CurrentSelectedPlayerGroupClass == null)
+            {
+                return allPlayers;
+            }
+
+            var memberNames = new HashSet<string>(
+                g_CurrentSelectedPlayerGroupClass.PG_AssignedPlayerNames ?? new List<string>(),
+                StringComparer.CurrentCultureIgnoreCase);
+            return allPlayers
+                .Where(player => memberNames.Contains(player.PIF_PlayerName))
+                .ToList();
+        }
+
+        private void UpdateBatchApplyButtonLabel()
+        {
+            string groupName = g_CurrentSelectedPlayerGroupClass?.PG_GroupName?.Trim();
+            string label = string.IsNullOrWhiteSpace(groupName)
+                ? "모든 플레이어에 일괄 적용"
+                : $"'{groupName}' 그룹에 일괄 적용";
+            TextAngleGrade1.Text = label;
+            BTN0DO_Copy.ToolTip = label;
         }
 
         void EditOnAirTimeWindow_Loaded(object sender, RoutedEventArgs e)
