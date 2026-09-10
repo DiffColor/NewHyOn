@@ -1156,7 +1156,8 @@ public class MediaView extends RelativeLayout {
                     if (!isCurrentMediaConfiguration(configVersion)) {
                         return;
                     }
-                    markStandbyVideoPrepared(targetVideoView, normalizedPath, preparingTag, configVersion, targetMuted);
+                    // Initialize the decoder before the rendering callback pauses and seeks.
+                    targetVideoView.start();
                 }
             });
             targetVideoView.setVideoPath(normalizedPath);
